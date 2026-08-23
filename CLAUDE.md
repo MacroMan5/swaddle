@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Prototype auto-hébergé (self-host) d'un clone de **Huckleberry** : application de suivi
-d'un nouveau-né (tétées/biberons, sommeil, couches, croissance, etc.). Usage privé,
-une seule famille, réseau local.
+**Swaddle** : application auto-hébergée (self-host) de suivi d'un nouveau-né
+(tétées/biberons, sommeil, couches, etc.), inspirée des conventions UX d'apps
+comme Huckleberry sans en reprendre le nom ni la marque. Usage privé, une seule
+famille, réseau local. Dépôt public : github.com/MacroMan5/swaddle.
 
 **État actuel : design et stack décidés, code pas encore écrit.** Le périmètre MVP
 est dans `docs/plans/2026-08-23-newborn-tracker-design.md` ; la stack et le

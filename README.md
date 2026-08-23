@@ -1,11 +1,12 @@
-# Huckleburry — suivi bébé auto-hébergé
+# Swaddle — self-hosted baby tracker
 
 Application web mobile, simple et open source, pour que deux aidants suivent
 l'alimentation, les couches et le sommeil d'un nouveau-né — hébergée chez vous,
 sur votre réseau local, sans compte, sans cloud, sans pub.
 
-Inspirée des conventions éprouvées de Huckleberry et Nara Baby, sans reprendre
-leur marque ni leurs contenus.
+*Inspiration* : les conventions UX éprouvées d'applications comme Huckleberry,
+Nara Baby ou Baby Tracker — sans reprendre leur nom, leur marque ni leurs
+contenus.
 
 ## 👶 Nouvellement papa
 
@@ -47,8 +48,8 @@ Les décisions structurantes sont consignées dans `docs/adr/`.
 Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 
 ```sh
-mkdir huckleburry && cd huckleburry
-curl -fsSLO https://raw.githubusercontent.com/MacroMan5/huckleburry/main/deploy/docker-compose.yml
+mkdir swaddle && cd swaddle
+curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
 docker compose up -d
 ```
 

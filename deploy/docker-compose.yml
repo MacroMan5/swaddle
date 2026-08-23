@@ -1,13 +1,13 @@
 # Déploiement de référence (ADR 0002) — copiez ce fichier sur votre serveur.
 # Mise à jour volontaire : changez le tag de l'image puis `docker compose pull && up -d`.
 services:
-  huckleburry:
+  swaddle:
     # Remplacez le tag par la dernière version publiée (jamais :latest).
-    image: ghcr.io/macroman5/huckleburry:v0.1.0
-    container_name: huckleburry
+    image: ghcr.io/macroman5/swaddle:v0.1.0
+    container_name: swaddle
     restart: unless-stopped
     ports:
-      - "${HUCKLEBURRY_PORT:-3010}:3000"
+      - "${SWADDLE_PORT:-3010}:3000"
     volumes:
       - ./data:/app/data
     environment:

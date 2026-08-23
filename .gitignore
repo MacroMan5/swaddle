@@ -1,0 +1,10 @@
+# Générique — à compléter quand la stack sera choisie
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+
+# Données locales (base de données, uploads) — jamais versionnées
+/data/

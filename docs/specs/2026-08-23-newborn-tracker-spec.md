@@ -1,6 +1,6 @@
-# Spécification — MVP du suivi de nouveau-né
+# Spécification — Swaddle, MVP du suivi de nouveau-né
 
-**Statut :** Draft
+**Statut :** Approved
 **Design :** `docs/plans/2026-08-23-newborn-tracker-design.md`
 **ADR :** 0001 (architecture), 0002 (déploiement Pi), 0003 (frontend/design system)
 **Dernière mise à jour :** 2026-08-23

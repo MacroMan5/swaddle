@@ -36,6 +36,32 @@
 	--font-serif: 'Lora', Georgia, serif;
 }
 
+/* shadcn-svelte (style "nova", base color neutral) — variables consommées par les
+   composants $lib/components/ui/*. --primary/--border/--accent/--on-primary sont
+   déjà couverts par nos tokens ci-dessus. */
+@theme {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
 :root {
 	--surface: #faf9f7;
 	--surface-raised: #ffffff;
@@ -52,6 +78,29 @@
 	--diaper-700: #0f766e;
 	--sleep-100: #e0e7ff;
 	--sleep-700: #4338ca;
+
+	--radius: 0.625rem;
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--input: oklch(0.922 0 0);
+}
+
+/* Fait pointer les variables shadcn vers nos sémantiques — pas de valeurs en dur
+   (voir docs/design/design-system.md). --primary et --border portent déjà les
+   mêmes noms que nos tokens ci-dessus : pas de redéfinition ici. */
+:root {
+	--background: var(--surface);
+	--foreground: var(--ink);
+	--card: var(--surface-raised);
+	--card-foreground: var(--ink);
+	--muted-foreground: var(--ink-muted);
+	--primary-foreground: var(--on-primary);
+	--destructive: var(--danger);
+	--ring: var(--primary);
 }
 
 /* Mode sombre nocturne : désaturé, jamais de blanc ni de noir purs (NFR-005) */
@@ -71,6 +120,14 @@
 	--diaper-700: #2dd4bf;
 	--sleep-100: #232345;
 	--sleep-700: #818cf8;
+
+	--popover: var(--surface-raised);
+	--popover-foreground: var(--ink);
+	--secondary: #2c2c35;
+	--secondary-foreground: var(--ink);
+	--muted: #2c2c35;
+	--accent-foreground: var(--ink);
+	--input: #2c2c35;
 }
 
 body {

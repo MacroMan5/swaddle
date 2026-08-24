@@ -264,6 +264,121 @@ describe('patchEvent merges and validates atomically', () => {
 	});
 });
 
+describe('patchEvent validates nursing segments (review item 7)', () => {
+	function completedNursing(): { id: string } {
+		return createEvent(
+			db,
+			bottle({
+				type: 'nursing',
+				startedAt: '2026-08-23T11:00:00.000Z',
+				endedAt: '2026-08-23T11:30:00.000Z',
+				details: {
+					segments: [
+						{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' },
+						{ side: 'right', startedAt: '2026-08-23T11:12:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+					]
+				}
+			})
+		);
+	}
+
+	it('rejects overlapping segments', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						segments: [
+							{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:15:00.000Z' },
+							// Starts before the first segment ends: overlap.
+							{ side: 'right', startedAt: '2026-08-23T11:10:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+						]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects out-of-order segments (second segment starts before the first)', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						segments: [
+							{ side: 'left', startedAt: '2026-08-23T11:15:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' },
+							{ side: 'right', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' }
+						]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects a segment starting before the session started', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						// Session starts 11:00; this segment starts 10:55.
+						segments: [{ side: 'left', startedAt: '2026-08-23T10:55:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' }]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects a segment ending after the session ended', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						// Session ends 11:30; this segment ends 11:45.
+						segments: [{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:45:00.000Z' }]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('accepts chronological, non-overlapping, contained segments', () => {
+		const { id } = completedNursing();
+		const patched = patchEvent(
+			db,
+			id,
+			{
+				details: {
+					segments: [
+						{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:05:00.000Z' },
+						{ side: 'right', startedAt: '2026-08-23T11:05:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+					]
+				}
+			},
+			new Date()
+		);
+		expect(patched.details).toEqual({
+			segments: [
+				{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:05:00.000Z' },
+				{ side: 'right', startedAt: '2026-08-23T11:05:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+			]
+		});
+	});
+});
+
 describe('nursing action hardening', () => {
 	it('switch-side ignores a client-supplied side and always switches', () => {
 		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
@@ -282,5 +397,85 @@ describe('nursing action hardening', () => {
 		db.prepare('UPDATE event SET details = ? WHERE id = ?').run('{"segments":[]}', event.id);
 		for (const action of ['pause', 'resume', 'switch-side'] as const)
 			expect(() => nursingAction(db, { babyId: 'baby-1', action })).toThrowError(RepoError);
+	});
+});
+
+describe('listEvents overlap mode (history day view, AC-006)', () => {
+	it('default mode (starts-in-window) misses a sleep that started the prior day', () => {
+		const sleepEvent = createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T23:30:00.000Z',
+				endedAt: '2026-08-25T01:30:00.000Z'
+			})
+		);
+		const defaultListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z'
+		});
+		expect(defaultListing.map((e) => e.id)).not.toContain(sleepEvent.id);
+
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing.map((e) => e.id)).toContain(sleepEvent.id);
+	});
+
+	it('overlap mode includes an active (null-ended) timer started before the window', () => {
+		const activeSleep = createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T23:30:00.000Z',
+				endedAt: null
+			})
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing.map((e) => e.id)).toContain(activeSleep.id);
+	});
+
+	it('overlap mode still excludes events entirely outside the window', () => {
+		createEvent(
+			db,
+			bottle({ startedAt: '2026-08-20T10:00:00.000Z', endedAt: null })
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing).toHaveLength(0);
+	});
+
+	it('a timer ending exactly at `from` has zero overlap with a half-open [from, to) window', () => {
+		createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T22:00:00.000Z',
+				endedAt: '2026-08-25T00:00:00.000Z' // == from, below
+			})
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing).toHaveLength(0);
 	});
 });

@@ -128,6 +128,7 @@ export function validateEventTimes(
 export function validateDetailsContext(
 	e: {
 		type: EventType;
+		startedAt: string;
 		endedAt: string | null;
 		details: Details;
 	},
@@ -144,15 +145,24 @@ export function validateDetailsContext(
 				code: 'segments_required',
 				message: 'a nursing session needs at least one segment'
 			});
+		const sessionStart = Date.parse(e.startedAt);
+		const sessionEnd = e.endedAt === null ? null : Date.parse(e.endedAt);
+		// Tracks the previous segment's end to enforce chronological,
+		// non-overlapping segments (review item 7); an open segment (only
+		// legal on the last one) has no end to compare against, so nothing
+		// after it is checked — there is nothing after it by construction.
+		let prevEnd: number | null = null;
 		segments.forEach((s, i) => {
+			const segStart = Date.parse(s.startedAt);
+			const segEnd = s.endedAt === null ? null : Date.parse(s.endedAt);
 			// Segments obey the same FR-017 future bound as the event itself.
-			if (Date.parse(s.startedAt) > maxTime || (s.endedAt !== null && Date.parse(s.endedAt) > maxTime))
+			if (segStart > maxTime || (segEnd !== null && segEnd > maxTime))
 				issues.push({
 					path: `details.segments.${i}`,
 					code: 'too_far_in_future',
 					message: 'segment timestamps are more than 5 minutes in the future'
 				});
-			if (s.endedAt !== null && Date.parse(s.endedAt) < Date.parse(s.startedAt))
+			if (segEnd !== null && segEnd < segStart)
 				issues.push({
 					path: `details.segments.${i}.endedAt`,
 					code: 'end_before_start',
@@ -165,6 +175,31 @@ export function validateDetailsContext(
 					code: 'segment_still_open',
 					message: 'only the last segment may be open'
 				});
+			// Contained within [startedAt, endedAt] of the session (review item 7):
+			// summaries split duration per day assuming segments never spill
+			// outside their own session, so an out-of-bounds segment would
+			// silently double-count or misattribute time.
+			if (segStart < sessionStart)
+				issues.push({
+					path: `details.segments.${i}.startedAt`,
+					code: 'segment_out_of_bounds',
+					message: 'segment starts before the session started'
+				});
+			if (sessionEnd !== null && segEnd !== null && segEnd > sessionEnd)
+				issues.push({
+					path: `details.segments.${i}.endedAt`,
+					code: 'segment_out_of_bounds',
+					message: 'segment ends after the session ended'
+				});
+			// Chronological and non-overlapping: each segment must start no
+			// earlier than the previous one ended.
+			if (prevEnd !== null && segStart < prevEnd)
+				issues.push({
+					path: `details.segments.${i}.startedAt`,
+					code: 'segment_overlap',
+					message: 'segments must be chronological and must not overlap'
+				});
+			prevEnd = segEnd;
 		});
 		if (e.endedAt !== null && segments.some((s) => s.endedAt === null))
 			issues.push({
@@ -220,7 +255,10 @@ export function parseCreateEvent(input: unknown, now: Date): Result<CreateEventI
 	if (!detailsResult.ok) issues.push(...detailsResult.issues);
 	else
 		issues.push(
-			...validateDetailsContext({ type, endedAt: endedAt ?? null, details: detailsResult.value }, now)
+			...validateDetailsContext(
+					{ type, startedAt, endedAt: endedAt ?? null, details: detailsResult.value },
+					now
+				)
 		);
 
 	issues.push(...validateEventTimes({ type, startedAt, endedAt: endedAt ?? null }, now));

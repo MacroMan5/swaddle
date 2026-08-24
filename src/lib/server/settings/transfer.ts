@@ -250,9 +250,12 @@ function validateGraph(data: ParsedExport): Issue[] {
 			);
 			return; // context validation needs details shaped as Details; skip it below
 		}
+		// startedAt must have parsed to compare segment bounds against it (review
+		// item 7); an invalid startedAt is already reported above.
+		if (!startedAtValid) return;
 		issues.push(
 			...validateDetailsContext(
-				{ type: e.type, endedAt: e.endedAt, details: detailsResult.value },
+				{ type: e.type, startedAt: e.startedAt, endedAt: e.endedAt, details: detailsResult.value },
 				now
 			).map((iss) => ({ ...iss, path: `events.${i}.${iss.path}` }))
 		);

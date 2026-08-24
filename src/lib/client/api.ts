@@ -1,9 +1,11 @@
 import type {
 	BabyDTO,
+	CaregiverDTO,
 	CreateEventInput,
 	EventDTO,
 	Issue,
 	NursingActionBody,
+	PatchEventInput,
 	StartTimerBody,
 	StopTimerBody,
 	TimerType
@@ -64,14 +66,38 @@ export async function listBabies(): Promise<BabyDTO[]> {
 	return (await getJson<{ babies: BabyDTO[] }>('/api/babies')).babies;
 }
 
+export async function listCaregivers(): Promise<CaregiverDTO[]> {
+	return (await getJson<{ caregivers: CaregiverDTO[] }>('/api/caregivers')).caregivers;
+}
+
+/** Overlap mode (review item 1): a midnight-crossing session started
+ * yesterday must still be fetched, or Today's summary would miss it even
+ * though SyncStore's own retention (#isToday) now keeps it. */
 export async function listTodayEvents(babyId: string, now = new Date()): Promise<EventDTO[]> {
 	const { from, to } = todayRangeIso(now);
+	const query = new URLSearchParams({ babyId, from, to, overlap: '1' });
+	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
+}
+
+/** History/timeline fetches: window overlap (see `docs/api/events-api.md`) so a
+ * midnight-crossing event stays visible from either day it touches (AC-006). */
+export async function listEvents(
+	babyId: string,
+	from: string,
+	to: string,
+	overlap = true
+): Promise<EventDTO[]> {
 	const query = new URLSearchParams({ babyId, from, to });
+	if (overlap) query.set('overlap', '1');
 	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
 }
 
 export async function createEvent(input: CreateEventInput): Promise<EventDTO> {
 	return sendJson<EventDTO>('POST', '/api/events', input);
+}
+
+export async function patchEvent(id: string, patch: PatchEventInput): Promise<EventDTO> {
+	return sendJson<EventDTO>('PATCH', `/api/events/${id}`, patch);
 }
 
 export async function deleteEvent(id: string): Promise<EventDTO> {

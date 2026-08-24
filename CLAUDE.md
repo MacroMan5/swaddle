@@ -77,16 +77,29 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   passe par un token (NFR-008) ; cibles tactiles ≥ 48 px, texte ≥ 16 px.
 - `src/lib/components/ui/` — composants shadcn-svelte (ajouts via
   `npx shadcn-svelte@latest add <composant> -y`).
-- `src/lib/client/` — couche client de l'écran « Aujourd'hui » : `api.ts`
-  (fetch typé vers `docs/api/events-api.md`, `ApiError`), `format.ts`
-  (`formatElapsed`/`formatClock`/`nursingDurationMs`/`todayRangeIso`),
+- `src/lib/client/` — couche client partagée par « Aujourd'hui » et
+  « Historique » : `api.ts` (fetch typé vers `docs/api/events-api.md`,
+  `ApiError`, `listEvents(babyId, from, to, overlap?)` pour l'historique),
+  `format.ts` (`formatElapsed`/`formatClock`/`nursingDurationMs`/
+  `todayRangeIso`), `summaries.ts` (moteur pur de résumés — FR-010, AC-006 :
+  `dailySummary`/`weeklySummary`/`splitDurationByLocalDay` répartissent les
+  événements à cheval sur minuit par jour local, testé DST dans les deux sens ;
+  seule source de vérité, consommé par `SummaryCard` et par `/history`),
   `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
-  les événements du jour, les minuteurs actifs et l'offset serveur —
-  RISK-001 ; instanciée dans `+layout.svelte`, partagée par contexte). Ne
-  jamais importer `$lib/server/*` depuis ce dossier.
+  les événements du jour, les minuteurs actifs, l'offset serveur — RISK-001 —
+  et `subscribeChanges` : relais de changements pour les vues hors
+  « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte).
+  Ne jamais importer `$lib/server/*` depuis ce dossier.
 - `src/lib/components/today/` — cartes de l'écran « Aujourd'hui » (couche,
   alimentation, sommeil, minuteurs actifs) et leurs panneaux (biberon,
   tire-lait), consommant `SyncStore` via `getContext('sync')`.
+- `src/lib/components/history/` — écran « Historique » (FR-006/007/009/010) :
+  `DayPicker`/`DayTimeline`/`WeekView`/`EventList` (lecture, sélecteur jour,
+  timeline 24 h, vue semaine), `EventEditSheet`/`ManualAddSheet` (édition,
+  suppression douce annulable 5 s, saisie manuelle), toutes consommant
+  `dailySummary`/`weeklySummary`. `GET /api/events` prend un paramètre
+  `overlap=1` (événements chevauchant la fenêtre, pas seulement ceux qui y
+  commencent) pour que les sessions à cheval sur minuit restent visibles.
 - Horodatages ISO 8601 UTC ; données sous `DATA_DIR` (défaut `data/`).
 - UI en français ; code, identifiants et commentaires en anglais.
 

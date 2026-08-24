@@ -77,10 +77,21 @@ pause est donc exclu par construction.
 
 → `200 { babies: { id, name, birthdate, timezone }[] }`
 
-### `GET /api/events?babyId=&from=&to=`
+### `GET /api/events?babyId=&from=&to=&overlap=`
 
 Événements non supprimés d'un bébé, `startedAt` décroissant. `from` est inclusif,
-`to` est exclusif, tous deux comparés à `startedAt`. `babyId` est obligatoire.
+`to` est exclusif. `babyId` est obligatoire.
+
+Par défaut, la fenêtre est comparée à `startedAt` seul (un événement commencé
+avant `from` n'apparaît pas, même s'il se termine dans la fenêtre). Avec
+`overlap=1`, la fenêtre sélectionne les événements qui **chevauchent**
+`[from, to)` — nécessaire pour l'historique (slice 4, AC-006) : un allaitement
+ou sommeil 23 h 30→01 h 30 doit rester visible dans la vue du jour suivant même
+s'il a commencé la veille. En mode chevauchement, un minuteur actif
+(`endedAt: null` sur `nursing`/`pump`/`sleep`) est traité comme toujours en
+cours et chevauche toute fenêtre à partir de son début ; les événements
+ponctuels (`bottle`, `diaper`), qui ont toujours `endedAt: null` par nature,
+continuent de suivre la règle « `startedAt` dans la fenêtre ».
 
 → `200 { events: EventDTO[] }` · `400 validation_failed` si `babyId` manque.
 

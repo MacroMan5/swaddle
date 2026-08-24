@@ -89,17 +89,39 @@ export function getEvent(db: DB, id: string): EventDTO | undefined {
 
 export function listEvents(
 	db: DB,
-	opts: { babyId: string; from?: string; to?: string }
+	opts: { babyId: string; from?: string; to?: string; overlap?: boolean }
 ): EventDTO[] {
 	let sql = 'SELECT * FROM event WHERE deleted_at IS NULL AND baby_id = ?';
 	const params: string[] = [opts.babyId];
-	if (opts.from) {
-		sql += ' AND started_at >= ?';
-		params.push(opts.from);
-	}
-	if (opts.to) {
-		sql += ' AND started_at < ?';
-		params.push(opts.to);
+	if (opts.overlap) {
+		// Events *overlapping* [from, to) rather than merely starting in it, so a
+		// midnight-crossing session (e.g. sleep 23:30→01:30) is visible to both
+		// days' history views (AC-006). An active (null-ended) *timer* is treated
+		// as still running, so it overlaps any window from its start onward — but
+		// point events (bottle, diaper) always have a null ended_at by design
+		// (zero-duration), so they only overlap when their startedAt falls in the
+		// window, same as the non-overlap mode.
+		const timerPlaceholders = TIMER_TYPES.map(() => '?').join(', ');
+		if (opts.to) {
+			sql += ' AND started_at < ?';
+			params.push(opts.to);
+		}
+		if (opts.from) {
+			sql += ` AND (
+				(type IN (${timerPlaceholders}) AND (ended_at IS NULL OR ended_at > ?))
+				OR (type NOT IN (${timerPlaceholders}) AND started_at >= ?)
+			)`;
+			params.push(...TIMER_TYPES, opts.from, ...TIMER_TYPES, opts.from);
+		}
+	} else {
+		if (opts.from) {
+			sql += ' AND started_at >= ?';
+			params.push(opts.from);
+		}
+		if (opts.to) {
+			sql += ' AND started_at < ?';
+			params.push(opts.to);
+		}
 	}
 	sql += ' ORDER BY started_at DESC';
 	return (db.prepare(sql).all(...params) as EventRow[]).map(rowToDto);
@@ -166,7 +188,7 @@ export function patchEvent(
 			if (!parsed.ok) issues.push(...parsed.issues);
 			else details = parsed.value;
 		}
-		issues.push(...validateDetailsContext({ type: current.type, endedAt, details }, now));
+		issues.push(...validateDetailsContext({ type: current.type, startedAt, endedAt, details }, now));
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid patch', issues);
 
 		return updateEvent(db, id, {
@@ -300,7 +322,10 @@ export function stopTimer(
 		// known here, so FR-017 is enforced on the merged event before writing.
 		const issues = [
 			...validateEventTimes({ type: event.type, startedAt: event.startedAt, endedAt }, new Date()),
-			...validateDetailsContext({ type: event.type, endedAt, details }, new Date())
+			...validateDetailsContext(
+					{ type: event.type, startedAt: event.startedAt, endedAt, details },
+					new Date()
+				)
 		];
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid stop', issues);
 

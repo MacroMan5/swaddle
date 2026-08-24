@@ -71,6 +71,32 @@ describe('applyChange', () => {
 		expect(store.events).toHaveLength(0);
 	});
 
+	it('keeps a completed midnight-crossing sleep in Today (review item 1): started before local midnight, ended after it', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		const endedAt = new Date(localMidnight.getTime() + 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
+	});
+
+	it('keeps an open (still-running) timer that started before local midnight (review item 1)', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt: null })));
+		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
+	});
+
+	it('a completed timer that both started and ended before local midnight is still excluded (review item 1 does not regress the base case)', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 90 * 60_000).toISOString();
+		const endedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		expect(store.events).toHaveLength(0);
+	});
+
 	it('ignores events of another baby', () => {
 		store.applyChange(sync('created', makeEvent({ babyId: 'baby-2' })));
 		expect(store.events).toHaveLength(0);
@@ -301,6 +327,72 @@ describe('tick() and day rollover (item 3)', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(store.events).toHaveLength(0);
+	});
+});
+
+describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
+	it('invokes the listener for every sync message, with kind and event', () => {
+		const received: { kind: string; event?: EventDTO }[] = [];
+		store.subscribeChanges((change) => received.push(change));
+
+		store.applyChange(sync('created', makeEvent()));
+		store.applyChange(sync('updated', makeEvent({ note: 'x', updatedAt: new Date(NOW.getTime() + 1).toISOString() })));
+
+		expect(received).toHaveLength(2);
+		expect(received[0].kind).toBe('created');
+		expect(received[0].event?.id).toBe('ev-1');
+		expect(received[1].kind).toBe('updated');
+	});
+
+	it('signals a reset-style change on snapshot and on applyReset, so history refetches', () => {
+		const received: { kind: string }[] = [];
+		store.subscribeChanges((change) => received.push(change));
+
+		store.applySnapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		store.applyReset({ serverTime: NOW.toISOString() });
+
+		expect(received.map((c) => c.kind)).toEqual(['reset', 'reset']);
+	});
+
+	it('unsubscribe stops further notifications', () => {
+		const received: unknown[] = [];
+		const unsubscribe = store.subscribeChanges((change) => received.push(change));
+		store.applyChange(sync('created', makeEvent()));
+		unsubscribe();
+		store.applyChange(sync('created', makeEvent({ id: 'ev-2' })));
+		expect(received).toHaveLength(1);
+	});
+
+	it('swallows a listener error without breaking other listeners or the caller', () => {
+		const received: unknown[] = [];
+		store.subscribeChanges(() => {
+			throw new Error('boom');
+		});
+		store.subscribeChanges((change) => received.push(change));
+
+		expect(() => store.applyChange(sync('created', makeEvent()))).not.toThrow();
+		expect(received).toHaveLength(1);
+	});
+
+	it('stop() clears all listeners', () => {
+		const received: unknown[] = [];
+		store.subscribeChanges((change) => received.push(change));
+		store.stop();
+		store.applyChange(sync('created', makeEvent()));
+		expect(received).toHaveLength(0);
+	});
+
+	it('a subscription registered before start() survives start()s internal reset (history mounts before the baby id resolves)', () => {
+		// start() always calls an internal reset first — even on a fresh store,
+		// where #alive is false — so a caller that subscribes in onMount() before
+		// awaiting listBabies()/start() must not have that subscription wiped.
+		const received: unknown[] = [];
+		const fresh = new SyncStore();
+		fresh.subscribeChanges((change) => received.push(change));
+		fresh.start('baby-1');
+		fresh.applyChange(sync('created', makeEvent()));
+		expect(received).toHaveLength(1);
+		fresh.stop();
 	});
 });
 

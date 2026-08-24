@@ -66,7 +66,8 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `transfer.ts` (export JSON/CSV, restauration transactionnelle, instantané
   SQLite via `VACUUM INTO`), `gate.ts` (décision pure des portes). Routes :
   `/api/babies` (POST), `/api/caregivers[...]`, `/api/household[...]`,
-  `/api/auth/pin`, `/api/export/json|csv`, `/api/backup`, `/api/restore` —
+  `/api/auth/pin`, `/api/export/json|csv`, `/api/backup`, `/api/restore`,
+  `/api/server-info` (bloc « Ce serveur », `serverInfo.ts`) —
   contrat détaillé dans `docs/api/settings-api.md`.
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
@@ -74,7 +75,9 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   (déverrouillage), `/settings` (réglages complets, FR-011).
 - `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn
   re-mappées ; mode sombre par classe `.dark` sur `<html>`. Toute couleur/rayon
-  passe par un token (NFR-008) ; cibles tactiles ≥ 48 px, texte ≥ 16 px.
+  passe par un token (NFR-008) ; échelle typographique en tokens `--text-*`
+  (direction « Registre » 2b : corps 14 px, champs de saisie ≥ 16 px — pas de
+  zoom iOS) ; cibles tactiles ≥ 48 px.
 - `src/lib/components/ui/` — composants shadcn-svelte (ajouts via
   `npx shadcn-svelte@latest add <composant> -y`).
 - `src/lib/client/` — couche client partagée par « Aujourd'hui » et
@@ -84,18 +87,28 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `todayRangeIso`), `summaries.ts` (moteur pur de résumés — FR-010, AC-006 :
   `dailySummary`/`weeklySummary`/`splitDurationByLocalDay` répartissent les
   événements à cheval sur minuit par jour local, testé DST dans les deux sens ;
-  seule source de vérité, consommé par `SummaryCard` et par `/history`),
+  seule source de vérité, consommé par `DaySummary`, `WeekView` et `/history` ;
+  `weekTotals`/`signedDeltaLabel` pour le comparatif semaine),
+  `babyAge.ts` (âge court FR depuis `birthdate`, pur),
   `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
   les événements du jour, les minuteurs actifs, l'offset serveur — RISK-001 —
   et `subscribeChanges` : relais de changements pour les vues hors
   « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte).
   Ne jamais importer `$lib/server/*` depuis ce dossier.
-- `src/lib/components/today/` — cartes de l'écran « Aujourd'hui » (couche,
-  alimentation, sommeil, minuteurs actifs) et leurs panneaux (biberon,
-  tire-lait), consommant `SyncStore` via `getContext('sync')`.
+- `src/lib/components/today/` — écran « Aujourd'hui » en direction « Registre »
+  (palette 2b, `docs/design/design-system.md`) : `TodayHeader` (titre + âge),
+  `StatusStrip` (temps écoulé par catégorie), `QuickActions` (tuiles héros +
+  sélecteur couche + rangée sommeil/tirage), `RecentEvents`, `DaySummary`
+  (ancré en bas), `ActiveTimerBanner` (bandeau plein accent,
+  `data-testid="active-timers"`), les feuilles `BottleSheet`/`PumpSheet`/
+  `NursingSheet`, et `todayDerivations.ts` (dérivations pures partagées :
+  `CATEGORY_OF`, `lastOfCategory`, `activeCategories`). Tout consomme
+  `SyncStore` via `getContext('sync')` ; les feuilles sont montées au niveau
+  de la page (une seule instance chacune).
 - `src/lib/components/history/` — écran « Historique » (FR-006/007/009/010) :
-  `DayPicker`/`DayCalendar`/`WeekView`/`EventList` (lecture, sélecteur jour,
-  grille horaire 24 h, vue semaine), `EventEditSheet`/`ManualAddSheet` (édition,
+  `DaySelector`/`DayCalendar`/`WeekView`/`EventList` (sélecteur jour en bande,
+  grille horaire 24 h, vue semaine avec comparatif « Semaine précédente » et
+  moyennes 7 jours), `EventEditSheet`/`ManualAddSheet` (édition,
   suppression douce annulable 5 s, saisie manuelle), toutes consommant
   `dailySummary`/`weeklySummary`. `GET /api/events` prend un paramètre
   `overlap=1` (événements chevauchant la fenêtre, pas seulement ceux qui y

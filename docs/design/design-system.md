@@ -2,20 +2,24 @@
 
 **Statut :** approuvé (source de vérité visuelle)
 **Références :** ADR 0003 (Tailwind v4 + shadcn-svelte), design produit
-(`docs/plans/2026-08-23-newborn-tracker-design.md`), spec NFR-005/006/008.
-**Méthode :** direction générée puis arbitrée avec ui-ux-pro-max
-(style « Soft UI Evolution », palette « Parenting & Baby Tracker » adaptée).
+(`docs/plans/2026-08-23-newborn-tracker-design.md`), spec NFR-005/006/008,
+audit design 2026-08 (handoff « Registre », variante palette 2b).
 
 ## Direction
 
-Une app **calme, chaleureuse et lisible à 3 h du matin, d'un pouce**. Style
-« soft UI » modéré : surfaces douces, coins arrondis généreux, ombres subtiles —
-jamais de neumorphisme pur ni de glassmorphisme (contraste et perf). Le mode
-sombre est un citoyen de première classe (usage nocturne), pas une inversion.
+Une app **calme, chaleureuse et lisible à 3 h du matin, d'un pouce**, dans la
+direction **« Registre » (palette 2b)** : la hiérarchie est portée par des
+filets d'encre (2 px forts, 1 px fins) plutôt que par des cartes flottantes,
+une seule famille typographique (Archivo) avec une vraie échelle de rôles, un
+rayon unique de 6 px, des fonds pastel réservés aux tuiles et à la bande
+d'état avec de l'encre foncée dessus. Le mode sombre est un citoyen de
+première classe (usage nocturne), pas une inversion.
 
 **Anti-patterns bannis :** emoji comme icônes, couleur seule porteuse de sens,
-couleurs en dur dans les composants, blur décoratif, animations > 300 ms,
-surfaces blanc pur en mode sombre, noir pur `#000` en fond.
+couleurs en dur dans les composants, blur décoratif, animations > 500 ms,
+texte flottant hors conteneur (toute donnée vit dans une ligne, une cellule ou
+une tuile délimitée), surfaces blanc pur en mode sombre, noir pur `#000` en
+fond.
 
 ## Tokens de couleur
 
@@ -127,15 +131,25 @@ Quatre mouvements, tous derrière `prefers-reduced-motion` :
 ## Règles par écran (contrats pour les tranches)
 
 ### Navigation (T4)
-- Barre basse fixe, 3 destinations (Aujourd'hui, Historique, Réglages),
-  icône + libellé, état actif marqué par couleur ET indicateur.
+- Barre basse fixe 64 px, filet haut 2 px, 3 onglets séparés par des filets
+  1 px ; libellés MAJUSCULES 11 px. Actif : barre accent de 4 px sur toute la
+  largeur de l'onglet + icône/libellé accent (couleur ET indicateur).
 - Un seul CTA principal par écran.
 
-### Aujourd'hui (T2–T4)
-- Cartes par catégorie teintées `*-100` (clair) / fond sombre dédié, icône
-  `*-700`, temps écoulé en `tabular-nums`.
-- Boutons de saisie rapide dans la carte (Pipi/Caca/Les deux ; Allaiter…),
-  ≥ 48 px, feedback pressé immédiat.
+### Aujourd'hui (T2–T4, refonte Registre)
+- Bande de titre (filet bas 2 px) : « Aujourd'hui » + prénom et âge du bébé.
+- Bande d'état : 3 cellules égales (libellé de catégorie 9.5/700 en 700,
+  temps écoulé 26/700 tabular, `—` si rien, « en cours » si minuteur).
+- 3 tuiles héros 128 px (fond pastel, bordure 2 px encre, filet haut 6 px en
+  700, ombre `sm`) : Allaiter, Biberon, Couche (sélecteur Pipi/Caca/Les deux
+  sous la grille) ; rangée Sommeil (accent, 2/3) + Tirage (1/3), 56 px.
+- Derniers événements : 3 lignes en lecture seule (heure tabular, barre de
+  catégorie 4 px en 700, description, carré aidant).
+- Résumé du jour ancré en bas (`margin-top:auto`), lignes libellé/valeur.
+- Minuteur actif : bandeau plein accent en haut d'écran (carré pulsant,
+  chrono 56/800 tabular, boutons 52 px alignés à gauche, « Terminer »
+  toujours au-dessus de la ligne de flottaison) ; la tuile de la catégorie
+  passe à 55 % d'opacité et un tap ramène au bandeau.
 - Toast « Annuler » : `aria-live="polite"`, 5 s, ne vole pas le focus.
 - État vide accueillant à la première ouverture (« Aucune activité — tout
   commence ici »), jamais un écran blanc.
@@ -159,8 +173,10 @@ Quatre mouvements, tous derrière `prefers-reduced-motion` :
   événement mais on ne voit plus la journée.
 - Deux traitements selon la hauteur : au-dessus de 26 px, teinte claire `*-100`,
   contour fermé + bord gauche de 4 px, heure et libellé à l'intérieur ; en
-  dessous, **barre saturée `*-500` arrondie**, car un filet de 5 px en teinte
-  claire se lit comme une règle horizontale, pas comme un événement.
+  dessous, **barre rectangulaire en `*-700`** (les 500 sont sous 3:1 en
+  contraste non-texte ; une barre qui *est* l'événement ne peut pas les
+  porter), car un filet de 5 px en teinte claire se lit comme une règle
+  horizontale, pas comme un événement.
 - Axe de 32 px à gauche, libellé une heure sur deux (étiqueter chaque heure
   empilerait les nombres), filets pleins aux heures paires et `border-border/40`
   aux heures impaires.
@@ -185,10 +201,41 @@ Quatre mouvements, tous derrière `prefers-reduced-motion` :
   ponctuel). Une plage sur une seule ligne mangerait un tiers de la largeur à
   375 px ; le nom accessible de la ligne épelle la plage pour lever
   l'ambiguïté de deux heures nues.
-- Timeline colorée par catégorie avec motif/icône en plus de la couleur.
+- Autour de la grille : sélecteur de jour en bande pleine largeur (chevrons
+  52 px, « AUJOURD'HUI » en accent + date 17/700), onglets Jour/Semaine en
+  deux moitiés (actif fond encre), filtres en trois cellules à barre 4 px,
+  liste sous un en-tête visible « ÉVÉNEMENTS · N ». **Pas de résumé `<dl>`
+  sur cet écran** : la grille porte la lecture du jour, le résumé chiffré vit
+  sur Aujourd'hui.
+- Lignes de liste : plates, séparées par des filets 1 px ; heure empilée
+  début/fin, barre de catégorie 4 × 22 px en 700, carré aidant 10 px.
 - Squelettes (pas de spinner bloquant) au chargement > 300 ms.
-- Barres/graphes hebdo : étiquettes directes, pas de légende détachée,
-  grilles discrètes, résumé textuel accessible.
+- Vue semaine : 7 colonnes séparées par des filets 1 px, barre 16 × 150 px
+  remplie par le bas (sommeil puis allaitement, en 700, sans rayon), total
+  direct sous la barre (dont « N ml » de biberons) ; bloc « Semaine
+  précédente » à deltas signés (− U+2212) masqué tant que la fenêtre
+  précédente n'a pas chargé ; « Moyennes sur 7 jours » en lignes
+  libellé/valeur ; résumé textuel accessible (`figcaption.sr-only`).
+
+### Réglages (T5)
+- Une seule surface bordée 2 px, découpée par des filets : 2 px entre les
+  groupes (FOYER, AIDANTS, SÉCURITÉ, VOS DONNÉES, CE SERVEUR), 1 px entre les
+  lignes. Libellés de groupe 10/700 MAJUSCULES.
+- Nuanciers d'aidant carrés 48 px, sélection marquée par un cadre 2 px encre ;
+  l'état du PIN porte un indicateur visuel (les formulaires restent le seul
+  chemin — code actuel requis).
+- « Vos données » : grille 2 × 2 de cadres 2 px, « Restaurer… » en accent.
+- « Ce serveur » : hôte de la requête, flux SSE ouverts, dernière sauvegarde
+  (`GET /api/server-info`).
+
+### Onboarding et PIN
+- Pages pleine hauteur alignées à gauche : bande de marque « SWADDLE »
+  (13/800, `ls .2em`) + « ÉTAPE N / 2 », barre de progression 4 px accent,
+  titre 34/800, champs à libellé 10/700 MAJUSCULES au-dessus d'un cadre 2 px
+  de 56 px, action principale 58 px accent alignée à gauche.
+- PIN : cases de 60 px (4 à 8, elles suivent la saisie), case active en cadre
+  accent avec caret ; l'input réel unique reste focusable et rempli
+  (autocomplete + clavier numérique préservés).
 
 ### Mode sombre (transversal)
 - Testé indépendamment du clair à chaque livraison (contraste AA re-vérifié).

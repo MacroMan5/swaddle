@@ -61,6 +61,14 @@ export type StartTimerBody = {
 
 export type StopTimerBody = { babyId: string; endedAt?: string; volumeMl?: number };
 
+export type PatchEventInput = {
+	caregiverId?: string | null;
+	startedAt?: string;
+	endedAt?: string;
+	note?: string | null;
+	details?: Details;
+};
+
 export type NursingActionBody = {
 	babyId: string;
 	action: 'pause' | 'resume' | 'switch-side';

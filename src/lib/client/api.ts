@@ -5,6 +5,7 @@ import type {
 	EventDTO,
 	Issue,
 	NursingActionBody,
+	PatchEventInput,
 	StartTimerBody,
 	StopTimerBody,
 	TimerType
@@ -90,6 +91,10 @@ export async function listEvents(
 
 export async function createEvent(input: CreateEventInput): Promise<EventDTO> {
 	return sendJson<EventDTO>('POST', '/api/events', input);
+}
+
+export async function patchEvent(id: string, patch: PatchEventInput): Promise<EventDTO> {
+	return sendJson<EventDTO>('PATCH', `/api/events/${id}`, patch);
 }
 
 export async function deleteEvent(id: string): Promise<EventDTO> {

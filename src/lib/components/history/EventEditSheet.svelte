@@ -1,0 +1,414 @@
+<script lang="ts">
+	// Edit/delete an existing event (FR-007, § Formulaires). Fields vary by type;
+	// nursing exposes its segments instead of a single end time. Delete opens the
+	// caller's 5 s undo toast; every confirmed response merges into local state.
+	import { getContext } from 'svelte';
+	import * as Sheet from '$lib/components/ui/sheet';
+	import { LoaderCircle } from '@lucide/svelte';
+	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
+	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import type { SyncStore } from '$lib/client/sync.svelte';
+	import type {
+		BottleDetails,
+		CaregiverDTO,
+		DiaperDetails,
+		Details,
+		EventDTO,
+		MilkType,
+		NursingDetails,
+		NursingSegment,
+		PumpDetails,
+		PumpSide,
+		Side
+	} from '$lib/client/types';
+
+	let {
+		open = $bindable(false),
+		event,
+		caregivers,
+		onSaved,
+		onDeleted
+	}: {
+		open?: boolean;
+		event: EventDTO | null;
+		caregivers: CaregiverDTO[];
+		onSaved: () => void;
+		onDeleted: (id: string, message: string, onUndo: () => Promise<void>) => void;
+	} = $props();
+
+	const store = getContext<SyncStore>('sync');
+
+	const MILK_TYPES: { value: MilkType; label: string }[] = [
+		{ value: 'breast', label: 'Maternel' },
+		{ value: 'formula', label: 'Préparation' },
+		{ value: 'mixed', label: 'Mixte' }
+	];
+	const PUMP_SIDES: { value: PumpSide; label: string }[] = [
+		{ value: 'left', label: 'Gauche' },
+		{ value: 'right', label: 'Droite' },
+		{ value: 'both', label: 'Les deux' }
+	];
+
+	let caregiverId = $state<string>('');
+	let note = $state('');
+	let startedAt = $state('');
+	let endedAt = $state('');
+	let milkType = $state<MilkType>('breast');
+	let volumeMl = $state('');
+	let pumpSide = $state<PumpSide>('both');
+	let pee = $state(false);
+	let poo = $state(false);
+	let segments = $state<{ side: Side; startedAt: string; endedAt: string }[]>([]);
+
+	let pending = $state(false);
+	let deleting = $state(false);
+	let formError = $state<string | null>(null);
+	let startedAtError = $state<string | null>(null);
+	let endedAtError = $state<string | null>(null);
+	let volumeError = $state<string | null>(null);
+
+	const isDirty = $derived(open && event !== null);
+
+	$effect(() => {
+		if (!open || event === null) return;
+		caregiverId = event.caregiverId ?? '';
+		note = event.note ?? '';
+		startedAt = toLocalInputValue(new Date(Date.parse(event.startedAt)));
+		endedAt = event.endedAt === null ? '' : toLocalInputValue(new Date(Date.parse(event.endedAt)));
+		formError = null;
+		startedAtError = null;
+		endedAtError = null;
+		volumeError = null;
+
+		if (event.type === 'bottle') {
+			const d = event.details as BottleDetails;
+			milkType = d.milkType;
+			volumeMl = String(d.volumeMl);
+		} else if (event.type === 'pump') {
+			const d = event.details as PumpDetails;
+			pumpSide = d.side;
+			volumeMl = d.volumeMl === null ? '' : String(d.volumeMl);
+		} else if (event.type === 'diaper') {
+			const d = event.details as DiaperDetails;
+			pee = d.pee;
+			poo = d.poo;
+		} else if (event.type === 'nursing') {
+			const d = event.details as NursingDetails;
+			segments = d.segments.map((s) => ({
+				side: s.side,
+				startedAt: toLocalInputValue(new Date(Date.parse(s.startedAt))),
+				endedAt: s.endedAt === null ? '' : toLocalInputValue(new Date(Date.parse(s.endedAt)))
+			}));
+		}
+	});
+
+	function handleOpenChange(next: boolean): void {
+		if (!next && isDirty) {
+			const confirmed =
+				typeof confirm === 'undefined' || confirm('Fermer sans enregistrer les modifications ?');
+			if (!confirmed) return;
+		}
+		open = next;
+	}
+
+	function applyIssues(issues: { path: string; message: string }[]): void {
+		for (const issue of issues) {
+			if (issue.path.endsWith('startedAt')) startedAtError = issue.message;
+			else if (issue.path.endsWith('endedAt')) endedAtError = issue.message;
+			else if (issue.path.endsWith('volumeMl')) volumeError = issue.message;
+			else formError = issue.message;
+		}
+	}
+
+	async function submit(): Promise<void> {
+		if (event === null || pending) return;
+		pending = true;
+		formError = null;
+		startedAtError = null;
+		endedAtError = null;
+		volumeError = null;
+
+		try {
+			let updated: EventDTO;
+			if (event.type === 'nursing') {
+				const built: NursingSegment[] = segments.map((s) => ({
+					side: s.side,
+					startedAt: fromLocalInputValue(s.startedAt),
+					endedAt: s.endedAt === '' ? null : fromLocalInputValue(s.endedAt)
+				}));
+				const last = built[built.length - 1];
+				updated = await patchEvent(event.id, {
+					caregiverId: caregiverId === '' ? null : caregiverId,
+					note: note.trim() === '' ? null : note,
+					startedAt: built[0]?.startedAt,
+					endedAt: last?.endedAt ?? undefined,
+					details: { segments: built }
+				});
+			} else {
+				const details: Details =
+					event.type === 'bottle'
+						? { milkType, volumeMl: Number(volumeMl) }
+						: event.type === 'pump'
+							? { side: pumpSide, volumeMl: volumeMl === '' ? null : Number(volumeMl) }
+							: event.type === 'diaper'
+								? { pee, poo }
+								: {};
+				updated = await patchEvent(event.id, {
+					caregiverId: caregiverId === '' ? null : caregiverId,
+					note: note.trim() === '' ? null : note,
+					startedAt: fromLocalInputValue(startedAt),
+					endedAt: endedAt === '' ? undefined : fromLocalInputValue(endedAt),
+					details
+				});
+			}
+			store.applyServerEvent(updated);
+			open = false;
+			onSaved();
+		} catch (e) {
+			if (e instanceof ApiError && e.issues.length > 0) applyIssues(e.issues);
+			else formError = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+		} finally {
+			pending = false;
+		}
+	}
+
+	async function remove(): Promise<void> {
+		if (event === null || deleting) return;
+		deleting = true;
+		formError = null;
+		try {
+			const deletedEvent = await deleteEvent(event.id);
+			store.applyServerEvent(deletedEvent, true);
+			const id = event.id;
+			open = false;
+			onDeleted(id, 'Entrée supprimée', async () => {
+				try {
+					const restored = await restoreEvent(id);
+					store.applyServerEvent(restored);
+				} catch (e) {
+					throw e instanceof ApiError && e.code === 'timer_conflict'
+						? new Error('Un minuteur du même type est déjà en cours.')
+						: e;
+				}
+			});
+		} catch (e) {
+			formError = e instanceof ApiError ? e.message : 'Impossible de supprimer.';
+		} finally {
+			deleting = false;
+		}
+	}
+</script>
+
+<Sheet.Root {open} onOpenChange={handleOpenChange}>
+	<Sheet.Content side="bottom">
+		<Sheet.Header>
+			<Sheet.Title>Modifier l’entrée</Sheet.Title>
+		</Sheet.Header>
+		{#if event}
+			<div class="flex flex-col gap-4 px-4 pb-4">
+				{#if formError}
+					<p class="text-danger text-base" role="alert">{formError}</p>
+				{/if}
+
+				{#if event.type !== 'nursing'}
+					<div class="flex flex-col gap-2">
+						<label for="edit-started-at" class="text-ink text-base font-medium">Début</label>
+						<input
+							id="edit-started-at"
+							type="datetime-local"
+							bind:value={startedAt}
+							aria-invalid={startedAtError !== null}
+							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {startedAtError
+								? 'border-danger'
+								: ''}"
+						/>
+						{#if startedAtError}<p class="text-danger text-base" role="alert">{startedAtError}</p>{/if}
+					</div>
+				{/if}
+
+				{#if event.type === 'sleep' || event.type === 'pump'}
+					<div class="flex flex-col gap-2">
+						<label for="edit-ended-at" class="text-ink text-base font-medium">Fin</label>
+						<input
+							id="edit-ended-at"
+							type="datetime-local"
+							bind:value={endedAt}
+							aria-invalid={endedAtError !== null}
+							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {endedAtError
+								? 'border-danger'
+								: ''}"
+						/>
+						{#if endedAtError}<p class="text-danger text-base" role="alert">{endedAtError}</p>{/if}
+					</div>
+				{/if}
+
+				{#if event.type === 'bottle'}
+					<div class="flex flex-col gap-2">
+						<span class="text-ink text-base font-medium">Type de lait</span>
+						<div class="grid grid-cols-3 gap-2">
+							{#each MILK_TYPES as option (option.value)}
+								<button
+									type="button"
+									aria-pressed={milkType === option.value}
+									onclick={() => (milkType = option.value)}
+									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {milkType ===
+									option.value
+										? 'border-feed-500 bg-feed-100 text-feed-700'
+										: 'border-border bg-surface-raised text-ink-muted'}"
+								>
+									{option.label}
+								</button>
+							{/each}
+						</div>
+					</div>
+					<div class="flex flex-col gap-2">
+						<label for="edit-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<input
+							id="edit-volume"
+							inputmode="decimal"
+							bind:value={volumeMl}
+							aria-invalid={volumeError !== null}
+							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+								? 'border-danger'
+								: ''}"
+						/>
+						{#if volumeError}<p class="text-danger text-base" role="alert">{volumeError}</p>{/if}
+					</div>
+				{/if}
+
+				{#if event.type === 'pump'}
+					<div class="flex flex-col gap-2">
+						<span class="text-ink text-base font-medium">Côté</span>
+						<div class="grid grid-cols-3 gap-2">
+							{#each PUMP_SIDES as option (option.value)}
+								<button
+									type="button"
+									aria-pressed={pumpSide === option.value}
+									onclick={() => (pumpSide = option.value)}
+									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pumpSide ===
+									option.value
+										? 'border-feed-500 bg-feed-100 text-feed-700'
+										: 'border-border bg-surface-raised text-ink-muted'}"
+								>
+									{option.label}
+								</button>
+							{/each}
+						</div>
+					</div>
+					<div class="flex flex-col gap-2">
+						<label for="edit-pump-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<input
+							id="edit-pump-volume"
+							inputmode="decimal"
+							bind:value={volumeMl}
+							aria-invalid={volumeError !== null}
+							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+								? 'border-danger'
+								: ''}"
+						/>
+						{#if volumeError}<p class="text-danger text-base" role="alert">{volumeError}</p>{/if}
+					</div>
+				{/if}
+
+				{#if event.type === 'diaper'}
+					<div class="flex flex-col gap-2">
+						<span class="text-ink text-base font-medium">Contenu</span>
+						<div class="grid grid-cols-2 gap-2">
+							<button
+								type="button"
+								aria-pressed={pee}
+								onclick={() => (pee = !pee)}
+								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pee
+									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
+									: 'border-border bg-surface-raised text-ink-muted'}"
+							>
+								Pipi
+							</button>
+							<button
+								type="button"
+								aria-pressed={poo}
+								onclick={() => (poo = !poo)}
+								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {poo
+									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
+									: 'border-border bg-surface-raised text-ink-muted'}"
+							>
+								Caca
+							</button>
+						</div>
+					</div>
+				{/if}
+
+				{#if event.type === 'nursing'}
+					<div class="flex flex-col gap-2">
+						<span class="text-ink text-base font-medium">Segments</span>
+						{#each segments as segment, i (i)}
+							<div class="border-border bg-surface-raised flex flex-col gap-2 rounded-control border p-2">
+								<span class="text-ink-muted text-base">{segment.side === 'left' ? 'Gauche' : 'Droite'}</span>
+								<div class="flex gap-2">
+									<input
+										type="datetime-local"
+										aria-label={`Début du segment ${i + 1}`}
+										bind:value={segment.startedAt}
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base"
+									/>
+									<input
+										type="datetime-local"
+										aria-label={`Fin du segment ${i + 1}`}
+										bind:value={segment.endedAt}
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base"
+									/>
+								</div>
+							</div>
+						{/each}
+						{#if startedAtError}<p class="text-danger text-base" role="alert">{startedAtError}</p>{/if}
+						{#if endedAtError}<p class="text-danger text-base" role="alert">{endedAtError}</p>{/if}
+					</div>
+				{/if}
+
+				<div class="flex flex-col gap-2">
+					<label for="edit-caregiver" class="text-ink text-base font-medium">Aidant</label>
+					<select
+						id="edit-caregiver"
+						bind:value={caregiverId}
+						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+					>
+						<option value="">Aucun</option>
+						{#each caregivers as cg (cg.id)}
+							<option value={cg.id}>{cg.name}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="flex flex-col gap-2">
+					<label for="edit-note" class="text-ink text-base font-medium">Note</label>
+					<input
+						id="edit-note"
+						bind:value={note}
+						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+					/>
+				</div>
+
+				<button
+					type="button"
+					disabled={pending}
+					onclick={submit}
+					class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+				>
+					{#if pending}
+						<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+					{/if}
+					{pending ? 'Enregistrement…' : 'Enregistrer'}
+				</button>
+
+				<button
+					type="button"
+					disabled={deleting}
+					onclick={remove}
+					class="border-danger text-danger flex min-h-12 items-center justify-center gap-2 rounded-control border px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50 motion-reduce:active:scale-100"
+				>
+					{deleting ? 'Suppression…' : 'Supprimer'}
+				</button>
+			</div>
+		{/if}
+	</Sheet.Content>
+</Sheet.Root>

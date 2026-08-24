@@ -25,12 +25,13 @@ test('day view lists events chronologically with summary; filters work', async (
 	await expect(page.getByTestId('day-summary')).toContainText('90');
 
 	// Chips are independent multi-toggles, all on by default: turning off
-	// Alimentation and Couche leaves only Sommeil selected, and today has no
-	// sleep event, so the list empties.
+	// Alimentation and Couche hides this test's own bottle/diaper rows (other
+	// e2e specs may have left same-day sleep events under `workers: 1`, so this
+	// asserts on our own rows rather than an absolute count).
 	await page.getByRole('button', { name: 'Alimentation', exact: true }).click();
 	await page.getByRole('button', { name: 'Couche', exact: true }).click();
-	await expect(page.getByTestId('event-row')).toHaveCount(0);
-	await expect(page.getByText('Aucune activité ce jour-là.')).toBeVisible();
+	await expect(page.getByTestId('event-row').filter({ hasText: 'Biberon' })).toHaveCount(0);
+	await expect(page.getByTestId('event-row').filter({ hasText: 'Couche' })).toHaveCount(0);
 });
 
 test('day picker navigates to yesterday (empty) and back', async ({ page }) => {

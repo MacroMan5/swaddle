@@ -3,7 +3,7 @@
 	// filters and the day summary. Week view and editing arrive in later tasks
 	// of the same slice.
 	import { getContext, onDestroy, onMount } from 'svelte';
-	import { Milk, Droplets, Moon } from '@lucide/svelte';
+	import { Milk, Droplets, Moon, Plus } from '@lucide/svelte';
 	import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
 	import { dailySummary, dayRangeIso, localDayKey } from '$lib/client/summaries';
 	import { formatElapsed } from '$lib/client/format';
@@ -11,7 +11,10 @@
 	import type { CaregiverDTO, EventDTO, EventType } from '$lib/client/types';
 	import DayPicker from '$lib/components/history/DayPicker.svelte';
 	import DayTimeline from '$lib/components/history/DayTimeline.svelte';
+	import EventEditSheet from '$lib/components/history/EventEditSheet.svelte';
 	import EventList from '$lib/components/history/EventList.svelte';
+	import ManualAddSheet from '$lib/components/history/ManualAddSheet.svelte';
+	import UndoToast from '$lib/components/UndoToast.svelte';
 	import WeekView from '$lib/components/history/WeekView.svelte';
 
 	const store = getContext<SyncStore>('sync');
@@ -147,9 +150,29 @@
 		selectedCategories = next;
 	}
 
+	let editEvent = $state<EventDTO | null>(null);
+	let editOpen = $state(false);
+	let addOpen = $state(false);
+	// Several undo windows can be open at once, keyed by event id (same pattern
+	// as the Today screen's toast queue).
+	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
+
 	function selectEvent(event: EventDTO): void {
-		// Wired to the edit sheet in a later task of this slice.
-		void event;
+		editEvent = event;
+		editOpen = true;
+	}
+
+	function handleSaved(): void {
+		refetchCurrentView();
+	}
+
+	function handleDeleted(id: string, message: string, onUndo: () => Promise<void>): void {
+		refetchCurrentView();
+		toasts = [...toasts.filter((t) => t.id !== id), { id, message, onUndo: () => onUndo().finally(refetchCurrentView) }];
+	}
+
+	function dismissToast(id: string): void {
+		toasts = toasts.filter((t) => t.id !== id);
 	}
 
 	const dayVisibleEvents = $derived(
@@ -165,10 +188,26 @@
 	);
 
 	const summary = $derived(dailySummary(dayEvents.filter((e) => e.deletedAt === null), dayKey, store.nowMs));
+
+	const manualAddDefault = $derived.by(() => {
+		const [y, m, d] = dayKey.split('-').map(Number);
+		return new Date(y, m - 1, d, 12, 0);
+	});
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<h1 class="text-ink text-2xl font-bold">Historique</h1>
+	<div class="flex items-center justify-between gap-2">
+		<h1 class="text-ink text-2xl font-bold">Historique</h1>
+		<button
+			type="button"
+			disabled={babyId === null}
+			onclick={() => (addOpen = true)}
+			class="bg-primary text-on-primary flex min-h-12 items-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+		>
+			<Plus size={18} aria-hidden="true" />
+			Ajouter
+		</button>
+	</div>
 
 	<DayPicker {dayKey} {todayKey} onChange={(next) => (dayKey = next)} />
 
@@ -257,3 +296,18 @@
 		{/if}
 	{/if}
 </div>
+
+<EventEditSheet bind:open={editOpen} event={editEvent} {caregivers} onSaved={handleSaved} onDeleted={handleDeleted} />
+<ManualAddSheet bind:open={addOpen} {babyId} defaultAt={manualAddDefault} {caregivers} onSaved={handleSaved} />
+
+{#if toasts.length > 0}
+	<div class="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md flex-col-reverse gap-2">
+		{#each toasts as toast (toast.id)}
+			<UndoToast
+				message={toast.message}
+				onAction={toast.onUndo}
+				onDismiss={() => dismissToast(toast.id)}
+			/>
+		{/each}
+	</div>
+{/if}

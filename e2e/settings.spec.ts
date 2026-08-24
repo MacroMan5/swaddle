@@ -5,7 +5,7 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 
 	// Aidants — add a caregiver.
 	await page.getByLabel('Nom de l’aidant').fill('Mamie');
-	await page.getByRole('button', { name: '#0284C7' }).click();
+	await page.getByRole('button', { name: 'Bleu' }).click();
 	await page.getByRole('button', { name: 'Ajouter un aidant' }).click();
 	await expect(page.getByRole('list').getByText('Mamie')).toBeVisible();
 
@@ -62,7 +62,10 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	await expect(page.getByRole('link', { name: 'Exporter JSON' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Exporter CSV' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Télécharger une sauvegarde' })).toBeVisible();
-	await expect(page.getByLabel('Restaurer depuis un fichier')).toBeVisible();
+	// The native file input is visually hidden (browser-chrome English widget);
+	// the styled button is the visible control and forwards clicks to it.
+	await expect(page.getByRole('button', { name: 'Restaurer depuis un fichier…' })).toBeVisible();
+	await expect(page.getByLabel('Restaurer depuis un fichier')).toBeAttached();
 
 	// Clean up the caregiver created by this spec.
 	const caregivers = await (await page.request.get('/api/caregivers')).json();

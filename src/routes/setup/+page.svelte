@@ -5,7 +5,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
-	import { CAREGIVER_COLORS } from '$lib/palette';
+	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
 
@@ -124,7 +124,7 @@
 									class="size-12 rounded-full border-2"
 									style:background-color={color}
 									style:border-color={caregiverColor === color ? 'var(--ink)' : 'transparent'}
-									aria-label={color}
+									aria-label={caregiverColorName(color)}
 									aria-pressed={caregiverColor === color}
 									onclick={() => (caregiverColor = color)}
 								></button>

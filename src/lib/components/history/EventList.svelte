@@ -99,6 +99,11 @@
 		if (id === null) return null;
 		return caregivers.find((c) => c.id === id)?.color ?? null;
 	}
+
+	function caregiverName(id: string | null): string | null {
+		if (id === null) return null;
+		return caregivers.find((c) => c.id === id)?.name ?? null;
+	}
 </script>
 
 {#if events.length === 0}
@@ -108,6 +113,7 @@
 		{#each events as event (event.id)}
 			{@const Icon = ICONS[event.type]}
 			{@const color = caregiverColor(event.caregiverId)}
+			{@const cgName = caregiverName(event.caregiverId)}
 			<li>
 				<button
 					type="button"
@@ -129,11 +135,14 @@
 						{/if}
 					</span>
 					{#if color}
+						<!-- The dot is color-only; the sr-only text names the caregiver so
+						     the information isn't lost for screen readers. -->
 						<span
 							class="h-3 w-3 shrink-0 rounded-full border border-border"
 							style:background-color={color}
 							aria-hidden="true"
 						></span>
+						{#if cgName}<span class="sr-only">Saisi par {cgName}</span>{/if}
 					{/if}
 				</button>
 			</li>

@@ -5,7 +5,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
-	import { CAREGIVER_COLORS } from '$lib/palette';
+	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
 
@@ -200,6 +200,7 @@
 	// --- Données ---
 	let restoreMessage = $state<string | null>(null);
 	let restoreError = $state<string | null>(null);
+	let restoreInput: HTMLInputElement | null = null;
 
 	async function restoreFile(event: Event) {
 		restoreMessage = null;
@@ -268,7 +269,7 @@
 											class="size-12 rounded-full border-2"
 											style:background-color={color}
 											style:border-color={editCaregiverColor === color ? 'var(--ink)' : 'transparent'}
-											aria-label={color}
+											aria-label={caregiverColorName(color)}
 											aria-pressed={editCaregiverColor === color}
 											onclick={() => (editCaregiverColor = color)}
 										></button>
@@ -294,8 +295,11 @@
 									aria-label={`Modifier ${cg.name}`}
 									onclick={() => startEditCaregiver(cg)}>Modifier</Button
 								>
-								<Button variant="ghost" class="min-h-12" onclick={() => deleteCaregiver(cg.id)}
-									>Supprimer</Button
+								<Button
+									variant="ghost"
+									class="min-h-12 text-danger"
+									aria-label={`Supprimer ${cg.name}`}
+									onclick={() => deleteCaregiver(cg.id)}>Supprimer</Button
 								>
 							</div>
 						{/if}
@@ -312,7 +316,7 @@
 							class="size-12 rounded-full border-2"
 							style:background-color={color}
 							style:border-color={newCaregiverColor === color ? 'var(--ink)' : 'transparent'}
-							aria-label={color}
+							aria-label={caregiverColorName(color)}
 							aria-pressed={newCaregiverColor === color}
 							onclick={() => (newCaregiverColor = color)}
 						></button>
@@ -477,16 +481,20 @@
 			<Button href="/api/export/json" download class="min-h-12">Exporter JSON</Button>
 			<Button href="/api/export/csv" download class="min-h-12">Exporter CSV</Button>
 			<Button href="/api/backup" download class="min-h-12">Télécharger une sauvegarde</Button>
-			<div class="flex flex-col gap-2">
-				<Label for="restore-file">Restaurer depuis un fichier</Label>
-				<input
-					id="restore-file"
-					type="file"
-					accept=".json"
-					class="min-h-12"
-					onchange={restoreFile}
-				/>
-			</div>
+			<!-- The native file input is visually hidden (its "Choose file / No file
+			     chosen" widget is browser-chrome English): the styled button opens it. -->
+			<input
+				bind:this={restoreInput}
+				id="restore-file"
+				type="file"
+				accept=".json"
+				class="sr-only"
+				aria-label="Restaurer depuis un fichier"
+				onchange={restoreFile}
+			/>
+			<Button variant="outline" class="min-h-12" onclick={() => restoreInput?.click()}
+				>Restaurer depuis un fichier…</Button
+			>
 			{#if restoreError}<p class="text-sm text-danger">{restoreError}</p>{/if}
 			{#if restoreMessage}<p class="text-sm text-ink-muted">{restoreMessage}</p>{/if}
 		</Card.Content>

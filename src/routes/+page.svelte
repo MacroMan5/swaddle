@@ -3,7 +3,7 @@
 	import { listBabies, listCaregivers, ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { BabyDTO, CaregiverDTO } from '$lib/client/types';
-	import ActiveTimersCard from '$lib/components/today/ActiveTimersCard.svelte';
+	import ActiveTimerBanner from '$lib/components/today/ActiveTimerBanner.svelte';
 	import BottleSheet from '$lib/components/today/BottleSheet.svelte';
 	import DaySummary from '$lib/components/today/DaySummary.svelte';
 	import NursingSheet from '$lib/components/today/NursingSheet.svelte';
@@ -65,6 +65,8 @@
 </script>
 
 <div class="flex min-h-[calc(100dvh-6rem)] flex-col gap-4 p-4">
+	<ActiveTimerBanner {babyId} {caregivers} onOpenNursing={() => (nursingOpen = true)} />
+
 	<TodayHeader babyName={baby?.name ?? null} birthdate={baby?.birthdate ?? null} />
 
 	{#if loadError}
@@ -82,8 +84,6 @@
 			</button>
 		</div>
 	{/if}
-
-	<ActiveTimersCard {babyId} onOpenNursing={() => (nursingOpen = true)} />
 
 	<StatusStrip />
 

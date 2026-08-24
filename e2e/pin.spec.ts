@@ -36,3 +36,24 @@ test('AC-009: pin unlock with a persistent per-device session', async ({ request
 
 	await context.close();
 });
+
+test('brute-force throttle: 5 wrong PINs lock out further attempts for a while', async ({
+	request
+}) => {
+	await request.put(`${B}/api/household/pin`, { data: { pin: '4321' } });
+
+	for (let i = 0; i < 5; i++) {
+		const res = await request.post(`${B}/api/auth/pin`, { data: { pin: '0000' } });
+		expect(res.status()).toBe(403);
+	}
+	const locked = await request.post(`${B}/api/auth/pin`, { data: { pin: '4321' } });
+	expect(locked.status()).toBe(429);
+	expect((await locked.json()).error.code).toBe('too_many_attempts');
+
+	// Disabling the pin goes through /api/household/pin, not /api/auth/pin, so
+	// it is unaffected by the lockout — leaves server B unlocked for later specs.
+	const disable = await request.delete(`${B}/api/household/pin`, {
+		data: { currentPin: '4321' }
+	});
+	expect(disable.ok()).toBeTruthy();
+});

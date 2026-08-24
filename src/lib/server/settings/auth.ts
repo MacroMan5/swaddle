@@ -35,3 +35,55 @@ export function isValidSession(cookie: string | undefined, pinHash: string | nul
 	if (actual.length !== expected.length) return false;
 	return timingSafeEqual(actual, expected);
 }
+
+const SESSION_MAX_AGE_S = 60 * 60 * 24 * 365; // 1 year (DEC-003: long-lived per-device session)
+
+/**
+ * Centralized session cookie attributes. `secure` follows the request's own
+ * protocol rather than defaulting to true (SvelteKit's own default): the real
+ * deployment is plain HTTP on a LAN IP, where a `secure` cookie would never be
+ * sent back by the browser and PIN unlock would silently break.
+ */
+export function sessionCookieOptions(url: URL): {
+	httpOnly: true;
+	sameSite: 'lax';
+	path: '/';
+	maxAge: number;
+	secure: boolean;
+} {
+	return {
+		httpOnly: true,
+		sameSite: 'lax',
+		path: '/',
+		maxAge: SESSION_MAX_AGE_S,
+		secure: url.protocol === 'https:'
+	};
+}
+
+/**
+ * In-memory brute-force throttle for PIN attempts (single process — a LAN app
+ * has no load balancer to make module-level state unsafe). After
+ * `maxAttempts` consecutive failures, further attempts are locked out for
+ * `lockoutMs`; a success resets the counter. `now` is injected so tests don't
+ * depend on real timers.
+ */
+export function createPinThrottle(maxAttempts = 5, lockoutMs = 30_000) {
+	let failures = 0;
+	let lockedUntil = 0;
+	return {
+		isLocked(now: number): boolean {
+			return now < lockedUntil;
+		},
+		recordFailure(now: number): void {
+			failures += 1;
+			if (failures >= maxAttempts) lockedUntil = now + lockoutMs;
+		},
+		recordSuccess(): void {
+			failures = 0;
+			lockedUntil = 0;
+		}
+	};
+}
+
+/** Singleton used by the /api/auth/pin route. */
+export const pinThrottle = createPinThrottle();

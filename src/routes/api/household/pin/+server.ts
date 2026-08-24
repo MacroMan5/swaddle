@@ -4,13 +4,18 @@ import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { apiError, readJson } from '$lib/server/api';
 import { getPinHash, setPinHash } from '$lib/server/settings/repo';
-import { PIN_SCHEMA, SESSION_COOKIE, hashPin, sessionToken, verifyPin } from '$lib/server/settings/auth';
-
-const YEAR_S = 60 * 60 * 24 * 365;
+import {
+	PIN_SCHEMA,
+	SESSION_COOKIE,
+	hashPin,
+	sessionCookieOptions,
+	sessionToken,
+	verifyPin
+} from '$lib/server/settings/auth';
 
 const putSchema = z.object({ pin: PIN_SCHEMA, currentPin: z.string().optional() });
 
-export const PUT: RequestHandler = async ({ request, cookies }) => {
+export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	const body = await readJson(request);
 	if (!body.ok) return apiError(400, 'validation_failed', 'invalid pin', body.issues);
 
@@ -33,12 +38,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
 	const newHash = hashPin(parsed.data.pin);
 	setPinHash(db, newHash);
 	// The device that sets/changes the pin stays signed in.
-	cookies.set(SESSION_COOKIE, sessionToken(newHash), {
-		httpOnly: true,
-		sameSite: 'lax',
-		path: '/',
-		maxAge: YEAR_S
-	});
+	cookies.set(SESSION_COOKIE, sessionToken(newHash), sessionCookieOptions(url));
 	return json({ ok: true });
 };
 

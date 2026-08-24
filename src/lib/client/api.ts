@@ -70,9 +70,12 @@ export async function listCaregivers(): Promise<CaregiverDTO[]> {
 	return (await getJson<{ caregivers: CaregiverDTO[] }>('/api/caregivers')).caregivers;
 }
 
+/** Overlap mode (review item 1): a midnight-crossing session started
+ * yesterday must still be fetched, or Today's summary would miss it even
+ * though SyncStore's own retention (#isToday) now keeps it. */
 export async function listTodayEvents(babyId: string, now = new Date()): Promise<EventDTO[]> {
 	const { from, to } = todayRangeIso(now);
-	const query = new URLSearchParams({ babyId, from, to });
+	const query = new URLSearchParams({ babyId, from, to, overlap: '1' });
 	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
 }
 

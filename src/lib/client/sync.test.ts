@@ -71,6 +71,32 @@ describe('applyChange', () => {
 		expect(store.events).toHaveLength(0);
 	});
 
+	it('keeps a completed midnight-crossing sleep in Today (review item 1): started before local midnight, ended after it', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		const endedAt = new Date(localMidnight.getTime() + 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
+	});
+
+	it('keeps an open (still-running) timer that started before local midnight (review item 1)', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt: null })));
+		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
+	});
+
+	it('a completed timer that both started and ended before local midnight is still excluded (review item 1 does not regress the base case)', () => {
+		const now = new Date(NOW.getTime());
+		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		const startedAt = new Date(localMidnight.getTime() - 90 * 60_000).toISOString();
+		const endedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
+		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		expect(store.events).toHaveLength(0);
+	});
+
 	it('ignores events of another baby', () => {
 		store.applyChange(sync('created', makeEvent({ babyId: 'baby-2' })));
 		expect(store.events).toHaveLength(0);

@@ -77,7 +77,7 @@ Household row: singleton `id=1`, created lazily on first read (`ensureHousehold`
   - `SESSION_COOKIE = 'swaddle_session'`; `PIN_SCHEMA` = zod `z.string().regex(/^\d{4,8}$/)` (4–8 digits)
 
 - [ ] **Step 1: Failing tests:** hash/verify round-trip; wrong pin false; two hashes of the same pin differ (salt); session token valid, invalidated after `setPinHash` to a new hash; `isValidSession(undefined, null)` true (no PIN → open).
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** PASS. 
+- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement. **Step 4:** PASS.
 - [ ] **Step 5: Commit** — `feat: add pin hashing and stateless device sessions`
 
 ---
@@ -240,7 +240,7 @@ test('AC-008: empty db redirects to the wizard; baby + caregiver make the app us
 });
 ```
 
-- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement wizard + config. **Step 4:** spec PASS (and the OTHER specs still pass — run the full `npm run test:e2e` once here). 
+- [ ] **Step 2:** Run → FAIL. **Step 3:** Implement wizard + config. **Step 4:** spec PASS (and the OTHER specs still pass — run the full `npm run test:e2e` once here).
 - [ ] **Step 5: Commit** — `feat: add first-launch wizard on a dedicated e2e server`
 
 ---

@@ -1,5 +1,8 @@
 # API des événements — contrat (slice 2)
 
+Voir aussi `docs/api/settings-api.md` (slice 5) pour les réglages, le code
+PIN, l'export/restauration et les portes serveur.
+
 Tous les horodatages sont des chaînes ISO 8601 UTC. L'heure du serveur fait foi
 (RISK-001) : les clients calculent l'affichage des minuteurs à partir de
 `startedAt` et du dernier `serverTime`, borné à ≥ 0. Toutes les erreurs utilisent

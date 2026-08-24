@@ -6,6 +6,7 @@ import { openDb } from '../src/lib/server/db';
 // previous runs and seed the baby/caregiver every API test relies on.
 export default function globalSetup(): void {
 	rmSync('.playwright-data', { recursive: true, force: true });
+	rmSync('.playwright-data-empty', { recursive: true, force: true });
 	const db = openDb('.playwright-data/swaddle.db');
 	const now = new Date().toISOString();
 	db.prepare(

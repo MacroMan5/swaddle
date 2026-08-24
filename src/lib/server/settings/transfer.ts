@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { RepoError } from '$lib/server/events/repo';
 import type { BabyDTO, EventDTO } from '$lib/server/events/types';
-import { getHousehold, listCaregivers, type CaregiverDTO } from './repo';
+import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
 
@@ -144,6 +144,10 @@ export function importJson(
 			parsed.error.issues.map((i) => ({ path: i.path.join('.'), code: i.code, message: i.message }))
 		);
 	const { household, babies, caregivers, events } = parsed.data;
+	// The export never carries the pin hash (see exportJson): a restore must
+	// not silently disable the household's current PIN, so it's read before
+	// the wipe and rewritten as-is.
+	const currentPinHash = getPinHash(db);
 
 	db.transaction(() => {
 		db.exec('DELETE FROM event');
@@ -152,8 +156,8 @@ export function importJson(
 		db.exec('DELETE FROM household');
 
 		db.prepare(
-			'INSERT INTO household (id, pin_hash, volume_unit, theme, created_at) VALUES (1, NULL, ?, ?, ?)'
-		).run(household.volumeUnit, household.theme, new Date().toISOString());
+			'INSERT INTO household (id, pin_hash, volume_unit, theme, created_at) VALUES (1, ?, ?, ?, ?)'
+		).run(currentPinHash, household.volumeUnit, household.theme, new Date().toISOString());
 
 		const insertBaby = db.prepare(
 			'INSERT INTO baby (id, name, birthdate, timezone, created_at) VALUES (?, ?, ?, ?, ?)'

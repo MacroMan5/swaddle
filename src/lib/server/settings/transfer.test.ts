@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '$lib/server/db';
 import { RepoError } from '$lib/server/events/repo';
-import { createBaby, createCaregiver } from './repo';
+import { createBaby, createCaregiver, getPinHash, setPinHash } from './repo';
 import { exportCsv, exportJson, importJson, snapshotTo } from './transfer';
 
 function seed() {
@@ -52,6 +52,16 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 		const { exportedAt: _after, ...after } = exportJson(b);
 		void _after;
 		expect(after).toEqual(before);
+	});
+
+	it('preserves the current pin hash across a restore (the export never carries it)', () => {
+		const a = seed();
+		const exported = exportJson(a);
+
+		const b = seed();
+		setPinHash(b, 'salt:hash');
+		importJson(b, exported);
+		expect(getPinHash(b)).toBe('salt:hash');
 	});
 });
 

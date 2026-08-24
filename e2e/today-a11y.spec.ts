@@ -14,14 +14,18 @@ for (const width of WIDTHS) {
 
 		for (const name of ['Allaiter', 'Biberon', 'Couche', 'Tirage', 'Commencer le sommeil']) {
 			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
-			expect(box?.height ?? 0).toBeGreaterThanOrEqual(48);
+			// Rounded: fractional line heights make layout subpixel, and a 48px
+			// target can measure 47.999996 depending on its offset.
+			expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(48);
 		}
 
 		// The pee/poo picker appears under the tiles once Couche is tapped.
 		await page.getByRole('button', { name: 'Couche', exact: true }).click();
 		for (const name of ['Pipi', 'Caca', 'Les deux']) {
 			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
-			expect(box?.height ?? 0).toBeGreaterThanOrEqual(48);
+			// Rounded: fractional line heights make layout subpixel, and a 48px
+			// target can measure 47.999996 depending on its offset.
+			expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(48);
 		}
 	});
 }
@@ -46,7 +50,9 @@ for (const width of WIDTHS) {
 
 		for (const name of ['Jour précédent', 'Jour suivant', 'Ajouter']) {
 			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
-			expect(box?.height ?? 0).toBeGreaterThanOrEqual(48);
+			// Rounded: fractional line heights make layout subpixel, and a 48px
+			// target can measure 47.999996 depending on its offset.
+			expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(48);
 		}
 	});
 }

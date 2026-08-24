@@ -67,7 +67,11 @@
 <div class="flex min-h-[calc(100dvh-6rem)] flex-col gap-4 p-4">
 	<ActiveTimerBanner {babyId} {caregivers} onOpenNursing={() => (nursingOpen = true)} />
 
-	<TodayHeader babyName={baby?.name ?? null} birthdate={baby?.birthdate ?? null} />
+	<!-- Staggered entrance, first mount only — these wrappers are never
+	     remounted by an SSE update, so the animation cannot replay. -->
+	<div class="enter">
+		<TodayHeader babyName={baby?.name ?? null} birthdate={baby?.birthdate ?? null} />
+	</div>
 
 	{#if loadError}
 		<div
@@ -85,20 +89,28 @@
 		</div>
 	{/if}
 
-	<StatusStrip />
+	<div class="enter" style="--enter-delay: 60ms">
+		<StatusStrip />
+	</div>
 
-	<QuickActions
-		{babyId}
-		{caregiverId}
-		onSaved={handleSaved}
-		onOpenNursing={() => (nursingOpen = true)}
-		onOpenBottle={() => (bottleOpen = true)}
-		onOpenPump={() => (pumpOpen = true)}
-	/>
+	<div class="enter" style="--enter-delay: 120ms">
+		<QuickActions
+			{babyId}
+			{caregiverId}
+			onSaved={handleSaved}
+			onOpenNursing={() => (nursingOpen = true)}
+			onOpenBottle={() => (bottleOpen = true)}
+			onOpenPump={() => (pumpOpen = true)}
+		/>
+	</div>
 
-	<RecentEvents {caregivers} />
+	<div class="enter" style="--enter-delay: 180ms">
+		<RecentEvents {caregivers} />
+	</div>
 
-	<DaySummary />
+	<div class="enter mt-auto" style="--enter-delay: 240ms">
+		<DaySummary />
+	</div>
 </div>
 
 <NursingSheet bind:open={nursingOpen} {babyId} {caregiverId} />

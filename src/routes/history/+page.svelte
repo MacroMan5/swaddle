@@ -280,7 +280,7 @@
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="border-border flex items-center justify-between gap-2 border-b-2 pb-3">
+	<div class="border-border enter flex items-center justify-between gap-2 border-b-2 pb-3">
 		<h1 class="text-screen-title text-ink">Historique</h1>
 		<button
 			type="button"
@@ -293,14 +293,17 @@
 		</button>
 	</div>
 
-	<DaySelector {dayKey} {todayKey} onChange={(next) => (dayKey = next)} />
+	<div class="enter" style="--enter-delay: 60ms">
+		<DaySelector {dayKey} {todayKey} onChange={(next) => (dayKey = next)} />
+	</div>
 
 	{#if loadError}
 		<p class="text-danger text-base" role="alert">{loadError}</p>
 	{/if}
 
 	<div
-		class="border-border divide-border-hair grid grid-cols-2 divide-x border-2"
+		class="border-border divide-border-hair enter grid grid-cols-2 divide-x border-2"
+		style="--enter-delay: 120ms"
 		role="group"
 		aria-label="Vue jour ou semaine"
 	>

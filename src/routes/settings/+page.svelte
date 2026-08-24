@@ -240,12 +240,12 @@
 </script>
 
 <div class="mx-auto flex max-w-lg flex-col gap-4 p-4">
-	<div class="border-border border-b-2 pb-3">
+	<div class="border-border enter border-b-2 pb-3">
 		<h1 class="text-screen-title text-ink">Réglages</h1>
 	</div>
 
 	<!-- One surface cut by rules: 2px between groups, hairlines inside them. -->
-	<div class="bg-surface-raised border-border divide-border divide-y-2 border-2">
+	<div class="bg-surface-raised border-border divide-border enter divide-y-2 border-2" style="--enter-delay: 60ms">
 		<section class="flex flex-col gap-3 p-4">
 			<h2 class="text-section text-ink-muted uppercase">Foyer</h2>
 

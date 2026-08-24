@@ -108,7 +108,10 @@
 				<span class="text-section {isToday ? 'text-primary-text' : 'text-ink-muted'}">
 					{WEEKDAY_LABELS[i]}
 				</span>
-				<div class="bg-surface flex h-[150px] w-4 flex-col-reverse overflow-hidden">
+				<div
+					class="bg-surface animate-grow-y motion-reduce:animate-none flex h-[150px] w-4 origin-bottom flex-col-reverse overflow-hidden"
+					style:animation-delay={`${i * 40}ms`}
+				>
 					{#if heights.sleep > 0}
 						<div class="bg-sleep-700 w-full" style:height="{heights.sleep}%"></div>
 					{/if}

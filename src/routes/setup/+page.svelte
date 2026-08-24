@@ -66,7 +66,7 @@
 </script>
 
 <div class="bg-surface flex min-h-dvh flex-col p-4">
-	<div class="mx-auto flex w-full max-w-sm flex-1 flex-col gap-5">
+	<div class="enter mx-auto flex w-full max-w-sm flex-1 flex-col gap-5">
 		<!-- Brand band. The repo has no symbol yet — the wordmark carries it. -->
 		<div class="border-border flex items-baseline justify-between border-b-2 pb-3">
 			<span class="text-brand text-ink uppercase">Swaddle</span>

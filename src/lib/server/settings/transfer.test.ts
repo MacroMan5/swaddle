@@ -46,9 +46,12 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 
 	it('rejects garbage and leaves existing rows untouched', () => {
 		const b = seed();
-		const before = exportJson(b);
+		const { exportedAt: _before, ...before } = exportJson(b);
+		void _before;
 		expect(() => importJson(b, { nonsense: true })).toThrow(RepoError);
-		expect(exportJson(b)).toEqual(before);
+		const { exportedAt: _after, ...after } = exportJson(b);
+		void _after;
+		expect(after).toEqual(before);
 	});
 });
 

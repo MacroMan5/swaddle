@@ -117,11 +117,13 @@ git commit -m "feat: scaffold SvelteKit app with adapter-node, Vitest and Playwr
 **Interfaces:**
 - Produces: tokens `--color-feed-*`, `--color-diaper-*`, `--color-sleep-*`, `--color-surface`, `--color-surface-raised`, `--color-ink`, `--color-ink-muted`, `--radius-card`, variante `dark:` par classe sur `<html>`. Toutes les tranches UI les consomment.
 
-- [ ] **Step 1: Installer Tailwind CSS v4**
+- [ ] **Step 1: Installer Tailwind CSS v4 et les polices auto-hébergées**
 
 ```bash
-npm install tailwindcss @tailwindcss/vite
+npm install tailwindcss @tailwindcss/vite @fontsource/lora @fontsource/nunito-sans
 ```
+
+(Polices locales — NFR-006 interdit tout CDN, Google Fonts inclus.)
 
 Dans `vite.config.ts` :
 
@@ -137,51 +139,97 @@ export default defineConfig({
 
 - [ ] **Step 2: Écrire les tokens dans `src/app.css`**
 
+Palette et règles complètes : `docs/design/design-system.md` (source de vérité).
+
 ```css
 @import 'tailwindcss';
+@import '@fontsource/lora/600.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/nunito-sans/400.css';
+@import '@fontsource/nunito-sans/600.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-	/* Catégories (design : couleurs distinctes mais jamais seules porteuses de sens) */
-	--color-feed-100: oklch(0.95 0.05 65);
-	--color-feed-500: oklch(0.72 0.15 65);
-	--color-feed-700: oklch(0.55 0.15 65);
-	--color-diaper-100: oklch(0.95 0.05 180);
-	--color-diaper-500: oklch(0.7 0.12 180);
-	--color-diaper-700: oklch(0.5 0.12 180);
-	--color-sleep-100: oklch(0.95 0.04 280);
-	--color-sleep-500: oklch(0.65 0.14 280);
-	--color-sleep-700: oklch(0.5 0.14 280);
-
-	/* Sémantiques — redéfinis en sombre via variables CSS ci-dessous */
+	/* Sémantiques — redéfinis en sombre via les variables :root/.dark ci-dessous */
 	--color-surface: var(--surface);
 	--color-surface-raised: var(--surface-raised);
 	--color-ink: var(--ink);
 	--color-ink-muted: var(--ink-muted);
+	--color-border: var(--border);
+	--color-primary: var(--primary);
+	--color-on-primary: var(--on-primary);
+	--color-accent: var(--accent);
+	--color-danger: var(--danger);
+
+	/* Catégories (design-system.md : la couleur renforce, icône + libellé portent le sens) */
+	--color-feed-100: var(--feed-100);
+	--color-feed-500: #f59e0b;
+	--color-feed-700: var(--feed-700);
+	--color-diaper-100: var(--diaper-100);
+	--color-diaper-500: #14b8a6;
+	--color-diaper-700: var(--diaper-700);
+	--color-sleep-100: var(--sleep-100);
+	--color-sleep-500: #6366f1;
+	--color-sleep-700: var(--sleep-700);
 
 	--radius-card: 1rem;
-	--font-sans: 'system-ui', 'Segoe UI', 'Roboto', sans-serif;
+	--radius-control: 0.75rem;
+	--shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
+	--font-sans: 'Nunito Sans', system-ui, sans-serif;
+	--font-serif: 'Lora', Georgia, serif;
 }
 
 :root {
-	--surface: oklch(0.98 0.005 260);
-	--surface-raised: oklch(1 0 0);
-	--ink: oklch(0.25 0.02 260);
-	--ink-muted: oklch(0.5 0.02 260);
+	--surface: #faf9f7;
+	--surface-raised: #ffffff;
+	--ink: #1c1b22;
+	--ink-muted: #6b6875;
+	--border: #ebe8e4;
+	--primary: #db2777;
+	--on-primary: #ffffff;
+	--accent: #0284c7;
+	--danger: #dc2626;
+	--feed-100: #fef3c7;
+	--feed-700: #b45309;
+	--diaper-100: #ccfbf1;
+	--diaper-700: #0f766e;
+	--sleep-100: #e0e7ff;
+	--sleep-700: #4338ca;
 }
 
-/* Mode sombre nocturne : pas de surface blanche agressive (NFR-005) */
+/* Mode sombre nocturne : désaturé, jamais de blanc ni de noir purs (NFR-005) */
 .dark {
-	--surface: oklch(0.18 0.02 260);
-	--surface-raised: oklch(0.24 0.02 260);
-	--ink: oklch(0.92 0.01 260);
-	--ink-muted: oklch(0.65 0.01 260);
+	--surface: #15151a;
+	--surface-raised: #1e1e25;
+	--ink: #e9e7ee;
+	--ink-muted: #9c99a6;
+	--border: #2c2c35;
+	--primary: #f472b6;
+	--on-primary: #2b0b1b;
+	--accent: #38bdf8;
+	--danger: #f87171;
+	--feed-100: #3a2a12;
+	--feed-700: #fbbf24;
+	--diaper-100: #123230;
+	--diaper-700: #2dd4bf;
+	--sleep-100: #232345;
+	--sleep-700: #818cf8;
 }
 
 body {
 	background-color: var(--color-surface);
 	color: var(--color-ink);
+	font-family: var(--font-sans);
+}
+
+h1, h2, h3 {
+	font-family: var(--font-serif);
+}
+
+/* Obligatoire sur tout chiffre dynamique (minuteurs, totaux) */
+.tabular {
+	font-variant-numeric: tabular-nums;
 }
 ```
 
@@ -265,8 +313,14 @@ L'init ajoute des variables `--background`, `--foreground`, etc. dans `src/app.c
 	--card: var(--surface-raised);
 	--card-foreground: var(--ink);
 	--muted-foreground: var(--ink-muted);
+	--primary-foreground: var(--on-primary);
+	--destructive: var(--danger);
+	--ring: var(--primary);
 }
 ```
+
+(`--primary` et `--border` générés par l'init portent déjà les mêmes noms que
+nos tokens : supprimer les valeurs de l'init pour laisser les nôtres faire foi.)
 
 (Conserver les autres variables générées ; seules celles listées ci-dessus sont re-mappées. La règle `.dark { … }` générée par l'init est supprimée pour ces clés — nos variables `.dark` de la Task 2 font foi.)
 

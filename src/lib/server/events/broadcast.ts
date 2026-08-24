@@ -14,6 +14,11 @@ export function subscribe(listener: Listener): () => void {
 	return () => listeners.delete(listener);
 }
 
+/** Number of live subscribers — lets callers assert that a stream cleaned up. */
+export function listenerCount(): number {
+	return listeners.size;
+}
+
 export function publish(change: Change): void {
 	for (const listener of [...listeners]) {
 		try {

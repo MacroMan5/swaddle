@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('AC-001: one-touch diaper is recorded and undoable for 5 s', async ({ page, request }) => {
 	await page.goto('/');
+	await page.getByRole('button', { name: 'Couche', exact: true }).click();
 	await page.getByRole('button', { name: 'Pipi', exact: true }).click();
 
 	const toast = page.getByRole('status');
@@ -24,6 +25,7 @@ test('AC-001: one-touch diaper is recorded and undoable for 5 s', async ({ page,
 
 test('the toast disappears by itself after 5 s', async ({ page }) => {
 	await page.goto('/');
+	await page.getByRole('button', { name: 'Couche', exact: true }).click();
 	await page.getByRole('button', { name: 'Caca', exact: true }).click();
 	await expect(page.getByRole('status')).toBeVisible();
 	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
@@ -33,6 +35,7 @@ test('a failed undo keeps the toast open with an error and allows retry (FR-018)
 	page
 }) => {
 	await page.goto('/');
+	await page.getByRole('button', { name: 'Couche', exact: true }).click();
 	await page.getByRole('button', { name: 'Pipi', exact: true }).click();
 	const toast = page.getByRole('status');
 	await expect(toast).toContainText('Couche enregistrée');
@@ -67,6 +70,7 @@ test('a slow undo spanning the 5 s deadline is not dismissed by the expiry timer
 	page
 }) => {
 	await page.goto('/');
+	await page.getByRole('button', { name: 'Couche', exact: true }).click();
 	await page.getByRole('button', { name: 'Caca', exact: true }).click();
 	const toast = page.getByRole('status');
 	await expect(toast).toContainText('Couche enregistrée');

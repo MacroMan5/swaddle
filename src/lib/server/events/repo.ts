@@ -136,8 +136,9 @@ export function restoreEvent(db: DB, id: string): EventDTO {
 	return db.transaction(() => {
 		const current = requireEvent(db, id);
 		if (!current.deletedAt) return current;
-		if (current.endedAt === null) {
+		if (current.endedAt === null && isTimerType(current.type)) {
 			// Restoring a live timer must not break the unique-timer invariant (FR-013).
+			// Point events (bottle, diaper) also have a null ended_at and are exempt.
 			const clash = db
 				.prepare(
 					'SELECT id FROM event WHERE baby_id = ? AND type = ? AND ended_at IS NULL AND deleted_at IS NULL'
@@ -159,6 +160,10 @@ export function listBabies(db: DB): BabyDTO[] {
 
 import type { NursingSegment, Side, TimerType } from './types';
 import { TIMER_TYPES } from './types';
+
+function isTimerType(type: EventType): type is TimerType {
+	return (TIMER_TYPES as readonly string[]).includes(type);
+}
 
 export function listActiveTimers(db: DB, babyId?: string): EventDTO[] {
 	const placeholders = TIMER_TYPES.map(() => '?').join(', ');

@@ -2,9 +2,7 @@
 
 Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
-> **Note** : le remote GitHub n'existe pas encore (repo local seulement). Créer et pousser
-> le repo GitHub avant d'utiliser les workflows d'issues; en attendant, toute commande `gh`
-> échouera.
+> Remote : `github.com/MacroMan5/swaddle` (public).
 
 ## Conventions
 

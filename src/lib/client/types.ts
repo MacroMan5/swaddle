@@ -38,6 +38,8 @@ export type EventDTO = {
 
 export type BabyDTO = { id: string; name: string; birthdate: string; timezone: string };
 
+export type CaregiverDTO = { id: string; name: string; color: string };
+
 export type Issue = { path: string; code: string; message: string };
 
 export type CreateEventInput = {

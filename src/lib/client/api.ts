@@ -1,5 +1,6 @@
 import type {
 	BabyDTO,
+	CaregiverDTO,
 	CreateEventInput,
 	EventDTO,
 	Issue,
@@ -62,6 +63,10 @@ export async function sendJson<T>(method: string, url: string, body?: unknown): 
 
 export async function listBabies(): Promise<BabyDTO[]> {
 	return (await getJson<{ babies: BabyDTO[] }>('/api/babies')).babies;
+}
+
+export async function listCaregivers(): Promise<CaregiverDTO[]> {
+	return (await getJson<{ caregivers: CaregiverDTO[] }>('/api/caregivers')).caregivers;
 }
 
 export async function listTodayEvents(babyId: string, now = new Date()): Promise<EventDTO[]> {

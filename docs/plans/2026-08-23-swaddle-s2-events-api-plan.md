@@ -70,13 +70,13 @@ Timer types: `nursing`, `pump`, `sleep` (bottle and diaper are point events, `en
   - `validateEventTimes(e: { type, startedAt, endedAt, details }, now: Date): Issue[]` (shared by create & patch-merge)
   - `Result<T> = { ok: true; value: T } | { ok: false; issues: Issue[] }` with `Issue = { path: string; code: string; message: string }`.
 
-- [ ] **Step 1: Install zod**
+- [x] **Step 1: Install zod**
 
 ```bash
 npm install zod --ignore-scripts
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `src/lib/server/events/types.test.ts`:
 
@@ -182,12 +182,12 @@ describe('parsePatchEvent', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/server/events/types.test.ts`
 Expected: FAIL (module `./types` not found).
 
-- [ ] **Step 4: Implement `src/lib/server/events/types.ts`**
+- [x] **Step 4: Implement `src/lib/server/events/types.ts`**
 
 ```ts
 import { z } from 'zod';
@@ -346,12 +346,12 @@ export function parsePatchEvent(input: unknown): Result<PatchEventInput> {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/lib/server/events/types.test.ts`
 Expected: PASS. If a zod v4 API name differs (e.g. `z.iso.datetime`), check the installed version's docs — do not silence with `any`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json package-lock.json src/lib/server/events/types.ts src/lib/server/events/types.test.ts docs/plans/2026-08-23-swaddle-s2-events-api-plan.md
@@ -378,7 +378,7 @@ git commit -m "feat: add event types and FR-017 validation layer"
   - `restoreEvent(db, id): EventDTO` (throws `not_found`; throws `timer_conflict` if the restored event is an active timer and another one now exists)
   - `listBabies(db): BabyDTO[]`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/server/events/repo.test.ts`:
 
@@ -483,12 +483,12 @@ describe('event CRUD', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/server/events/repo.test.ts`
 Expected: FAIL (module `./repo` not found).
 
-- [ ] **Step 3: Implement `src/lib/server/events/repo.ts`**
+- [x] **Step 3: Implement `src/lib/server/events/repo.ts`**
 
 ```ts
 import { randomUUID } from 'node:crypto';
@@ -653,12 +653,12 @@ export function listBabies(db: DB): BabyDTO[] {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/lib/server/events/repo.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/server/events/repo.ts src/lib/server/events/repo.test.ts
@@ -681,7 +681,7 @@ git commit -m "feat: add event repository with soft delete and restore"
   - `stopTimer(db, opts: { type: TimerType; babyId: string; endedAt?: string; volumeMl?: number | null }): EventDTO` (throws `no_active_timer`)
   - `nursingAction(db, opts: { babyId: string; action: 'pause' | 'resume' | 'switch-side'; side?: Side }): EventDTO` (throws `no_active_timer` / `invalid_state`)
 
-- [ ] **Step 1: Write the failing tests** (append to `repo.test.ts`; reuses `db`/`seed` from Task 2)
+- [x] **Step 1: Write the failing tests** (append to `repo.test.ts`; reuses `db`/`seed` from Task 2)
 
 ```ts
 import { listActiveTimers, startTimer, stopTimer, nursingAction } from './repo';
@@ -780,12 +780,12 @@ describe('nursing session (FR-002, AC-002 segments)', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/server/events/repo.test.ts`
 Expected: FAIL (`startTimer` not exported).
 
-- [ ] **Step 3: Implement (append to `repo.ts`)**
+- [x] **Step 3: Implement (append to `repo.ts`)**
 
 ```ts
 import type { NursingSegment, Side, TimerType } from './types';
@@ -896,12 +896,12 @@ export function nursingAction(
 }
 ```
 
-- [ ] **Step 4: Run the full unit suite**
+- [x] **Step 4: Run the full unit suite**
 
 Run: `npm run test:unit`
 Expected: PASS (db, types, repo).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/server/events/repo.ts src/lib/server/events/repo.test.ts
@@ -923,7 +923,7 @@ git commit -m "feat: enforce unique active timers and nursing segments"
   - `subscribe(listener: (c: Change) => void): () => void` (returns unsubscribe)
   - `publish(change: Change): void`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/lib/server/events/broadcast.test.ts`:
 
@@ -958,12 +958,12 @@ describe('broadcast', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/server/events/broadcast.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `src/lib/server/events/broadcast.ts`**
+- [x] **Step 3: Implement `src/lib/server/events/broadcast.ts`**
 
 ```ts
 import type { EventDTO } from './types';
@@ -993,12 +993,12 @@ export function publish(change: Change): void {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/server/events/broadcast.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/server/events/broadcast.ts src/lib/server/events/broadcast.test.ts
@@ -1027,7 +1027,7 @@ git commit -m "feat: add in-process change broadcast"
   - HTTP contract of the routes listed in the plan header.
   - Seeded Playwright DB: baby `baby-1` (« Testine »), caregiver `cg-1`.
 
-- [ ] **Step 1: Write the shared HTTP helpers** — `src/lib/server/api.ts`
+- [x] **Step 1: Write the shared HTTP helpers** — `src/lib/server/api.ts`
 
 ```ts
 import { json } from '@sveltejs/kit';
@@ -1056,7 +1056,7 @@ export function handleRepoError(e: unknown): Response {
 }
 ```
 
-- [ ] **Step 2: Write the failing Playwright tests**
+- [x] **Step 2: Write the failing Playwright tests**
 
 `e2e/global-setup.ts`:
 
@@ -1188,12 +1188,12 @@ test('unknown event id yields 404 with error envelope', async ({ request }) => {
 });
 ```
 
-- [ ] **Step 3: Run the e2e file to verify it fails**
+- [x] **Step 3: Run the e2e file to verify it fails**
 
 Run: `npx playwright test e2e/api-events.spec.ts`
 Expected: FAIL (404 on `/api/events`, routes not implemented).
 
-- [ ] **Step 4: Implement the routes**
+- [x] **Step 4: Implement the routes**
 
 `src/routes/api/babies/+server.ts`:
 
@@ -1332,12 +1332,12 @@ export const POST: RequestHandler = ({ params }) => {
 };
 ```
 
-- [ ] **Step 5: Run checks and the e2e file**
+- [x] **Step 5: Run checks and the e2e file**
 
 Run: `npm run check && npx playwright test e2e/api-events.spec.ts e2e/smoke.spec.ts`
 Expected: PASS (both files, smoke updated).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/server/api.ts src/routes/api/babies src/routes/api/events e2e/global-setup.ts e2e/api-events.spec.ts e2e/smoke.spec.ts playwright.config.ts
@@ -1359,7 +1359,7 @@ git commit -m "feat: add events and babies HTTP API with seeded e2e setup"
 - Consumes: Task 3 repo functions, Task 5 `apiError`/`handleRepoError`, `publish`, `TIMER_TYPES`, `MAX_FUTURE_MS`.
 - Produces: the `/api/timers` HTTP contract; SSE (Task 7) and UI slices consume `{ serverTime, timers }` and `{ created, event }` shapes.
 
-- [ ] **Step 1: Write the failing Playwright tests** — `e2e/api-timers.spec.ts`
+- [x] **Step 1: Write the failing Playwright tests** — `e2e/api-timers.spec.ts`
 
 ```ts
 import { expect, test, type APIRequestContext } from '@playwright/test';
@@ -1431,12 +1431,12 @@ test('pump stop records volume; volume 1500 → 400 (FR-017)', async ({ request 
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx playwright test e2e/api-timers.spec.ts`
 Expected: FAIL (routes missing).
 
-- [ ] **Step 3: Implement the routes**
+- [x] **Step 3: Implement the routes**
 
 `src/routes/api/timers/+server.ts`:
 
@@ -1568,12 +1568,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 Note: SvelteKit routes static segments (`timers/nursing/action`) alongside the `[type]` param without conflict — `/api/timers/nursing/start` still resolves to `[type]/start`.
 
-- [ ] **Step 4: Run checks and the timers e2e file**
+- [x] **Step 4: Run checks and the timers e2e file**
 
 Run: `npm run check && npx playwright test e2e/api-timers.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/routes/api/timers e2e/api-timers.spec.ts
@@ -1595,7 +1595,7 @@ git commit -m "feat: add timer HTTP API with unique-session start"
   - on every change: `event: sync`, data `{ kind, event, serverTime }`;
   - comment heartbeat `:ping` every 25 s.
 
-- [ ] **Step 1: Write the failing Playwright test** — `e2e/api-stream.spec.ts`
+- [x] **Step 1: Write the failing Playwright test** — `e2e/api-stream.spec.ts`
 
 ```ts
 import { expect, test } from '@playwright/test';
@@ -1663,12 +1663,12 @@ test('snapshot includes the active timers', async ({ request, baseURL }) => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx playwright test e2e/api-stream.spec.ts`
 Expected: FAIL (404 on `/api/stream`).
 
-- [ ] **Step 3: Implement `src/routes/api/stream/+server.ts`**
+- [x] **Step 3: Implement `src/routes/api/stream/+server.ts`**
 
 ```ts
 import type { RequestHandler } from './$types';
@@ -1727,12 +1727,12 @@ export const GET: RequestHandler = () => {
 };
 ```
 
-- [ ] **Step 4: Run checks and the stream e2e file**
+- [x] **Step 4: Run checks and the stream e2e file**
 
 Run: `npm run check && npx playwright test e2e/api-stream.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/routes/api/stream e2e/api-stream.spec.ts
@@ -1751,7 +1751,7 @@ git commit -m "feat: add SSE change stream with snapshot recovery"
 - Consumes: everything above.
 - Produces: `docs/api/events-api.md` — the reference the UI slices (3–5) build against; linked from the wayfinder resolution comment.
 
-- [ ] **Step 1: Write `docs/api/events-api.md`**
+- [x] **Step 1: Write `docs/api/events-api.md`**
 
 Document exactly what was implemented (verify each item against the code, do not copy blindly from this plan):
 
@@ -1775,7 +1775,7 @@ and status codes, as implemented>
 `:ping` heartbeat every 25 s>
 ```
 
-- [ ] **Step 2: Update `CLAUDE.md`** — in the Architecture section, after the `src/lib/server/db/` bullet, add:
+- [x] **Step 2: Update `CLAUDE.md`** — in the Architecture section, after the `src/lib/server/db/` bullet, add:
 
 ```markdown
 - `src/lib/server/events/` — domain des événements : `types.ts` (zod, FR-017),
@@ -1784,12 +1784,12 @@ and status codes, as implemented>
   `/api/stream` (SSE) — contrat détaillé dans `docs/api/events-api.md`.
 ```
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run: `npm run check && npm run test:unit && npm run test:e2e`
 Expected: all PASS. Fix anything that fails before committing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/api/events-api.md CLAUDE.md

@@ -61,6 +61,17 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `/api/stream` (SSE) — contrat détaillé dans `docs/api/events-api.md`.
 - `src/lib/server/setup.ts` — `isSetupComplete` (bébé + aidant existent).
 - `src/routes/api/health/` — `GET /api/health` → `{ status, setupComplete }`.
+- `src/lib/server/settings/` — domaine des réglages (slice 5) : `repo.ts`
+  (foyer/bébé/aidants), `auth.ts` (hash PIN scrypt, session HMAC),
+  `transfer.ts` (export JSON/CSV, restauration transactionnelle, instantané
+  SQLite via `VACUUM INTO`), `gate.ts` (décision pure des portes). Routes :
+  `/api/babies` (POST), `/api/caregivers[...]`, `/api/household[...]`,
+  `/api/auth/pin`, `/api/export/json|csv`, `/api/backup`, `/api/restore` —
+  contrat détaillé dans `docs/api/settings-api.md`.
+- `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
+  code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
+  `gateDecision`. Pages : `/setup` (assistant premier lancement), `/pin`
+  (déverrouillage), `/settings` (réglages complets, FR-011).
 - `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn
   re-mappées ; mode sombre par classe `.dark` sur `<html>`. Toute couleur/rayon
   passe par un token (NFR-008) ; cibles tactiles ≥ 48 px, texte ≥ 16 px.

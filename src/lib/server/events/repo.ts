@@ -20,7 +20,8 @@ export class RepoError extends Error {
 			| 'no_active_timer'
 			| 'invalid_state'
 			| 'timer_conflict'
-			| 'validation_failed',
+			| 'validation_failed'
+			| 'in_use',
 		message: string,
 		public issues?: Issue[]
 	) {

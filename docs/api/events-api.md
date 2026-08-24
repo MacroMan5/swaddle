@@ -1,5 +1,8 @@
 # API des événements — contrat (slice 2)
 
+Voir aussi `docs/api/settings-api.md` (slice 5) pour les réglages, le code
+PIN, l'export/restauration et les portes serveur.
+
 Tous les horodatages sont des chaînes ISO 8601 UTC. L'heure du serveur fait foi
 (RISK-001) : les clients calculent l'affichage des minuteurs à partir de
 `startedAt` et du dernier `serverTime`, borné à ≥ 0. Toutes les erreurs utilisent
@@ -183,6 +186,9 @@ data: { "serverTime": "…", "activeTimers": EventDTO[] }
 
 event: sync
 data: { "kind": "created" | "updated" | "deleted" | "restored", "event": EventDTO, "serverTime": "…" }
+
+event: reset
+data: { "serverTime": "…" }
 ```
 
 - `snapshot` est envoyé une fois à la connexion — une reconnexion produit un
@@ -191,5 +197,10 @@ data: { "kind": "created" | "updated" | "deleted" | "restored", "event": EventDT
 - `sync` est diffusé à chaque mutation : création, modification, suppression et
   restauration d'événement, démarrage et arrêt de minuteur, actions
   d'allaitement.
+- `reset` est diffusé à la fin d'une restauration réussie (slice 5,
+  `POST /api/restore`) : une restauration remplace tout le jeu de données sous
+  les clients connectés, sans qu'un `EventDTO` unique puisse décrire le
+  changement. Les clients doivent recharger `/api/timers` **et**
+  `/api/events` — pas seulement appliquer une synchronisation incrémentale.
 - Un battement de cœur `:ping` (commentaire SSE) est envoyé toutes les 25 s pour
   maintenir la connexion.

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { migrate } from './migrations';
 
-const DATA_DIR = process.env.DATA_DIR ?? 'data';
+export const DATA_DIR = process.env.DATA_DIR ?? 'data';
 
 export function openDb(path = `${DATA_DIR}/swaddle.db`): Database.Database {
 	if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });

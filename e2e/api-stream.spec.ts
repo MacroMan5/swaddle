@@ -61,3 +61,33 @@ test('snapshot includes the active timers', async ({ request, baseURL }) => {
 	await reader.cancel();
 	await request.post('/api/timers/sleep/stop', { data: { babyId: 'baby-1' } });
 });
+
+test('restore emits an event: reset frame so connected clients refetch (slice 5)', async ({
+	request,
+	baseURL
+}) => {
+	const res = await fetch(`${baseURL}/api/stream`);
+	const reader = res.body!.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+	const readUntil = async (marker: string) => {
+		const deadline = Date.now() + 10_000;
+		while (!buffer.includes(marker) && Date.now() < deadline) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+		}
+		expect(buffer).toContain(marker);
+	};
+	await readUntil('event: snapshot');
+
+	// Round-trip the current data through restore: it leaves the seed intact
+	// while still exercising the reset broadcast at the end of the route.
+	const exported = await (await request.get('/api/export/json')).json();
+	const restore = await request.post('/api/restore', { data: exported });
+	expect(restore.ok()).toBeTruthy();
+
+	await readUntil('event: reset');
+	expect(buffer).toContain('"serverTime"');
+	await reader.cancel();
+});

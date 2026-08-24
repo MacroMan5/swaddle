@@ -55,6 +55,10 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 - `src/lib/server/db/` — couche SQLite : `openDb`/`getDb` (WAL, `foreign_keys ON`),
   migrations embarquées versionnées par `user_version` dans `migrations.ts`.
   Schéma v1 : `household`, `baby`, `caregiver`, `event` (JSON `details` par type).
+- `src/lib/server/events/` — domaine des événements : `types.ts` (zod, FR-017),
+  `repo.ts` (CRUD, soft delete, minuteurs uniques FR-013), `broadcast.ts`
+  (fan-out SSE). Routes : `/api/babies`, `/api/events[...]`, `/api/timers[...]`,
+  `/api/stream` (SSE) — contrat détaillé dans `docs/api/events-api.md`.
 - `src/lib/server/setup.ts` — `isSetupComplete` (bébé + aidant existent).
 - `src/routes/api/health/` — `GET /api/health` → `{ status, setupComplete }`.
 - `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn

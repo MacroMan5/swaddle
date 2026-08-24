@@ -45,6 +45,30 @@ export function dayRangeIso(dayKey: string): { from: string; to: string } {
 	return { from: start.toISOString(), to: end.toISOString() };
 }
 
+const TIMER_EVENT_TYPES = new Set(['nursing', 'pump', 'sleep']);
+
+/**
+ * Whether `event` overlaps `dayKey`'s local day (review item 2), not merely
+ * starts in it — so a carry-over session (e.g. sleep 23:30→01:30) stays
+ * visible on both the day it started and the day it ended, matching the
+ * server's `listEvents({ overlap: true })` and `SyncStore`'s Today
+ * retention. Point events (bottle, diaper) always have a null `endedAt` by
+ * design and keep the starts-in-day rule. `dailySummary`'s counts are
+ * unaffected — they still attribute to the start day only.
+ */
+export function eventOverlapsDay(event: EventDTO, dayKey: string, nowMs: number): boolean {
+	const { from, to } = dayRangeIso(dayKey);
+	const fromMs = Date.parse(from);
+	const toMs = Date.parse(to);
+	const startedMs = Date.parse(event.startedAt);
+	if (startedMs >= toMs) return false;
+	if (TIMER_EVENT_TYPES.has(event.type)) {
+		const endMs = event.endedAt === null ? nowMs : Date.parse(event.endedAt);
+		return endMs > fromMs;
+	}
+	return startedMs >= fromMs;
+}
+
 export type DailySummary = {
 	nursing: { count: number; totalMs: number; leftMs: number; rightMs: number };
 	bottle: { count: number; totalMl: number };

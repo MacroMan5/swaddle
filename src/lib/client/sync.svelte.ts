@@ -1,5 +1,6 @@
 import { getTimers, listTodayEvents } from './api';
-import { isNewLocalDay, todayRangeIso } from './format';
+import { isNewLocalDay } from './format';
+import { eventOverlapsDay, localDayKey } from './summaries';
 import type { EventDTO, SnapshotMessage, SyncKind, SyncMessage, TimerType } from './types';
 
 const TIMER_TYPES: readonly TimerType[] = ['nursing', 'pump', 'sleep'];
@@ -252,20 +253,12 @@ export class SyncStore {
 	 * Whether `event` overlaps today's window (review item 1), not merely
 	 * starts in it — otherwise a nursing/sleep session begun before local
 	 * midnight (still running, or completed after midnight) would contribute
-	 * nothing to Today's summary. Point events (bottle, diaper) always have a
-	 * null `endedAt` by design and keep the starts-in-window rule, matching the
-	 * server's overlap semantics (`listEvents({ overlap: true })`).
+	 * nothing to Today's summary. Delegates to the same predicate the History
+	 * day view uses (`eventOverlapsDay`), so "does this event belong to this
+	 * local day" has one implementation, not two that could drift apart.
 	 */
 	#isToday(event: EventDTO): boolean {
-		const { from, to } = todayRangeIso(new Date(this.nowMs));
-		const fromMs = Date.parse(from);
-		const toMs = Date.parse(to);
-		const startedMs = Date.parse(event.startedAt);
-		if (startedMs >= toMs) return false;
-		if (TIMER_TYPES.includes(event.type as TimerType)) {
-			return event.endedAt === null || Date.parse(event.endedAt) > fromMs;
-		}
-		return startedMs >= fromMs;
+		return eventOverlapsDay(event, localDayKey(new Date(this.nowMs)), this.nowMs);
 	}
 
 	#setServerTime(serverTime: string): void {

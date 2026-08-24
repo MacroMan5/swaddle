@@ -1,6 +1,6 @@
 process.env.TZ = 'America/Toronto';
 import { describe, it, expect } from 'vitest';
-import { splitDurationByLocalDay, dailySummary, localDayKey, dayRangeIso } from './summaries';
+import { splitDurationByLocalDay, dailySummary, eventOverlapsDay, localDayKey, dayRangeIso } from './summaries';
 import type { EventDTO } from './types';
 
 const ms = (h: number, m = 0) => (h * 60 + m) * 60_000;
@@ -95,5 +95,45 @@ describe('day helpers', () => {
 		const { from, to } = dayRangeIso('2026-11-01'); // 25-hour day
 		expect(Date.parse(to) - Date.parse(from)).toBe(ms(25));
 		expect(localDayKey(new Date(Date.parse(from)))).toBe('2026-11-01');
+	});
+});
+
+describe('eventOverlapsDay (review item 2: carry-over visibility)', () => {
+	const now = local(2026, 8, 25, 12, 0);
+
+	it('a completed midnight-crossing sleep overlaps both the day it started and the day it ended', () => {
+		const e = sleep(local(2026, 8, 24, 23, 30), local(2026, 8, 25, 1, 30));
+		expect(eventOverlapsDay(e, '2026-08-24', now)).toBe(true);
+		expect(eventOverlapsDay(e, '2026-08-25', now)).toBe(true);
+		expect(eventOverlapsDay(e, '2026-08-26', now)).toBe(false);
+	});
+
+	it('an open (still-running) timer overlaps every day from its start onward', () => {
+		const e = sleep(local(2026, 8, 24, 23, 30), null);
+		expect(eventOverlapsDay(e, '2026-08-24', now)).toBe(true);
+		expect(eventOverlapsDay(e, '2026-08-25', now)).toBe(true);
+	});
+
+	it('a point event (bottle/diaper) only overlaps its start day, even with a null endedAt by design', () => {
+		const bottle: EventDTO = {
+			...sleep(local(2026, 8, 24, 23, 30), null),
+			id: 'b1',
+			type: 'bottle',
+			details: { milkType: 'formula', volumeMl: 90 }
+		};
+		expect(eventOverlapsDay(bottle, '2026-08-24', now)).toBe(true);
+		expect(eventOverlapsDay(bottle, '2026-08-25', now)).toBe(false);
+	});
+
+	it('a same-day event only overlaps its own day', () => {
+		const e = sleep(local(2026, 8, 24, 9, 0), local(2026, 8, 24, 10, 0));
+		expect(eventOverlapsDay(e, '2026-08-24', now)).toBe(true);
+		expect(eventOverlapsDay(e, '2026-08-23', now)).toBe(false);
+		expect(eventOverlapsDay(e, '2026-08-25', now)).toBe(false);
+	});
+
+	it('a timer ending exactly at the day boundary has zero overlap with the next day (half-open window)', () => {
+		const e = sleep(local(2026, 8, 23, 22, 0), local(2026, 8, 24, 0, 0));
+		expect(eventOverlapsDay(e, '2026-08-24', now)).toBe(false);
 	});
 });

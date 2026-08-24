@@ -47,6 +47,13 @@
 		return localDayKey(new Date(Date.parse(event.endedAt))) !== dayKey;
 	}
 
+	/** True for a carry-over row (review item 2): the event overlaps `dayKey`
+	 * but actually started the day before — its displayed clock time reads
+	 * "yesterday", so the row needs its own hint alongside `endsAfterDay`'s. */
+	function startsBeforeDay(event: EventDTO): boolean {
+		return localDayKey(new Date(Date.parse(event.startedAt))) !== dayKey;
+	}
+
 	function diaperLabel(details: DiaperDetails): string {
 		if (details.pee && details.poo) return 'Pipi et caca';
 		if (details.poo) return 'Caca';
@@ -113,6 +120,9 @@
 						<Icon size={16} aria-hidden="true" />
 					</span>
 					<span class="text-ink min-w-0 flex-1 truncate text-base">
+						{#if startsBeforeDay(event)}
+							<span class="text-ink-muted">Depuis la veille · </span>
+						{/if}
 						{label(event)}
 						{#if endsAfterDay(event)}
 							<span class="text-ink-muted"> · → lendemain</span>

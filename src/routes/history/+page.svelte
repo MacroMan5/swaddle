@@ -5,7 +5,7 @@
 	import { getContext, onDestroy, onMount } from 'svelte';
 	import { Milk, Droplets, Moon, Plus } from '@lucide/svelte';
 	import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
-	import { dailySummary, dayRangeIso, localDayKey } from '$lib/client/summaries';
+	import { dailySummary, dayRangeIso, eventOverlapsDay, localDayKey } from '$lib/client/summaries';
 	import { formatElapsed } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { CaregiverDTO, EventDTO, EventType } from '$lib/client/types';
@@ -154,9 +154,12 @@
 		if (viewMode === 'week') void loadWeek();
 	});
 
+	// Switching to 'week' is enough on its own: the $effect above reads
+	// `viewMode` inside its condition, so it is already a tracked dependency
+	// and re-runs (calling loadWeek()) whenever viewMode changes. A second,
+	// explicit loadWeek() call here was a duplicate load (review item 4).
 	function selectViewMode(mode: 'day' | 'week'): void {
 		viewMode = mode;
-		if (mode === 'week') void loadWeek();
 	}
 
 	function selectWeekDay(nextDayKey: string): void {
@@ -225,10 +228,14 @@
 		toasts = toasts.filter((t) => t.id !== id);
 	}
 
+	// Overlap, not starts-in-day (review item 2): a carry-over session (e.g.
+	// sleep 23:30→01:30) must stay visible on both the day it started and the
+	// day it ended, not just the former — dailySummary's counts still
+	// attribute to the start day only, so this only changes what's listed.
 	const dayVisibleEvents = $derived(
 		dayEvents
 			.filter((e) => e.deletedAt === null)
-			.filter((e) => localDayKey(new Date(Date.parse(e.startedAt))) === dayKey)
+			.filter((e) => eventOverlapsDay(e, dayKey, store.nowMs))
 	);
 
 	const filteredEvents = $derived(

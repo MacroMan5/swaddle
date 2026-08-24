@@ -2,7 +2,7 @@
 	// Edit/delete an existing event (FR-007, § Formulaires). Fields vary by type;
 	// nursing exposes its segments instead of a single end time. Delete opens the
 	// caller's 5 s undo toast; every confirmed response merges into local state.
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
 	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
@@ -72,7 +72,26 @@
 	let endedAtError = $state<string | null>(null);
 	let volumeError = $state<string | null>(null);
 
-	const isDirty = $derived(open && event !== null);
+	// Snapshot of the form as initialized from the event; the close-confirm only
+	// fires when the current form actually differs from it.
+	let initialForm = $state('');
+
+	function serializeForm(): string {
+		return JSON.stringify({
+			caregiverId,
+			note,
+			startedAt,
+			endedAt,
+			milkType,
+			volumeMl,
+			pumpSide,
+			pee,
+			poo,
+			segments: segments.map((s) => ({ side: s.side, startedAt: s.startedAt, endedAt: s.endedAt }))
+		});
+	}
+
+	const isDirty = $derived(open && event !== null && serializeForm() !== initialForm);
 
 	$effect(() => {
 		if (!open || event === null) return;
@@ -106,6 +125,9 @@
 				error: null
 			}));
 		}
+		// untrack: reading the form fields here must not make them effect deps,
+		// or every user edit would re-run the effect and reset the form.
+		initialForm = untrack(() => serializeForm());
 	});
 
 	function setSegmentSide(index: number, side: Side): void {
@@ -223,7 +245,10 @@
 	}
 </script>
 
-<Sheet.Root {open} onOpenChange={handleOpenChange}>
+<!-- Function binding (controlled): with a plain `{open}` prop, bits-ui closes
+     itself internally when the guard refuses, leaving the sheet closed but the
+     parent's `open` true — the confirm is bypassed and the sheet can't reopen. -->
+<Sheet.Root bind:open={() => open, handleOpenChange}>
 	<Sheet.Content side="bottom">
 		<Sheet.Header>
 			<Sheet.Title>Modifier l’entrée</Sheet.Title>
@@ -391,7 +416,7 @@
 										Droite
 									</button>
 								</div>
-								<div class="flex gap-2">
+								<div class="flex flex-col gap-2 sm:flex-row">
 									<input
 										type="datetime-local"
 										aria-label={`Début du segment ${i + 1}`}

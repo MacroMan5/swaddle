@@ -29,7 +29,7 @@ tokens (NFR-008).
 | `--color-surface` | `#FAF9F7` | `#15151A` | fond de page (blanc cassé chaud / nuit sans noir pur) |
 | `--color-surface-raised` | `#FFFFFF` | `#1E1E25` | cartes, panneaux |
 | `--color-ink` | `#1C1B22` | `#E9E7EE` | texte principal (≥ 4,5:1) |
-| `--color-ink-muted` | `#6B6875` | `#9C99A6` | texte secondaire (≥ 3:1) |
+| `--color-ink-muted` | `#67646F` | `#9C99A6` | texte secondaire (≥ 4,5:1 sur les fonds de cartes) |
 | `--color-border` | `#EBE8E4` | `#2C2C35` | séparateurs visibles dans les deux thèmes |
 | `--color-primary` | `#DB2777` | `#F472B6` | identité, action principale (rose) |
 | `--color-on-primary` | `#FFFFFF` | `#2B0B1B` | texte sur primaire |

@@ -36,7 +36,7 @@
 	<button
 		type="button"
 		onclick={handleAction}
-		class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 font-semibold active:scale-[0.97] motion-reduce:active:scale-100"
+		class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
 	>
 		{actionLabel}
 	</button>

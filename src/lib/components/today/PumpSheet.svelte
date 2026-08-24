@@ -49,7 +49,7 @@
 						type="button"
 						disabled={pending || babyId === null}
 						onclick={() => start(option.value)}
-						class="border-border bg-surface-raised text-ink min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+						class="border-border bg-surface-raised text-ink min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 					>
 						{option.label}
 					</button>

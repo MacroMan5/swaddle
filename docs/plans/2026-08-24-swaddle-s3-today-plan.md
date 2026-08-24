@@ -383,11 +383,11 @@ test('AC-005: a started sleep survives a reload with correct server-based elapse
 
 **Interfaces:** —
 
-- [ ] **Step 1: Write the viewport/dark e2e** — `e2e/today-a11y.spec.ts`: for widths 320, 390, 768: `page.setViewportSize`, goto `/`, assert no horizontal scroll (`document.documentElement.scrollWidth <= innerWidth`), the three quick-action buttons have bounding boxes ≥ 48 px tall; then add class `dark` on `<html>` via `page.evaluate` and assert the page body background is not pure white (`getComputedStyle(document.body).backgroundColor !== 'rgb(255, 255, 255)'`).
-- [ ] **Step 2:** Run the design-system delivery checklist (`docs/design/design-system.md`, bottom) against every component built in this slice; fix violations (hard-coded colors, missing `tabular-nums`, missing `motion-reduce`, focus rings).
-- [ ] **Step 3:** Update `CLAUDE.md` Architecture with: `src/lib/client/` (api, format, sync store) and `src/lib/components/today/`.
-- [ ] **Step 4: Full verification** — `npm run check && npm run test:unit && npm run test:e2e` all green.
-- [ ] **Step 5: Commit** — `docs: document today-screen client architecture` (plus any `fix:` commits from the checklist pass).
+- [x] **Step 1: Write the viewport/dark e2e** — `e2e/today-a11y.spec.ts`: for widths 320, 390, 768: `page.setViewportSize`, goto `/`, assert no horizontal scroll (`document.documentElement.scrollWidth <= innerWidth`), the three quick-action buttons have bounding boxes ≥ 48 px tall; then add class `dark` on `<html>` via `page.evaluate` and assert the page body background is not pure white (`getComputedStyle(document.body).backgroundColor !== 'rgb(255, 255, 255)'`).
+- [x] **Step 2:** Run the design-system delivery checklist (`docs/design/design-system.md`, bottom) against every component built in this slice; fix violations (hard-coded colors, missing `tabular-nums`, missing `motion-reduce`, focus rings).
+- [x] **Step 3:** Update `CLAUDE.md` Architecture with: `src/lib/client/` (api, format, sync store) and `src/lib/components/today/`.
+- [x] **Step 4: Full verification** — `npm run check && npm run test:unit && npm run test:e2e` all green.
+- [x] **Step 5: Commit** — `docs: document today-screen client architecture` (plus any `fix:` commits from the checklist pass).
 
 ---
 

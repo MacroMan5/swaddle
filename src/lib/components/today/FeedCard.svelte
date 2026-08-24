@@ -103,7 +103,7 @@
 				type="button"
 				disabled={babyId === null}
 				onclick={handleNurseTap}
-				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				<Heart size={16} aria-hidden="true" />
 				{nursingActive ? 'En cours' : 'Allaiter'}
@@ -112,7 +112,7 @@
 				type="button"
 				disabled={babyId === null}
 				onclick={() => (bottleOpen = true)}
-				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				<Milk size={16} aria-hidden="true" />
 				Biberon
@@ -121,7 +121,7 @@
 				type="button"
 				disabled={babyId === null}
 				onclick={handlePumpTap}
-				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				<Wind size={16} aria-hidden="true" />
 				{pumpActive ? 'En cours' : 'Tirage'}
@@ -133,7 +133,7 @@
 					type="button"
 					disabled={pending}
 					onclick={() => startNursing('left')}
-					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 				>
 					Gauche
 				</button>
@@ -141,7 +141,7 @@
 					type="button"
 					disabled={pending}
 					onclick={() => startNursing('right')}
-					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 				>
 					Droite
 				</button>

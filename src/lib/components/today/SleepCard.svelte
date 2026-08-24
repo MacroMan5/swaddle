@@ -64,7 +64,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={start}
-				class="bg-surface-raised text-sleep-700 min-h-12 rounded-control px-4 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-sleep-700 min-h-12 rounded-control px-4 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				Commencer le sommeil
 			</button>

@@ -95,7 +95,7 @@
 							type="button"
 							aria-pressed={milkType === option.value}
 							onclick={() => (milkType = option.value)}
-							class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] motion-reduce:active:scale-100 {milkType ===
+							class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {milkType ===
 							option.value
 								? 'border-feed-500 bg-feed-100 text-feed-700'
 								: 'border-border bg-surface-raised text-ink-muted'}"
@@ -130,7 +130,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={submit}
-				class="bg-primary text-on-primary min-h-12 rounded-control px-4 py-2 font-semibold active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-primary text-on-primary min-h-12 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				{pending ? 'Enregistrement…' : 'Enregistrer'}
 			</button>

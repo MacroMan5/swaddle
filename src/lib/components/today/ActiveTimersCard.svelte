@@ -108,7 +108,7 @@
 								type="button"
 								disabled={isPending(event.id)}
 								onclick={() => switchSide(event)}
-								class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+								class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Changer de côté
 							</button>
@@ -117,7 +117,7 @@
 									type="button"
 									disabled={isPending(event.id)}
 									onclick={() => resume(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 								>
 									Reprendre
 								</button>
@@ -126,7 +126,7 @@
 									type="button"
 									disabled={isPending(event.id)}
 									onclick={() => pause(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 								>
 									Pause
 								</button>
@@ -135,7 +135,7 @@
 								type="button"
 								disabled={isPending(event.id)}
 								onclick={() => finishNursing(event)}
-								class="bg-primary text-on-primary min-h-12 flex-1 rounded-control px-2 py-2 text-sm font-semibold active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+								class="bg-primary text-on-primary min-h-12 flex-1 rounded-control px-2 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Terminer
 							</button>
@@ -155,7 +155,7 @@
 								type="button"
 								disabled={isPending(event.id) || !pumpVolumes[event.id]}
 								onclick={() => finishPump(event)}
-								class="bg-primary text-on-primary min-h-12 ml-auto rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+								class="bg-primary text-on-primary min-h-12 ml-auto rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Terminer
 							</button>
@@ -165,7 +165,7 @@
 							type="button"
 							disabled={isPending(event.id)}
 							onclick={() => finishSleep(event)}
-							class="bg-primary text-on-primary min-h-12 rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+							class="bg-primary text-on-primary min-h-12 rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 						>
 							Réveillé
 						</button>

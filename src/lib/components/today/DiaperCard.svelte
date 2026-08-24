@@ -83,7 +83,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={() => record(true, false)}
-				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				Pipi
 			</button>
@@ -91,7 +91,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={() => record(false, true)}
-				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				Caca
 			</button>
@@ -99,7 +99,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={() => record(true, true)}
-				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-surface-raised text-diaper-700 min-h-12 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				Les deux
 			</button>

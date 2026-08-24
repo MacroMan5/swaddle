@@ -17,7 +17,7 @@ export default defineConfig({
 		})
 	],
 	test: {
-		// e2e/ contient les specs Playwright (npm run test:e2e), pas des tests Vitest.
+		// e2e/ holds Playwright specs (npm run test:e2e), not Vitest tests.
 		exclude: ['e2e/**', 'node_modules/**']
 	}
 });

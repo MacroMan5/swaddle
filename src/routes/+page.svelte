@@ -17,6 +17,6 @@
 		<Card.Title class="flex items-center gap-2"><Baby size={20} /> Swaddle</Card.Title>
 	</Card.Header>
 	<Card.Content>
-		<Button class="min-h-12">Bouton de test (≥ 48 px)</Button>
+		<Button>Bouton de test</Button>
 	</Card.Content>
 </Card.Root>

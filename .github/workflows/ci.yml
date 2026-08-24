@@ -7,8 +7,8 @@ on:
 
 jobs:
   test:
-    # Runner auto-hébergé Windows (swaddle-win) — plus de minutes GitHub-hosted.
-    # `--with-deps` est Linux-only : sur Windows, installer chromium sans ce flag.
+    # Self-hosted Windows runner (swaddle-win) — no GitHub-hosted minutes left.
+    # `--with-deps` is Linux-only: on Windows, install chromium without it.
     runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4

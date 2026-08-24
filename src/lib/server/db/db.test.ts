@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { migrate, migrations } from './migrations';
 import { openDb } from './index';
 
@@ -40,8 +43,15 @@ describe('migrations', () => {
 
 describe('openDb', () => {
 	it('opens in WAL mode with foreign keys on', () => {
-		const db = openDb(':memory:');
-		// :memory: reste en mode 'memory' ; foreign_keys est le contrat vérifiable
-		expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+		// A real file is required: ':memory:' databases report journal_mode 'memory'
+		const dir = mkdtempSync(join(tmpdir(), 'swaddle-db-'));
+		const db = openDb(join(dir, 'test.db'));
+		try {
+			expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+			expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+		} finally {
+			db.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

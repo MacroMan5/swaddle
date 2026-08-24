@@ -7,7 +7,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-	/* Sémantiques — redéfinis en sombre via les variables :root/.dark ci-dessous */
+	/* Semantic tokens — dark values come from the :root/.dark variables below */
 	--color-surface: var(--surface);
 	--color-surface-raised: var(--surface-raised);
 	--color-ink: var(--ink);
@@ -18,7 +18,7 @@
 	--color-accent: var(--accent);
 	--color-danger: var(--danger);
 
-	/* Catégories (design-system.md : la couleur renforce, icône + libellé portent le sens) */
+	/* Category palettes (design-system.md: color reinforces; icon + label carry meaning) */
 	--color-feed-100: var(--feed-100);
 	--color-feed-500: #f59e0b;
 	--color-feed-700: var(--feed-700);
@@ -36,9 +36,9 @@
 	--font-serif: 'Lora', Georgia, serif;
 }
 
-/* shadcn-svelte (style "nova", base color neutral) — variables consommées par les
-   composants $lib/components/ui/*. --primary/--border/--accent/--on-primary sont
-   déjà couverts par nos tokens ci-dessus. */
+/* shadcn-svelte ("nova" style, neutral base color) — variables consumed by the
+   $lib/components/ui/* components. --primary/--border/--accent/--on-primary are
+   already covered by our tokens above. */
 @theme {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
@@ -89,9 +89,9 @@
 	--input: oklch(0.922 0 0);
 }
 
-/* Fait pointer les variables shadcn vers nos sémantiques — pas de valeurs en dur
-   (voir docs/design/design-system.md). --primary et --border portent déjà les
-   mêmes noms que nos tokens ci-dessus : pas de redéfinition ici. */
+/* Point the shadcn variables at our semantic tokens — no hard-coded values
+   (see docs/design/design-system.md). --primary and --border already share
+   their names with our tokens above: no redefinition here. */
 :root {
 	--background: var(--surface);
 	--foreground: var(--ink);
@@ -103,7 +103,7 @@
 	--ring: var(--primary);
 }
 
-/* Mode sombre nocturne : désaturé, jamais de blanc ni de noir purs (NFR-005) */
+/* Night-friendly dark mode: desaturated, never pure white or black (NFR-005) */
 .dark {
 	--surface: #15151a;
 	--surface-raised: #1e1e25;

@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 
-// Une entrée par version de schéma. Ne JAMAIS modifier une migration publiée —
-// en ajouter une nouvelle (les installations existantes migrent par user_version).
+// One entry per schema version. NEVER edit a published migration — append a new
+// one instead (existing installations migrate based on user_version).
 export const migrations: string[] = [
 	`
 	CREATE TABLE household (

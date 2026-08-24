@@ -45,6 +45,10 @@ test('FR-018: a failed bottle write keeps the input, lets the user retry, and on
 	const { events } = await (await request.get('/api/events?babyId=baby-1')).json();
 	const bottle = events.find((e: { type: string }) => e.type === 'bottle');
 	expect(bottle.details).toMatchObject({ milkType: 'formula', volumeMl: 90 });
+
+	// Leaves the shared seeded server clean for other specs (e.g. history.spec.ts
+	// sums today's bottle volumes and would otherwise pick up this 90 ml).
+	await request.delete(`/api/events/${bottle.id}`);
 });
 
 test('FR-018: a failed caregiver add keeps the input and lets the user retry', async ({
@@ -83,5 +87,9 @@ test('FR-018: a failed caregiver add keeps the input and lets the user retry', a
 	await expect(page.getByRole('list').getByText(name)).toBeVisible();
 
 	const { caregivers } = await (await request.get('/api/caregivers')).json();
-	expect(caregivers.some((c: { name: string }) => c.name === name)).toBe(true);
+	const created = caregivers.find((c: { name: string }) => c.name === name);
+	expect(created).toBeTruthy();
+
+	// Leaves the shared seeded server clean for other specs.
+	await request.delete(`/api/caregivers/${created.id}`);
 });

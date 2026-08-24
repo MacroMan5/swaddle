@@ -3,8 +3,8 @@
 	// for durational events, ticks for point events. Category tint plus an icon
 	// per lane, so lanes read without relying on color alone.
 	import { Milk, Droplets, Moon } from '@lucide/svelte';
-	import { localDayKey } from '$lib/client/summaries';
 	import { formatElapsed, nursingDurationMs } from '$lib/client/format';
+	import { wallClockMinutesOf } from './timelinePosition';
 	import type { BottleDetails, EventDTO, NursingDetails } from '$lib/client/types';
 
 	let { events, dayKey, nowMs }: { events: EventDTO[]; dayKey: string; nowMs: number } = $props();
@@ -15,14 +15,11 @@
 		{ key: 'sleep' as const, label: 'Sommeil', icon: Moon, bar: 'bg-sleep-500', tint: 'bg-sleep-100' }
 	];
 
-	function dayStartMs(): number {
-		const [y, m, d] = dayKey.split('-').map(Number);
-		return new Date(y, m - 1, d).getTime();
-	}
-
-	/** Minutes since local midnight of `dayKey`, clipped to the visible 24 h band. */
+	// DST-safe: positions read the wall clock directly (see timelinePosition.ts)
+	// rather than dividing elapsed-minutes-since-midnight by a fixed 1440, which
+	// drifts on a spring-forward (23 h) or fall-back (25 h) day (review item 8).
 	function minutesOf(ms: number): number {
-		return Math.min(1440, Math.max(0, (ms - dayStartMs()) / 60_000));
+		return wallClockMinutesOf(ms, dayKey);
 	}
 
 	type Block = { id: string; startPct: number; widthPct: number; label: string; point: boolean };

@@ -1,0 +1,10 @@
+node_modules
+build
+.svelte-kit
+data
+.playwright-data
+test-results
+docs
+deploy
+.git
+.github

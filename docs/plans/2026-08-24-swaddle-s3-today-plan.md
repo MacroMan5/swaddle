@@ -307,10 +307,10 @@ test('bottle sheet records type, volume and rejects a 1500 ml volume inline', as
 
 Note: the first test also exercises Task 6's ActiveTimersCard controls — implement Tasks 5 and 6 against this same spec; it goes green at the end of Task 6.
 
-- [ ] **Step 2: Run to verify failure.**
-- [ ] **Step 3: Implement** FeedCard + BottleSheet + PumpSheet per Interfaces (bottle success also shows the UndoToast with « Biberon enregistré »).
-- [ ] **Step 4:** `npm run check` clean; bottle test may still fail on the active-card assertions — acceptable until Task 6.
-- [ ] **Step 5: Commit** — `feat: add feeding card with nursing start and bottle/pump sheets`
+- [x] **Step 2: Run to verify failure.**
+- [x] **Step 3: Implement** FeedCard + BottleSheet + PumpSheet per Interfaces (bottle success also shows the UndoToast with « Biberon enregistré »).
+- [x] **Step 4:** `npm run check` clean; bottle test may still fail on the active-card assertions — acceptable until Task 6.
+- [x] **Step 5: Commit** — `feat: add feeding card with nursing start and bottle/pump sheets`
 
 ---
 

@@ -3,6 +3,7 @@
 	import { listBabies } from '$lib/client/api';
 	import { SyncStore } from '$lib/client/sync.svelte';
 	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
+	import FeedCard from '$lib/components/today/FeedCard.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 
 	const store = new SyncStore();
@@ -36,6 +37,7 @@
 		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
 	{/if}
 
+	<FeedCard {babyId} {caregiverId} onSaved={handleSaved} />
 	<DiaperCard {babyId} {caregiverId} onSaved={handleSaved} />
 </div>
 

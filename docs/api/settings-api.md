@@ -185,3 +185,28 @@ ne reconnaît le chemin d'exemption de l'autre.
 sans session, et il ne renvoie aucune donnée sensible. Les ressources
 `/_app/*` (préfixe, seule exception à la correspondance exacte) et
 `/favicon.ico` sont également toujours accessibles.
+
+## Informations du serveur
+
+### `GET /api/server-info`
+
+Bloc « Ce serveur » de l'écran Réglages. Derrière la porte PIN, comme le reste
+de l'API.
+
+```json
+{
+	"address": "http://192.168.1.20:3000",
+	"connectedDevices": 2,
+	"lastBackupAt": "2026-08-24T09:12:31.000Z"
+}
+```
+
+- `address` — l'origine de la requête (`url.origin`), donc l'adresse par
+  laquelle l'appareil joint réellement le serveur.
+- `connectedDevices` — nombre de flux SSE ouverts (`/api/stream`). Deux
+  onglets comptent pour deux « appareils » : c'est un ordre de grandeur, pas
+  un inventaire.
+- `lastBackupAt` — `mtime` du plus récent instantané `*.sqlite` sous
+  `DATA_DIR/backups`, ou `null` si aucune sauvegarde n'a jamais été prise.
+
+→ `200` toujours (les champs dégradent en `null`/`0`, jamais d'erreur métier).

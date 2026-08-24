@@ -4,19 +4,10 @@
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { errorMessage } from '$lib/errors';
+	import { CAREGIVER_COLORS } from '$lib/palette';
 
 	let { data } = $props();
-
-	const CAREGIVER_COLORS = [
-		'#DB2777',
-		'#0284C7',
-		'#F59E0B',
-		'#14B8A6',
-		'#6366F1',
-		'#DC2626',
-		'#059669',
-		'#7C3AED'
-	];
 
 	async function postJson(url: string, method: string, body?: unknown) {
 		const res = await fetch(url, {
@@ -41,7 +32,7 @@
 			color: newCaregiverColor
 		});
 		if (!ok) {
-			caregiverError = value.error?.message ?? 'Une erreur est survenue.';
+			caregiverError = errorMessage(value);
 			return;
 		}
 		newCaregiverName = '';
@@ -51,11 +42,39 @@
 	async function deleteCaregiver(id: string) {
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'DELETE');
 		if (!ok) {
-			caregiverError = value?.error?.message === 'in_use'
-				? 'Impossible : des activités y sont liées.'
-				: (value?.error?.message ?? 'Une erreur est survenue.');
+			caregiverError = errorMessage(value);
 			return;
 		}
+		await invalidateAll();
+	}
+
+	let editingCaregiverId = $state<string | null>(null);
+	let editCaregiverName = $state('');
+	let editCaregiverColor = $state('');
+
+	function startEditCaregiver(cg: { id: string; name: string; color: string }) {
+		editingCaregiverId = cg.id;
+		editCaregiverName = cg.name;
+		editCaregiverColor = cg.color;
+		caregiverError = null;
+	}
+
+	function cancelEditCaregiver() {
+		editingCaregiverId = null;
+	}
+
+	async function saveCaregiver(event: SubmitEvent, id: string) {
+		event.preventDefault();
+		caregiverError = null;
+		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'PATCH', {
+			name: editCaregiverName,
+			color: editCaregiverColor
+		});
+		if (!ok) {
+			caregiverError = errorMessage(value);
+			return;
+		}
+		editingCaregiverId = null;
 		await invalidateAll();
 	}
 
@@ -114,7 +133,7 @@
 			currentPin: currentPin || undefined
 		});
 		if (!ok) {
-			pinError = value.error?.message ?? 'Une erreur est survenue.';
+			pinError = errorMessage(value);
 			return;
 		}
 		pinEnabled = true;
@@ -130,7 +149,7 @@
 		pinMessage = null;
 		const { ok, value } = await postJson('/api/household/pin', 'DELETE', { currentPin });
 		if (!ok) {
-			pinError = value.error?.message ?? 'Une erreur est survenue.';
+			pinError = errorMessage(value);
 			return;
 		}
 		pinEnabled = false;
@@ -164,7 +183,7 @@
 		const { ok, value } = await postJson('/api/restore', 'POST', parsed);
 		input.value = '';
 		if (!ok) {
-			restoreError = value.error?.message ?? 'Une erreur est survenue.';
+			restoreError = errorMessage(value);
 			return;
 		}
 		const { babies, caregivers, events } = value.restored;
@@ -192,12 +211,54 @@
 		<Card.Content class="flex flex-col gap-4">
 			<ul class="flex flex-col gap-2">
 				{#each data.caregivers as cg (cg.id)}
-					<li class="flex items-center gap-2">
-						<span class="size-4 rounded-full" style:background-color={cg.color}></span>
-						<span class="flex-1 text-ink">{cg.name}</span>
-						<Button variant="ghost" class="min-h-12" onclick={() => deleteCaregiver(cg.id)}
-							>Supprimer</Button
-						>
+					<li class="flex flex-col gap-2">
+						{#if editingCaregiverId === cg.id}
+							<form class="flex flex-col gap-2" onsubmit={(e) => saveCaregiver(e, cg.id)}>
+								<Label for={`edit-caregiver-name-${cg.id}`}>Nouveau nom pour {cg.name}</Label>
+								<Input
+									id={`edit-caregiver-name-${cg.id}`}
+									class="min-h-12 text-base"
+									bind:value={editCaregiverName}
+									required
+								/>
+								<div class="flex flex-wrap gap-2">
+									{#each CAREGIVER_COLORS as color (color)}
+										<button
+											type="button"
+											class="size-12 rounded-full border-2"
+											style:background-color={color}
+											style:border-color={editCaregiverColor === color ? 'var(--ink)' : 'transparent'}
+											aria-label={color}
+											aria-pressed={editCaregiverColor === color}
+											onclick={() => (editCaregiverColor = color)}
+										></button>
+									{/each}
+								</div>
+								<div class="flex gap-2">
+									<Button type="submit" class="min-h-12">Enregistrer</Button>
+									<Button
+										type="button"
+										variant="outline"
+										class="min-h-12"
+										onclick={cancelEditCaregiver}>Annuler</Button
+									>
+								</div>
+							</form>
+						{:else}
+							<div class="flex items-center gap-2">
+								<span class="size-4 rounded-full" style:background-color={cg.color}></span>
+								<span class="flex-1 text-ink">{cg.name}</span>
+								<Button
+									variant="outline"
+									class="min-h-12"
+									aria-label={`Modifier ${cg.name}`}
+									onclick={() => startEditCaregiver(cg)}>Modifier</Button
+								>
+								<Button variant="ghost" class="min-h-12" onclick={() => deleteCaregiver(cg.id)}
+									>Supprimer</Button
+								>
+							</div>
+						{/if}
 					</li>
 				{/each}
 			</ul>

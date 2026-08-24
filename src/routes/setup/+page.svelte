@@ -4,17 +4,8 @@
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-
-	const CAREGIVER_COLORS = [
-		'#DB2777',
-		'#0284C7',
-		'#F59E0B',
-		'#14B8A6',
-		'#6366F1',
-		'#DC2626',
-		'#059669',
-		'#7C3AED'
-	];
+	import { errorMessage } from '$lib/errors';
+	import { CAREGIVER_COLORS } from '$lib/palette';
 
 	let { data } = $props();
 
@@ -42,7 +33,7 @@
 			});
 			const data = await res.json();
 			if (!res.ok) {
-				babyError = data.error?.message ?? 'Une erreur est survenue.';
+				babyError = errorMessage(data);
 				return;
 			}
 			step = 2;
@@ -63,7 +54,7 @@
 			});
 			const data = await res.json();
 			if (!res.ok) {
-				caregiverError = data.error?.message ?? 'Une erreur est survenue.';
+				caregiverError = errorMessage(data);
 				return;
 			}
 			localStorage.setItem('swaddle.caregiverId', data.id);

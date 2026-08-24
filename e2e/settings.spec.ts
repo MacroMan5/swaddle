@@ -9,8 +9,15 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	await page.getByRole('button', { name: 'Ajouter un aidant' }).click();
 	await expect(page.getByRole('list').getByText('Mamie')).toBeVisible();
 
-	// Cet appareil — select the new caregiver as the device user.
-	await page.getByRole('radio', { name: 'Mamie' }).click();
+	// Aidants — rename it inline.
+	await page.getByRole('button', { name: 'Modifier Mamie' }).click();
+	await page.getByLabel('Nouveau nom pour Mamie').fill('Mamie Renommée');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByRole('list').getByText('Mamie Renommée')).toBeVisible();
+	await expect(page.getByRole('list').getByText('Mamie', { exact: true })).toHaveCount(0);
+
+	// Cet appareil — select the renamed caregiver as the device user.
+	await page.getByRole('radio', { name: 'Mamie Renommée' }).click();
 	const stored = await page.evaluate(() => localStorage.getItem('swaddle.caregiverId'));
 	expect(stored).toBeTruthy();
 
@@ -37,6 +44,6 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 
 	// Clean up the caregiver created by this spec.
 	const caregivers = await (await page.request.get('/api/caregivers')).json();
-	const mamie = caregivers.caregivers.find((c: { name: string }) => c.name === 'Mamie');
+	const mamie = caregivers.caregivers.find((c: { name: string }) => c.name === 'Mamie Renommée');
 	if (mamie) await page.request.delete(`/api/caregivers/${mamie.id}`);
 });

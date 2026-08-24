@@ -355,6 +355,19 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		store.applyChange(sync('created', makeEvent()));
 		expect(received).toHaveLength(0);
 	});
+
+	it('a subscription registered before start() survives start()s internal reset (history mounts before the baby id resolves)', () => {
+		// start() always calls an internal reset first — even on a fresh store,
+		// where #alive is false — so a caller that subscribes in onMount() before
+		// awaiting listBabies()/start() must not have that subscription wiped.
+		const received: unknown[] = [];
+		const fresh = new SyncStore();
+		fresh.subscribeChanges((change) => received.push(change));
+		fresh.start('baby-1');
+		fresh.applyChange(sync('created', makeEvent()));
+		expect(received).toHaveLength(1);
+		fresh.stop();
+	});
 });
 
 describe('start() idempotency and cleanup (browser path, item 1)', () => {

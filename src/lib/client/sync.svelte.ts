@@ -62,7 +62,12 @@ export class SyncStore {
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
 	start(babyId: string): void {
 		if (this.#alive && this.babyId === babyId) return;
-		this.stop();
+		// Transport-only reset: a caller (e.g. history's onMount) may have called
+		// subscribeChanges() before awaiting the baby id and calling start() —
+		// even a *first* start() reaches this branch (#alive starts false) — so
+		// that subscription must survive. Only the full stop() below clears
+		// #changeListeners, for real teardown (+layout.svelte's onDestroy).
+		this.#stopTransport();
 		this.babyId = babyId;
 		this.#alive = true;
 		this.#generation++;
@@ -91,13 +96,17 @@ export class SyncStore {
 	}
 
 	stop(): void {
+		this.#stopTransport();
+		this.#changeListeners.clear();
+	}
+
+	#stopTransport(): void {
 		this.#alive = false;
 		this.#generation++;
 		if (this.#tick !== null) clearInterval(this.#tick);
 		this.#tick = null;
 		this.#source?.close();
 		this.#source = null;
-		this.#changeListeners.clear();
 	}
 
 	/**

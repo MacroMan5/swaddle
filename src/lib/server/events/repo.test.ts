@@ -344,4 +344,23 @@ describe('listEvents overlap mode (history day view, AC-006)', () => {
 		});
 		expect(overlapListing).toHaveLength(0);
 	});
+
+	it('a timer ending exactly at `from` has zero overlap with a half-open [from, to) window', () => {
+		createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T22:00:00.000Z',
+				endedAt: '2026-08-25T00:00:00.000Z' // == from, below
+			})
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing).toHaveLength(0);
+	});
 });

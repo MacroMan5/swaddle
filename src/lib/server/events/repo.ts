@@ -108,7 +108,7 @@ export function listEvents(
 		}
 		if (opts.from) {
 			sql += ` AND (
-				(type IN (${timerPlaceholders}) AND (ended_at IS NULL OR ended_at >= ?))
+				(type IN (${timerPlaceholders}) AND (ended_at IS NULL OR ended_at > ?))
 				OR (type NOT IN (${timerPlaceholders}) AND started_at >= ?)
 			)`;
 			params.push(...TIMER_TYPES, opts.from, ...TIMER_TYPES, opts.from);

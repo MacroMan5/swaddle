@@ -1,7 +1,7 @@
 import adapter from '@sveltejs/adapter-node';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [
@@ -15,5 +15,9 @@ export default defineConfig({
 
 			adapter: adapter()
 		})
-	]
+	],
+	test: {
+		// e2e/ contient les specs Playwright (npm run test:e2e), pas des tests Vitest.
+		exclude: ['e2e/**', 'node_modules/**']
+	}
 });

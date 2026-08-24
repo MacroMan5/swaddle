@@ -251,7 +251,7 @@ test('the toast disappears by itself after 5 s', async ({ page }) => {
   - `BottleSheet` (FR-003): milk type segmented control (Maternel / Préparation / Mixte — last used type preselected via `localStorage 'swaddle.lastMilkType'`), volume input `inputmode="decimal"` with visible label and unit « ml », time input `type="datetime-local"` initialized to now; submit → `createEvent({type:'bottle', …})`; server 400 issues render under the fields (cause + correction, FR-017/FR-018); submit button disabled + spinner while pending.
   - `PumpSheet` (FR-004): side chooser Gauche / Droite / Les deux → `startTimer('pump', {side})`; volume is entered at stop time in the ActiveTimersCard (Task 6).
 
-- [ ] **Step 1: Write the failing e2e** — `e2e/today-nursing.spec.ts`
+- [x] **Step 1: Write the failing e2e** — `e2e/today-nursing.spec.ts`
 
 ```ts
 import { expect, test } from '@playwright/test';

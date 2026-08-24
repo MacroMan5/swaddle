@@ -31,9 +31,12 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+          # Keep the `v` prefix from the git tag (v0.1.0 -> v0.1.0, not 0.1.0):
+          # deploy/docker-compose.yml and the README both pull `:vX.Y.Z`.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=raw,value=latest
 
       - uses: docker/build-push-action@v6
         with:

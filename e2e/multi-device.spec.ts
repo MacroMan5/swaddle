@@ -11,8 +11,12 @@ test('AC-003: sleep started on device A is visible and stoppable on device B; A 
 	browser,
 	request
 }) => {
-	const ctxA = await browser.newContext();
-	const ctxB = await browser.newContext();
+	// `browser.newContext()` inherits the project's `use.baseURL` (verified: a
+	// manually created context resolves `goto('/')` to http://localhost:3000/
+	// without this) — passed explicitly anyway so the spec doesn't rely on
+	// that inheritance being obvious to a future reader.
+	const ctxA = await browser.newContext({ baseURL: 'http://localhost:3000' });
+	const ctxB = await browser.newContext({ baseURL: 'http://localhost:3000' });
 	const pageA = await ctxA.newPage();
 	const pageB = await ctxB.newPage();
 

@@ -328,7 +328,7 @@ Note: the first test also exercises Task 6's ActiveTimersCard controls — imple
   - `ActiveTimersCard` (`data-testid="active-timers"`, hidden when no active timer): one row per active timer — category icon + French label (Allaitement / Tirage / Sommeil), running clock in `tabular-nums` (`formatClock`); nursing rows show current side (Gauche/Droite), effective duration via `nursingDurationMs`, and the paused state (« En pause ») with controls **Changer de côté / Pause|Reprendre / Terminer**; pump rows show a volume input (`inputmode="decimal"`, label « Volume (ml) ») required by **Terminer** (the API rejects a stop without volume); sleep rows show **Réveillé**. All stop/action buttons call the API and rely on the SSE `sync` to update state.
   - `SleepCard` (`bg-sleep-100` family, `moon` icon): shows last completed sleep; one button **Commencer le sommeil** → `startTimer('sleep')`; while a sleep timer is active the button is replaced by the elapsed time + hint « voir en haut » (single CTA per screen; the stop lives in the active card as **Réveillé**).
 
-- [ ] **Step 1: Write the failing e2e** — `e2e/today-sleep.spec.ts`
+- [x] **Step 1: Write the failing e2e** — `e2e/today-sleep.spec.ts`
 
 ```ts
 import { expect, test } from '@playwright/test';
@@ -351,10 +351,10 @@ test('AC-005: a started sleep survives a reload with correct server-based elapse
 });
 ```
 
-- [ ] **Step 2: Run to verify failure.**
-- [ ] **Step 3: Implement** both components per Interfaces.
-- [ ] **Step 4: Run** `npx playwright test e2e/today-sleep.spec.ts e2e/today-nursing.spec.ts` → both files PASS now; `npm run check` clean.
-- [ ] **Step 5: Commit** — `feat: add active timers card and sleep flow`
+- [x] **Step 2: Run to verify failure.**
+- [x] **Step 3: Implement** both components per Interfaces.
+- [x] **Step 4: Run** `npx playwright test e2e/today-sleep.spec.ts e2e/today-nursing.spec.ts` → both files PASS now; `npm run check` clean.
+- [x] **Step 5: Commit** — `feat: add active timers card and sleep flow`
 
 ---
 

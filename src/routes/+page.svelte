@@ -2,8 +2,10 @@
 	import { onDestroy, onMount, setContext } from 'svelte';
 	import { listBabies } from '$lib/client/api';
 	import { SyncStore } from '$lib/client/sync.svelte';
+	import ActiveTimersCard from '$lib/components/today/ActiveTimersCard.svelte';
 	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
 	import FeedCard from '$lib/components/today/FeedCard.svelte';
+	import SleepCard from '$lib/components/today/SleepCard.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 
 	const store = new SyncStore();
@@ -37,8 +39,10 @@
 		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
 	{/if}
 
+	<ActiveTimersCard {babyId} />
 	<FeedCard {babyId} {caregiverId} onSaved={handleSaved} />
 	<DiaperCard {babyId} {caregiverId} onSaved={handleSaved} />
+	<SleepCard {babyId} {caregiverId} />
 </div>
 
 {#if toast}

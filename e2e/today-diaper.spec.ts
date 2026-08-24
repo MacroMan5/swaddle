@@ -28,3 +28,37 @@ test('the toast disappears by itself after 5 s', async ({ page }) => {
 	await expect(page.getByRole('status')).toBeVisible();
 	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
 });
+
+test('a failed undo keeps the toast open with an error and allows retry (FR-018)', async ({
+	page
+}) => {
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Pipi', exact: true }).click();
+	const toast = page.getByRole('status');
+	await expect(toast).toContainText('Couche enregistrée');
+
+	// Force the undo's DELETE to fail exactly once (DELETE is idempotent
+	// server-side, so a real double-delete would not actually fail — this is the
+	// deterministic way to exercise the failure path).
+	let failedOnce = false;
+	await page.route('**/api/events/*', async (route) => {
+		if (route.request().method() === 'DELETE' && !failedOnce) {
+			failedOnce = true;
+			await route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({ error: { code: 'internal', message: 'boom' } })
+			});
+			return;
+		}
+		await route.continue();
+	});
+
+	await toast.getByRole('button', { name: 'Annuler' }).click();
+	await expect(toast.getByRole('alert')).toBeVisible();
+	await expect(toast).toBeVisible(); // stays open on failure, not silently dismissed
+
+	// Retrying succeeds once the route stops failing.
+	await toast.getByRole('button', { name: 'Annuler' }).click();
+	await expect(toast).toBeHidden();
+});

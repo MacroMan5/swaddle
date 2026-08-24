@@ -154,11 +154,11 @@ Implement `api.ts` with the typed helpers listed in Interfaces (import the `Even
   - `stop(): void`; `applyChange(change): void` exposed for unit tests.
 - Design note: keep DOM/EventSource access behind `if (browser)`; the pure state transitions (`applyChange`, offset math, today filtering) are plain methods so Vitest covers them without a DOM.
 
-- [ ] **Step 1: Write the failing tests** — `sync.test.ts` covering the pure parts: `applyChange` insert (today) / ignore (yesterday) / update / delete / restore; timer list membership after a `sync` that sets `endedAt`; `serverOffsetMs` computed from a snapshot `serverTime` 30 s ahead of a fake `Date.now`. Use real `EventDTO` literals (diaper + sleep timer).
-- [ ] **Step 2: Run to verify failure.**
-- [ ] **Step 3: Implement `sync.svelte.ts`** (runes: `$state` fields; `setInterval` guarded by `browser` and cleared in `stop()`; interval ticks `nowMs = Date.now() + this.serverOffsetMs`).
-- [ ] **Step 4: Run to verify pass**, plus `npm run check`.
-- [ ] **Step 5: Commit** — `feat: add reactive SSE sync store`
+- [x] **Step 1: Write the failing tests** — `sync.test.ts` covering the pure parts: `applyChange` insert (today) / ignore (yesterday) / update / delete / restore; timer list membership after a `sync` that sets `endedAt`; `serverOffsetMs` computed from a snapshot `serverTime` 30 s ahead of a fake `Date.now`. Use real `EventDTO` literals (diaper + sleep timer).
+- [x] **Step 2: Run to verify failure.**
+- [x] **Step 3: Implement `sync.svelte.ts`** (runes: `$state` fields; `setInterval` guarded by `browser` and cleared in `stop()`; interval ticks `nowMs = Date.now() + this.serverOffsetMs`).
+- [x] **Step 4: Run to verify pass**, plus `npm run check`.
+- [x] **Step 5: Commit** — `feat: add reactive SSE sync store`
 
 ---
 

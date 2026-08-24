@@ -188,7 +188,7 @@ export function patchEvent(
 			if (!parsed.ok) issues.push(...parsed.issues);
 			else details = parsed.value;
 		}
-		issues.push(...validateDetailsContext({ type: current.type, endedAt, details }, now));
+		issues.push(...validateDetailsContext({ type: current.type, startedAt, endedAt, details }, now));
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid patch', issues);
 
 		return updateEvent(db, id, {
@@ -322,7 +322,10 @@ export function stopTimer(
 		// known here, so FR-017 is enforced on the merged event before writing.
 		const issues = [
 			...validateEventTimes({ type: event.type, startedAt: event.startedAt, endedAt }, new Date()),
-			...validateDetailsContext({ type: event.type, endedAt, details }, new Date())
+			...validateDetailsContext(
+					{ type: event.type, startedAt: event.startedAt, endedAt, details },
+					new Date()
+				)
 		];
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid stop', issues);
 

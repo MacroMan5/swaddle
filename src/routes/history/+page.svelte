@@ -69,7 +69,6 @@
 	let showSkeleton = $state(false);
 	let loadError = $state<string | null>(null);
 	let unsubscribe: (() => void) | null = null;
-	let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Tokens (mirroring SyncStore's #generation) discard a stale response: with
 	// manual-add/edit/delete, the SSE relay and the day/week effects all able to
@@ -86,8 +85,16 @@
 		const token = ++dayFetchToken;
 		loading = true;
 		loadError = null;
-		skeletonTimer = setTimeout(() => {
-			showSkeleton = true;
+		// A per-call timer (not a shared instance variable): with two loadDay()
+		// calls overlapping, a shared timer let one call's finally{} clear the
+		// *other* call's timeout, leaving the first one's orphaned and firing
+		// later — flipping showSkeleton back on for good and hiding an already
+		// up-to-date, correctly merged list behind the skeleton forever. The
+		// callback itself also re-checks the token, so a stale call's timer
+		// (even if it does fire before being cleared) can never touch state a
+		// newer call already owns.
+		const skeletonTimer = setTimeout(() => {
+			if (token === dayFetchToken) showSkeleton = true;
 		}, 300);
 		try {
 			const { from, to } = dayRangeIso(dayKey);
@@ -98,11 +105,11 @@
 			if (token !== dayFetchToken) return;
 			loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
 		} finally {
+			clearTimeout(skeletonTimer);
 			if (token === dayFetchToken) {
 				loading = false;
 				showSkeleton = false;
 			}
-			if (skeletonTimer) clearTimeout(skeletonTimer);
 		}
 	}
 
@@ -147,7 +154,6 @@
 
 	onDestroy(() => {
 		unsubscribe?.();
-		if (skeletonTimer) clearTimeout(skeletonTimer);
 	});
 
 	$effect(() => {

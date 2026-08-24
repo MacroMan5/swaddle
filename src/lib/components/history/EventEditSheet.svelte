@@ -61,7 +61,9 @@
 	let pumpSide = $state<PumpSide>('both');
 	let pee = $state(false);
 	let poo = $state(false);
-	let segments = $state<{ side: Side; startedAt: string; endedAt: string }[]>([]);
+	let segments = $state<{ side: Side; startedAt: string; endedAt: string; error: string | null }[]>(
+		[]
+	);
 
 	let pending = $state(false);
 	let deleting = $state(false);
@@ -100,10 +102,15 @@
 			segments = d.segments.map((s) => ({
 				side: s.side,
 				startedAt: toLocalInputValue(new Date(Date.parse(s.startedAt))),
-				endedAt: s.endedAt === null ? '' : toLocalInputValue(new Date(Date.parse(s.endedAt)))
+				endedAt: s.endedAt === null ? '' : toLocalInputValue(new Date(Date.parse(s.endedAt))),
+				error: null
 			}));
 		}
 	});
+
+	function setSegmentSide(index: number, side: Side): void {
+		segments = segments.map((s, i) => (i === index ? { ...s, side } : s));
+	}
 
 	function handleOpenChange(next: boolean): void {
 		if (!next && isDirty) {
@@ -116,6 +123,18 @@
 
 	function applyIssues(issues: { path: string; message: string }[]): void {
 		for (const issue of issues) {
+			// details.segments.<i>[...] — route to that segment row (review item 7),
+			// e.g. an overlap, out-of-order, or out-of-bounds segment.
+			const segmentMatch = issue.path.match(/^details\.segments\.(\d+)/);
+			if (segmentMatch) {
+				const index = Number(segmentMatch[1]);
+				segments = segments.map((s, i) => (i === index ? { ...s, error: issue.message } : s));
+				continue;
+			}
+			if (issue.path === 'details.segments') {
+				formError = issue.message;
+				continue;
+			}
 			if (issue.path.endsWith('startedAt')) startedAtError = issue.message;
 			else if (issue.path.endsWith('endedAt')) endedAtError = issue.message;
 			else if (issue.path.endsWith('volumeMl')) volumeError = issue.message;
@@ -130,6 +149,7 @@
 		startedAtError = null;
 		endedAtError = null;
 		volumeError = null;
+		segments = segments.map((s) => ({ ...s, error: null }));
 
 		try {
 			let updated: EventDTO;
@@ -347,21 +367,51 @@
 						<span class="text-ink text-base font-medium">Segments</span>
 						{#each segments as segment, i (i)}
 							<div class="border-border bg-surface-raised flex flex-col gap-2 rounded-control border p-2">
-								<span class="text-ink-muted text-base">{segment.side === 'left' ? 'Gauche' : 'Droite'}</span>
+								<div class="grid grid-cols-2 gap-2" role="group" aria-label={`Côté du segment ${i + 1}`}>
+									<button
+										type="button"
+										aria-pressed={segment.side === 'left'}
+										onclick={() => setSegmentSide(i, 'left')}
+										class="min-h-12 rounded-control border px-2 py-1 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {segment.side ===
+										'left'
+											? 'border-feed-500 bg-feed-100 text-feed-700'
+											: 'border-border bg-surface text-ink-muted'}"
+									>
+										Gauche
+									</button>
+									<button
+										type="button"
+										aria-pressed={segment.side === 'right'}
+										onclick={() => setSegmentSide(i, 'right')}
+										class="min-h-12 rounded-control border px-2 py-1 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {segment.side ===
+										'right'
+											? 'border-feed-500 bg-feed-100 text-feed-700'
+											: 'border-border bg-surface text-ink-muted'}"
+									>
+										Droite
+									</button>
+								</div>
 								<div class="flex gap-2">
 									<input
 										type="datetime-local"
 										aria-label={`Début du segment ${i + 1}`}
+										aria-invalid={segment.error !== null}
 										bind:value={segment.startedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base"
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base {segment.error
+											? 'border-danger'
+											: ''}"
 									/>
 									<input
 										type="datetime-local"
 										aria-label={`Fin du segment ${i + 1}`}
+										aria-invalid={segment.error !== null}
 										bind:value={segment.endedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base"
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base {segment.error
+											? 'border-danger'
+											: ''}"
 									/>
 								</div>
+								{#if segment.error}<p class="text-danger text-base" role="alert">{segment.error}</p>{/if}
 							</div>
 						{/each}
 						{#if startedAtError}<p class="text-danger text-base" role="alert">{startedAtError}</p>{/if}

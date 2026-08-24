@@ -264,6 +264,121 @@ describe('patchEvent merges and validates atomically', () => {
 	});
 });
 
+describe('patchEvent validates nursing segments (review item 7)', () => {
+	function completedNursing(): { id: string } {
+		return createEvent(
+			db,
+			bottle({
+				type: 'nursing',
+				startedAt: '2026-08-23T11:00:00.000Z',
+				endedAt: '2026-08-23T11:30:00.000Z',
+				details: {
+					segments: [
+						{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' },
+						{ side: 'right', startedAt: '2026-08-23T11:12:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+					]
+				}
+			})
+		);
+	}
+
+	it('rejects overlapping segments', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						segments: [
+							{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:15:00.000Z' },
+							// Starts before the first segment ends: overlap.
+							{ side: 'right', startedAt: '2026-08-23T11:10:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+						]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects out-of-order segments (second segment starts before the first)', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						segments: [
+							{ side: 'left', startedAt: '2026-08-23T11:15:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' },
+							{ side: 'right', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' }
+						]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects a segment starting before the session started', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						// Session starts 11:00; this segment starts 10:55.
+						segments: [{ side: 'left', startedAt: '2026-08-23T10:55:00.000Z', endedAt: '2026-08-23T11:10:00.000Z' }]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('rejects a segment ending after the session ended', () => {
+		const { id } = completedNursing();
+		expect(() =>
+			patchEvent(
+				db,
+				id,
+				{
+					details: {
+						// Session ends 11:30; this segment ends 11:45.
+						segments: [{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:45:00.000Z' }]
+					}
+				},
+				new Date()
+			)
+		).toThrowError(RepoError);
+	});
+
+	it('accepts chronological, non-overlapping, contained segments', () => {
+		const { id } = completedNursing();
+		const patched = patchEvent(
+			db,
+			id,
+			{
+				details: {
+					segments: [
+						{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:05:00.000Z' },
+						{ side: 'right', startedAt: '2026-08-23T11:05:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+					]
+				}
+			},
+			new Date()
+		);
+		expect(patched.details).toEqual({
+			segments: [
+				{ side: 'left', startedAt: '2026-08-23T11:00:00.000Z', endedAt: '2026-08-23T11:05:00.000Z' },
+				{ side: 'right', startedAt: '2026-08-23T11:05:00.000Z', endedAt: '2026-08-23T11:30:00.000Z' }
+			]
+		});
+	});
+});
+
 describe('nursing action hardening', () => {
 	it('switch-side ignores a client-supplied side and always switches', () => {
 		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });

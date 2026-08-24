@@ -489,7 +489,8 @@
 				type="file"
 				accept=".json"
 				class="sr-only"
-				aria-label="Restaurer depuis un fichier"
+				tabindex="-1"
+				aria-hidden="true"
 				onchange={restoreFile}
 			/>
 			<Button variant="outline" class="min-h-12" onclick={() => restoreInput?.click()}

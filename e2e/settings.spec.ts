@@ -65,7 +65,9 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	// The native file input is visually hidden (browser-chrome English widget);
 	// the styled button is the visible control and forwards clicks to it.
 	await expect(page.getByRole('button', { name: 'Restaurer depuis un fichier…' })).toBeVisible();
-	await expect(page.getByLabel('Restaurer depuis un fichier')).toBeAttached();
+	// aria-hidden + tabindex=-1: the input is out of the tab order and the
+	// accessibility tree, so target it by id rather than by accessible name.
+	await expect(page.locator('#restore-file')).toBeAttached();
 
 	// Clean up the caregiver created by this spec.
 	const caregivers = await (await page.request.get('/api/caregivers')).json();

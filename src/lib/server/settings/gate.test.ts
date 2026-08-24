@@ -3,8 +3,8 @@ import { hashPin, sessionToken } from './auth';
 import { gateDecision } from './gate';
 
 describe('gateDecision', () => {
-	it('is always ok for /api/auth/pin, /api/health, /_app/ and /favicon', () => {
-		for (const pathname of ['/api/auth/pin', '/api/health', '/_app/immutable/x.js', '/favicon.ico']) {
+	it('is always ok for /api/health, /_app/ and /favicon.ico (exact/prefix allowlist)', () => {
+		for (const pathname of ['/api/health', '/_app/immutable/x.js', '/favicon.ico']) {
 			expect(
 				gateDecision({ pathname, setupComplete: false, pinHash: 'x', sessionCookie: undefined })
 			).toBe('ok');
@@ -66,5 +66,34 @@ describe('gateDecision', () => {
 		expect(
 			gateDecision({ pathname: '/', setupComplete: true, pinHash: null, sessionCookie: undefined })
 		).toBe('ok');
+	});
+
+	// Full matrix: setup incomplete AND a pin is set (no valid session). The PIN
+	// gate must win over the setup gate here, or two things break: an API
+	// caller with no session could reach setup-wizard-exempt routes without a
+	// pin, and pages would redirect-loop (/setup -> /pin -> /setup -> ...)
+	// because neither gate alone recognizes the other's exempt path.
+	describe('setupComplete: false AND a pin is set (no valid session)', () => {
+		const base = { setupComplete: false, pinHash: 'stored', sessionCookie: undefined } as const;
+
+		it('/setup → to-pin (must unlock before continuing setup)', () => {
+			expect(gateDecision({ ...base, pathname: '/setup' })).toBe('to-pin');
+		});
+
+		it('/pin → ok (no redirect loop: the unlock page always loads)', () => {
+			expect(gateDecision({ ...base, pathname: '/pin' })).toBe('ok');
+		});
+
+		it('/api/events → to-pin (401 pin_required, not silently allowed)', () => {
+			expect(gateDecision({ ...base, pathname: '/api/events' })).toBe('to-pin');
+		});
+
+		it('/api/stream → to-pin', () => {
+			expect(gateDecision({ ...base, pathname: '/api/stream' })).toBe('to-pin');
+		});
+
+		it('/api/auth/pin → ok (must be reachable to attempt unlock)', () => {
+			expect(gateDecision({ ...base, pathname: '/api/auth/pin' })).toBe('ok');
+		});
 	});
 });

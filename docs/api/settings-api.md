@@ -159,17 +159,28 @@ snapshot: string }` · `400 validation_failed`.
 
 ## Portes serveur — `hooks.server.ts` (FR-015, FR-016)
 
-Deux portes s'appliquent à chaque requête, dans cet ordre :
+Deux portes s'appliquent à chaque requête, **le code PIN évalué en premier** :
 
-1. **Configuration** : tant qu'aucun bébé et aucun aidant n'existent, les
+1. **Code PIN** : si un code est actif et qu'aucune session valide n'est
+   présente, les pages sont redirigées vers `/pin` (303) ; les appels API
+   reçoivent `401 pin_required` (FR-015 : le code protège l'ensemble de
+   l'application, y compris l'API) — sauf `/pin` lui-même et
+   `POST /api/auth/pin`, toujours accessibles pour que le déverrouillage soit
+   possible.
+2. **Configuration** : tant qu'aucun bébé et aucun aidant n'existent, les
    pages sont redirigées vers `/setup` (303) — sauf `/setup` lui-même et les
    routes API dont l'assistant a besoin (`/api/babies`, `/api/caregivers`,
    `/api/household`). Cette porte ne bloque **jamais** `/api/*` : les autres
    appels API restent disponibles même avant la fin de la configuration.
-2. **Code PIN** : si un code est actif et qu'aucune session valide n'est
-   présente, les pages sont redirigées vers `/pin` (303) ; les appels API
-   reçoivent `401 pin_required` (FR-015 : le code protège l'ensemble de
-   l'application, y compris l'API).
 
-`/api/auth/pin`, `/api/health`, les ressources `/_app/*` et la favicon sont
-toujours accessibles.
+Le code PIN passe avant la configuration : sinon, un appel API pourrait
+contourner la protection PIN dès que la configuration est également
+incomplète (la porte configuration ne bloque jamais `/api/*`), et les pages
+boucleraient (`/setup` → `/pin` → `/setup` → …) puisqu'aucune des deux portes
+ne reconnaît le chemin d'exemption de l'autre.
+
+`/api/health` reste **volontairement public** (`ALWAYS_OK_EXACT` dans
+`gate.ts`, correspondance exacte) : le healthcheck Docker et la CI l'appellent
+sans session, et il ne renvoie aucune donnée sensible. Les ressources
+`/_app/*` (préfixe, seule exception à la correspondance exacte) et
+`/favicon.ico` sont également toujours accessibles.

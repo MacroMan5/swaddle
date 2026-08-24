@@ -10,6 +10,7 @@
 	import type {
 		CaregiverDTO,
 		Details,
+		EventDTO,
 		EventType,
 		MilkType,
 		NursingSegment,
@@ -28,7 +29,9 @@
 		/** Local `datetime-local` default (e.g. noon of the day being viewed). */
 		defaultAt: Date;
 		caregivers: CaregiverDTO[];
-		onSaved: () => void;
+		// The confirmed create response is passed back so the caller can merge it
+		// directly into its own visible list (slice-3 pattern).
+		onSaved: (event: EventDTO) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -161,7 +164,7 @@
 			});
 			store.applyServerEvent(created);
 			open = false;
-			onSaved();
+			onSaved(created);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {

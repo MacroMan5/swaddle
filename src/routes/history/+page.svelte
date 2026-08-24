@@ -13,6 +13,7 @@
 	import DayTimeline from '$lib/components/history/DayTimeline.svelte';
 	import EventEditSheet from '$lib/components/history/EventEditSheet.svelte';
 	import EventList from '$lib/components/history/EventList.svelte';
+	import { removeById, upsertById } from '$lib/components/history/historyList';
 	import ManualAddSheet from '$lib/components/history/ManualAddSheet.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 	import WeekView from '$lib/components/history/WeekView.svelte';
@@ -62,8 +63,19 @@
 	let unsubscribe: (() => void) | null = null;
 	let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Tokens (mirroring SyncStore's #generation) discard a stale response: with
+	// manual-add/edit/delete, the SSE relay and the day/week effects all able to
+	// trigger overlapping fetches, an earlier-issued-but-slower one must never
+	// be allowed to resolve after and clobber a newer one's data (the CI race
+	// behind #19's history-edit flake — see historyList.ts for the companion
+	// direct-merge fix, which is the primary defense; this token guard is
+	// defense in depth against any *other* concurrent refetch still winning).
+	let dayFetchToken = 0;
+	let weekFetchToken = 0;
+
 	async function loadDay(): Promise<void> {
 		if (babyId === null) return;
+		const token = ++dayFetchToken;
 		loading = true;
 		loadError = null;
 		skeletonTimer = setTimeout(() => {
@@ -71,25 +83,34 @@
 		}, 300);
 		try {
 			const { from, to } = dayRangeIso(dayKey);
-			dayEvents = await listEvents(babyId, from, to, true);
+			const fetched = await listEvents(babyId, from, to, true);
+			if (token !== dayFetchToken) return; // superseded by a newer load
+			dayEvents = fetched;
 		} catch (e) {
+			if (token !== dayFetchToken) return;
 			loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
 		} finally {
-			loading = false;
-			showSkeleton = false;
+			if (token === dayFetchToken) {
+				loading = false;
+				showSkeleton = false;
+			}
 			if (skeletonTimer) clearTimeout(skeletonTimer);
 		}
 	}
 
 	async function loadWeek(): Promise<void> {
 		if (babyId === null) return;
+		const token = ++weekFetchToken;
 		try {
 			const monday = mondayOf(dayKey);
 			const { from } = dayRangeIso(monday);
 			const [y, m, d] = monday.split('-').map(Number);
 			const to = new Date(y, m - 1, d + 7).toISOString();
-			weekEvents = await listEvents(babyId, from, to, true);
+			const fetched = await listEvents(babyId, from, to, true);
+			if (token !== weekFetchToken) return; // superseded by a newer load
+			weekEvents = fetched;
 		} catch (e) {
+			if (token !== weekFetchToken) return;
 			loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
 		}
 	}
@@ -162,13 +183,42 @@
 		editOpen = true;
 	}
 
-	function handleSaved(): void {
+	// Direct-merge path (slice-3 pattern): a confirmed HTTP response is applied
+	// to `dayEvents`/`weekEvents` synchronously, the moment the write is
+	// confirmed — never presented as saved only once a background refetch
+	// happens to land (FR-018). `refetchCurrentView()` still runs afterward as
+	// reinforcement (e.g. to pick up whether an edit moved an event out of the
+	// current window), but it is not the only path to a correct list.
+	function mergeEventLocally(event: EventDTO): void {
+		dayEvents = upsertById(dayEvents, event);
+		if (weekEvents.length > 0) weekEvents = upsertById(weekEvents, event);
+	}
+
+	function removeEventLocally(id: string): void {
+		dayEvents = removeById(dayEvents, id);
+		weekEvents = removeById(weekEvents, id);
+	}
+
+	function handleSaved(event: EventDTO): void {
+		mergeEventLocally(event);
 		refetchCurrentView();
 	}
 
-	function handleDeleted(id: string, message: string, onUndo: () => Promise<void>): void {
+	function handleDeleted(event: EventDTO, message: string, onUndo: () => Promise<EventDTO>): void {
+		removeEventLocally(event.id);
 		refetchCurrentView();
-		toasts = [...toasts.filter((t) => t.id !== id), { id, message, onUndo: () => onUndo().finally(refetchCurrentView) }];
+		toasts = [
+			...toasts.filter((t) => t.id !== event.id),
+			{
+				id: event.id,
+				message,
+				onUndo: () =>
+					onUndo().then((restored) => {
+						mergeEventLocally(restored);
+						refetchCurrentView();
+					})
+			}
+		];
 	}
 
 	function dismissToast(id: string): void {

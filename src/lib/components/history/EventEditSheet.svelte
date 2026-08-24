@@ -32,8 +32,11 @@
 		open?: boolean;
 		event: EventDTO | null;
 		caregivers: CaregiverDTO[];
-		onSaved: () => void;
-		onDeleted: (id: string, message: string, onUndo: () => Promise<void>) => void;
+		// Confirmed HTTP responses are passed back so the caller can merge them
+		// directly into its own visible list (slice-3 pattern) — the caller must
+		// not rely solely on a background refetch/relay to reflect its own writes.
+		onSaved: (event: EventDTO) => void;
+		onDeleted: (event: EventDTO, message: string, onUndo: () => Promise<EventDTO>) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -163,7 +166,7 @@
 			}
 			store.applyServerEvent(updated);
 			open = false;
-			onSaved();
+			onSaved(updated);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) applyIssues(e.issues);
 			else formError = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
@@ -181,10 +184,11 @@
 			store.applyServerEvent(deletedEvent, true);
 			const id = event.id;
 			open = false;
-			onDeleted(id, 'Entrée supprimée', async () => {
+			onDeleted(deletedEvent, 'Entrée supprimée', async () => {
 				try {
 					const restored = await restoreEvent(id);
 					store.applyServerEvent(restored);
+					return restored;
 				} catch (e) {
 					throw e instanceof ApiError && e.code === 'timer_conflict'
 						? new Error('Un minuteur du même type est déjà en cours.')

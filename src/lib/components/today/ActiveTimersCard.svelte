@@ -2,12 +2,15 @@
 	import { getContext } from 'svelte';
 	import * as Card from '$lib/components/ui/card';
 	import { Heart, Wind, Moon } from '@lucide/svelte';
-	import { stopTimer, nursingAction, ApiError } from '$lib/client/api';
+	import { stopTimer, ApiError } from '$lib/client/api';
 	import { formatClock, nursingDurationMs } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO, NursingDetails } from '$lib/client/types';
 
-	let { babyId }: { babyId: string | null } = $props();
+	let {
+		babyId,
+		onOpenNursing
+	}: { babyId: string | null; onOpenNursing: () => void } = $props();
 
 	const store = getContext<SyncStore>('sync');
 
@@ -54,20 +57,6 @@
 		} finally {
 			pending = { ...pending, [id]: false };
 		}
-	}
-
-	function pause(event: EventDTO): Promise<void> {
-		return run(event.id, () => nursingAction({ babyId: babyId as string, action: 'pause' }));
-	}
-
-	function resume(event: EventDTO): Promise<void> {
-		return run(event.id, () => nursingAction({ babyId: babyId as string, action: 'resume' }));
-	}
-
-	function switchSide(event: EventDTO): Promise<void> {
-		return run(event.id, () =>
-			nursingAction({ babyId: babyId as string, action: 'switch-side' })
-		);
 	}
 
 	function finishNursing(event: EventDTO): Promise<void> {
@@ -119,30 +108,11 @@
 							<button
 								type="button"
 								disabled={isPending(event.id)}
-								onclick={() => switchSide(event)}
+								onclick={onOpenNursing}
 								class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Changer de côté
 							</button>
-							{#if isPaused(event)}
-								<button
-									type="button"
-									disabled={isPending(event.id)}
-									onclick={() => resume(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
-								>
-									Reprendre
-								</button>
-							{:else}
-								<button
-									type="button"
-									disabled={isPending(event.id)}
-									onclick={() => pause(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
-								>
-									Pause
-								</button>
-							{/if}
 							<button
 								type="button"
 								disabled={isPending(event.id)}

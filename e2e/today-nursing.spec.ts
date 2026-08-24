@@ -7,22 +7,34 @@ test.afterEach(async ({ request }) => {
 		});
 });
 
-test('AC-002: nursing starts in two touches and builds segments', async ({ page, request }) => {
+test('AC-002: nursing starts in two touches and both breasts share one total', async ({
+	page,
+	request
+}) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Allaiter' }).click();
-	await page.getByRole('button', { name: 'Gauche' }).click();
 
-	// Active card appears with a running clock.
+	// One sheet holds both breasts and the shared total.
+	const sheet = page.getByTestId('nursing-sheet');
+	const left = page.getByTestId('nursing-side-left');
+	const right = page.getByTestId('nursing-side-right');
+	await left.click();
+	await expect(sheet).toContainText('Gauche en cours');
+
+	// Switching happens in the same sheet: no round trip through the card.
+	await right.click();
+	await expect(sheet).toContainText('Droite en cours');
+	// Tapping the running breast pauses it; tapping it again resumes.
+	await right.click();
+	await expect(sheet).toContainText('En pause');
+	await right.click();
+	await expect(sheet).toContainText('Droite en cours');
+
+	// The active card still shows the same running session.
 	const active = page.getByTestId('active-timers');
 	await expect(active).toContainText('Allaitement');
-	await expect(active).toContainText('Gauche');
 
-	await active.getByRole('button', { name: 'Changer de côté' }).click();
-	await expect(active).toContainText('Droite');
-	await active.getByRole('button', { name: 'Pause' }).click();
-	await expect(active.getByRole('button', { name: 'Reprendre' })).toBeVisible();
-	await active.getByRole('button', { name: 'Reprendre' }).click();
-	await active.getByRole('button', { name: 'Terminer' }).click();
+	await sheet.getByRole('button', { name: 'Terminer la tétée' }).click();
 	await expect(active).toBeHidden();
 
 	const { timers } = await (await request.get('/api/timers?babyId=baby-1')).json();
@@ -51,24 +63,23 @@ test('bottle sheet records type, volume and rejects a 1500 ml volume inline', as
 	expect(bottle.details).toMatchObject({ milkType: 'formula', volumeMl: 90 });
 });
 
-test('DEC-001: a paused nursing segment does not inflate the displayed duration', async ({
-	page
-}) => {
+test('DEC-001: a paused nursing segment does not inflate the shared total', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Allaiter' }).click();
-	await page.getByRole('button', { name: 'Gauche' }).click();
-	const active = page.getByTestId('active-timers');
-	await expect(active).toContainText('Allaitement');
+	const sheet = page.getByTestId('nursing-sheet');
+	const left = page.getByTestId('nursing-side-left');
+	await left.click();
+	await expect(sheet).toContainText('Gauche en cours');
 
-	await active.getByRole('button', { name: 'Pause' }).click();
-	await expect(active.getByRole('button', { name: 'Reprendre' })).toBeVisible();
+	await left.click(); // pause
+	await expect(sheet).toContainText('En pause');
 	await page.waitForTimeout(2200); // ~2.2 s of wall time excluded while paused
-	await active.getByRole('button', { name: 'Reprendre' }).click();
+	await left.click(); // resume
 	await page.waitForTimeout(300);
 
 	// Well over 2.5 s of wall time has passed since the start, but the paused
-	// window must not show up in the running clock: still under a few seconds.
-	await expect(active).toContainText(/00:0[0-3]/);
+	// window must not show up in the shared total: still under a few seconds.
+	await expect(page.getByTestId('nursing-total')).toContainText(/00:0[0-3]/);
 });
 
 test('pump starts and stops with a volume, closing the active timer', async ({ page, request }) => {

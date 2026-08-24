@@ -2,30 +2,27 @@
 	import { getContext } from 'svelte';
 	import * as Card from '$lib/components/ui/card';
 	import { Heart, Milk, Wind } from '@lucide/svelte';
-	import { startTimer, ApiError } from '$lib/client/api';
 	import { formatElapsed } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
-	import type { Side } from '$lib/client/types';
 	import BottleSheet from './BottleSheet.svelte';
 	import PumpSheet from './PumpSheet.svelte';
 
 	let {
 		babyId,
 		caregiverId,
-		onSaved
+		onSaved,
+		onOpenNursing
 	}: {
 		babyId: string | null;
 		caregiverId: string | null;
 		onSaved: (id: string, message: string, onUndo: () => Promise<void>) => void;
+		onOpenNursing: () => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
 
-	let showSideChooser = $state(false);
 	let bottleOpen = $state(false);
 	let pumpOpen = $state(false);
-	let pending = $state(false);
-	let error = $state<string | null>(null);
 
 	const nursingActive = $derived(store.timers.some((t) => t.type === 'nursing'));
 	const pumpActive = $derived(store.timers.some((t) => t.type === 'pump'));
@@ -63,32 +60,6 @@
 			?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 	}
 
-	function handleNurseTap(): void {
-		if (nursingActive) {
-			scrollToActiveTimers();
-			return;
-		}
-		showSideChooser = !showSideChooser;
-	}
-
-	async function startNursing(side: Side): Promise<void> {
-		if (babyId === null || pending) return;
-		pending = true;
-		error = null;
-		try {
-			// {created:false} adopts an already-running session started elsewhere
-			// (item 6): merge it in immediately either way, since that path emits
-			// no SSE event.
-			const result = await startTimer('nursing', { babyId, caregiverId, side });
-			store.applyServerEvent(result.event);
-			showSideChooser = false;
-		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
-		} finally {
-			pending = false;
-		}
-	}
-
 	function handlePumpTap(): void {
 		if (pumpActive) {
 			scrollToActiveTimers();
@@ -116,7 +87,7 @@
 			<button
 				type="button"
 				disabled={babyId === null}
-				onclick={handleNurseTap}
+				onclick={onOpenNursing}
 				class="bg-surface-raised text-feed-700 flex min-h-12 items-center justify-center gap-1 rounded-control px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 			>
 				<Heart size={16} aria-hidden="true" />
@@ -141,29 +112,6 @@
 				{pumpActive ? 'En cours' : 'Tirage'}
 			</button>
 		</div>
-		{#if showSideChooser}
-			<div class="flex gap-2">
-				<button
-					type="button"
-					disabled={pending}
-					onclick={() => startNursing('left')}
-					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
-				>
-					Gauche
-				</button>
-				<button
-					type="button"
-					disabled={pending}
-					onclick={() => startNursing('right')}
-					class="border-border bg-surface-raised text-ink min-h-12 flex-1 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
-				>
-					Droite
-				</button>
-			</div>
-		{/if}
-		{#if error}
-			<p class="text-danger text-base" role="alert">{error}</p>
-		{/if}
 	</Card.Content>
 </Card.Root>
 

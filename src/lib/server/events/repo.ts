@@ -354,11 +354,14 @@ export function nursingAction(
 			if (openIndex !== -1) throw new RepoError('invalid_state', 'session is not paused');
 			segments.push({ side: opts.side ?? lastSide, startedAt: ts, endedAt: null });
 		} else {
-			// switch-side: close the open segment (if any) and open the other side.
-			// A client-supplied side is ignored: switching always flips the side,
-			// otherwise "switch" could be a no-op on the same breast.
+			// switch-side: close the open segment (if any) and open `side`, which
+			// defaults to the opposite of the last segment. The explicit target
+			// makes the action idempotent across devices: a client acting on a
+			// stale view (another device already switched) must not flip the
+			// session back, so an already-running target side is a no-op.
+			const nextSide: Side = opts.side ?? (lastSide === 'left' ? 'right' : 'left');
+			if (openIndex !== -1 && segments[openIndex].side === nextSide) return event;
 			if (openIndex !== -1) segments[openIndex] = { ...segments[openIndex], endedAt: ts };
-			const nextSide: Side = lastSide === 'left' ? 'right' : 'left';
 			segments.push({ side: nextSide, startedAt: ts, endedAt: null });
 		}
 		return updateEvent(db, event.id, { details: { segments } });

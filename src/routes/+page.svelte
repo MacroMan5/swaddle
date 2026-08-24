@@ -5,6 +5,7 @@
 	import ActiveTimersCard from '$lib/components/today/ActiveTimersCard.svelte';
 	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
 	import FeedCard from '$lib/components/today/FeedCard.svelte';
+	import NursingSheet from '$lib/components/today/NursingSheet.svelte';
 	import SleepCard from '$lib/components/today/SleepCard.svelte';
 	import SummaryCard from '$lib/components/today/SummaryCard.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
@@ -16,6 +17,8 @@
 	let babyId = $state<string | null>(null);
 	let caregiverId = $state<string | null>(null);
 	let loadError = $state<string | null>(null);
+	// Owned here, not by a card: both « En cours » and « Allaiter » open the same sheet.
+	let nursingOpen = $state(false);
 	// Several undo windows can be open at once (item 9): a queue keyed by event id.
 	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
 
@@ -66,17 +69,24 @@
 		</div>
 	{/if}
 
-	<ActiveTimersCard {babyId} />
+	<ActiveTimersCard {babyId} onOpenNursing={() => (nursingOpen = true)} />
 
 	{#if store.events.length === 0 && store.timers.length === 0}
 		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
 	{/if}
 
-	<FeedCard {babyId} {caregiverId} onSaved={handleSaved} />
+	<FeedCard
+		{babyId}
+		{caregiverId}
+		onSaved={handleSaved}
+		onOpenNursing={() => (nursingOpen = true)}
+	/>
 	<DiaperCard {babyId} {caregiverId} onSaved={handleSaved} />
 	<SleepCard {babyId} {caregiverId} />
 	<SummaryCard />
 </div>
+
+<NursingSheet bind:open={nursingOpen} {babyId} {caregiverId} />
 
 {#if toasts.length > 0}
 	<div class="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md flex-col-reverse gap-2">

@@ -128,9 +128,10 @@ filename="swaddle-export-<date>.json"`.
 
 Événements à plat (y compris supprimés en douceur), une ligne par événement,
 en-tête `id,babyId,caregiverId,type,startedAt,endedAt,note,details,createdAt,
-updatedAt,deletedAt`, quoting RFC 4180 (`"` doublé, champ entre guillemets dès
-qu'il contient une virgule, un guillemet ou un saut de ligne), `details` en
-JSON.
+updatedAt,deletedAt`, quoting RFC 4180 strict : séparateur d'enregistrement
+CRLF (pas un simple `\n`), champ entre guillemets dès qu'il contient une
+virgule, un guillemet, ou un retour chariot/saut de ligne (`\r` seul inclus),
+`"` doublé à l'intérieur d'un champ cité. `details` en JSON.
 
 → `200 text/csv; charset=utf-8`, `content-disposition: attachment`.
 

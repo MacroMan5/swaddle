@@ -114,11 +114,33 @@ describe('exportCsv', () => {
 	it('has a header and quotes a note containing a comma, quote and newline', () => {
 		const db = seed();
 		const csv = exportCsv(db);
-		const lines = csv.trim().split('\n');
+		const lines = csv.trim().split('\r\n');
 		expect(lines[0]).toBe(
 			'id,babyId,caregiverId,type,startedAt,endedAt,note,details,createdAt,updatedAt,deletedAt'
 		);
 		expect(csv).toContain('"a,""b""\nc"');
+	});
+
+	it('joins records with CRLF (strict RFC 4180)', () => {
+		const db = seed();
+		const csv = exportCsv(db);
+		// Splitting on the record separator must yield exactly one line per
+		// event plus the header — including the event whose note legitimately
+		// contains a literal (non-separator) embedded LF inside its quoting.
+		expect(csv.split('\r\n')).toHaveLength(1 /* header */ + 3 /* events */ + 1 /* trailing */);
+		expect(csv.endsWith('\r\n')).toBe(true);
+	});
+
+	it('quotes a field containing only a bare CR', () => {
+		const db = openDb(':memory:');
+		const baby = createBaby(db, { name: 'Léa', birthdate: '2026-08-01', timezone: 'America/Toronto' });
+		const cg = createCaregiver(db, { name: 'Papa', color: '#0284C7' });
+		db.prepare(
+			`INSERT INTO event (id, baby_id, caregiver_id, type, started_at, ended_at, note, details, created_at, updated_at, deleted_at)
+			 VALUES ('e1', ?, ?, 'diaper', '2026-08-01T00:00:00.000Z', NULL, 'a' || char(13) || 'b', '{"pee":true,"poo":false}', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', NULL)`
+		).run(baby.id, cg.id);
+		const csv = exportCsv(db);
+		expect(csv).toContain('"a\rb"');
 	});
 });
 

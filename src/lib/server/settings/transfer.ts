@@ -75,9 +75,12 @@ export function exportJson(db: DB): SwaddleExport {
 	};
 }
 
-/** RFC 4180: double embedded quotes, quote fields containing `,`, `"` or `\n`. */
+/**
+ * Strict RFC 4180: double embedded quotes, quote fields containing `,`, `"`,
+ * `\r` or `\n` (a bare CR included, not just full CRLF).
+ */
 function csvField(value: string): string {
-	if (/[,"\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+	if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
 	return value;
 }
 
@@ -101,7 +104,8 @@ export function exportCsv(db: DB): string {
 			.map((v) => csvField(String(v)))
 			.join(',')
 	);
-	return [header, ...lines].join('\n') + '\n';
+	// RFC 4180 record separator is CRLF, not a bare LF.
+	return [header, ...lines].join('\r\n') + '\r\n';
 }
 
 const exportSchema = z.object({

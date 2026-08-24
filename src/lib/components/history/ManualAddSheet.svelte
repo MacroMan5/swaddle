@@ -189,7 +189,9 @@
 	}
 </script>
 
-<Sheet.Root {open} onOpenChange={handleOpenChange}>
+<!-- Function binding (controlled): see EventEditSheet — a plain `{open}` prop
+     lets bits-ui close itself even when the dirty-guard refuses. -->
+<Sheet.Root bind:open={() => open, handleOpenChange}>
 	<Sheet.Content side="bottom">
 		<Sheet.Header>
 			<Sheet.Title>Ajouter une entrée</Sheet.Title>

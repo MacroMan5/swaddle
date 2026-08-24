@@ -34,6 +34,32 @@ test('day view lists events chronologically with summary; filters work', async (
 	await expect(page.getByTestId('event-row').filter({ hasText: 'Couche' })).toHaveCount(0);
 });
 
+test('history "today" reacts to the server-corrected clock, not a frozen local Date (review P2)', async ({
+	page
+}) => {
+	// A serverTime one full day ahead of whatever the browser's own clock
+	// says: before the fix, todayKey was `localDayKey(new Date())`, computed
+	// once at mount and never revisited, so RISK-001's server-corrected clock
+	// (store.nowMs) had no effect on it — the picker would keep calling the
+	// day it mounted on "today" forever, even past a real local midnight.
+	const serverTomorrow = new Date(Date.now() + 24 * 3_600_000);
+	await page.route('**/api/stream', async (route) => {
+		await route.fulfill({
+			status: 200,
+			headers: { 'content-type': 'text/event-stream' },
+			body: `event: snapshot\ndata: ${JSON.stringify({ serverTime: serverTomorrow.toISOString(), activeTimers: [] })}\n\n`
+		});
+	});
+
+	await page.goto('/history');
+
+	// The page mounted with the browser's "today" as the selected day; once
+	// the mocked snapshot corrects the clock to a day ahead, that selected day
+	// is no longer "today" from the server's point of view, so the next-day
+	// arrow must re-enable — without a reload.
+	await expect(page.getByRole('button', { name: 'Jour suivant' })).toBeEnabled();
+});
+
 test('day picker navigates to yesterday (empty) and back', async ({ page }) => {
 	await page.goto('/history');
 	await page.getByRole('button', { name: 'Jour précédent' }).click();

@@ -97,6 +97,22 @@ describe('dailySummary', () => {
 		expect(d.bottle).toEqual({ count: 1, totalMl: 90 });
 		expect(d.diaper).toEqual({ count: 1, pee: 1, poo: 1 });
 	});
+
+	it('review P2: counts an immediately-stopped (zero-duration) nursing session on its start day', () => {
+		// Legal server-side: a segment whose startedAt === endedAt. Allocated
+		// duration is (rightly) zero, but the session itself still happened and
+		// has a visible history row — the count must not be gated on duration.
+		const start = local(2026, 8, 24, 9, 0);
+		const iso = new Date(start).toISOString();
+		const nursing: EventDTO = {
+			...sleep(start, start),
+			id: 'n1',
+			type: 'nursing',
+			details: { segments: [{ side: 'left', startedAt: iso, endedAt: iso }] }
+		};
+		const d = dailySummary([nursing], '2026-08-24', start + ms(1));
+		expect(d.nursing).toEqual({ count: 1, totalMs: 0, leftMs: 0, rightMs: 0 });
+	});
 });
 
 describe('day helpers', () => {

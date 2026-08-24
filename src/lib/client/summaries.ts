@@ -122,7 +122,11 @@ export function dailySummary(events: EventDTO[], dayKey: string, nowMs: number):
 				if (segment.side === 'left') eventLeftMs += share;
 				else eventRightMs += share;
 			}
-			if (eventShareMs > 0 && startsOnDay(event, dayKey)) {
+			// Counted by start day alone (review P3): gating on eventShareMs > 0
+			// missed a legal zero-duration session (a segment whose startedAt
+			// equals its endedAt, e.g. immediately stopped) — it has a real
+			// history row but no allocated duration to gate on.
+			if (startsOnDay(event, dayKey)) {
 				nursing.count += 1;
 			}
 			nursing.totalMs += eventShareMs;

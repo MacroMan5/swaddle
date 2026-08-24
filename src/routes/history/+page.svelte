@@ -48,7 +48,11 @@
 		{ key: 'sleep', label: 'Sommeil', icon: Moon, activeClass: 'bg-sleep-100 text-sleep-700 border-sleep-100' }
 	];
 
-	const todayKey = localDayKey(new Date());
+	// Reactive, not a constant (review P2): store.nowMs ticks every second
+	// (SyncStore.tick()), so this must too, or the picker keeps labelling
+	// yesterday as "today" — and the next-day arrow stays wrongly disabled —
+	// until the page is reloaded after local midnight.
+	const todayKey = $derived(localDayKey(new Date(store.nowMs)));
 
 	function mondayOf(key: string): string {
 		const [y, m, d] = key.split('-').map(Number);

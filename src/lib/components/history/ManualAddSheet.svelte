@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Manual after-the-fact entry (FR-006): pick a type, then the same per-type
 	// form shape as EventEditSheet. Times are editable and default to now.
-	import { getContext } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
 	import { ApiError, createEvent } from '$lib/client/api';
@@ -74,23 +74,31 @@
 
 	const isDirty = $derived(selectedType !== null);
 
+	// Resets the form only on the closed→open transition. `defaultAt` is read
+	// via untrack(): the parent recreates it from the ticking store.nowMs, so a
+	// tracked read here would rerun this effect (and wipe every field, mid
+	// entry) once a second for as long as the sheet stayed open (review P1).
+	// `open` is the only tracked dependency, so this only reruns when the sheet
+	// itself opens or closes.
 	$effect(() => {
 		if (!open) return;
-		selectedType = null;
-		caregiverId = '';
-		note = '';
-		startedAt = toLocalInputValue(defaultAt);
-		endedAt = toLocalInputValue(defaultAt);
-		milkType = 'breast';
-		volumeMl = '';
-		pumpSide = 'both';
-		pee = false;
-		poo = false;
-		leftMinutes = '';
-		rightMinutes = '';
-		formError = null;
-		startedAtError = null;
-		volumeError = null;
+		untrack(() => {
+			selectedType = null;
+			caregiverId = '';
+			note = '';
+			startedAt = toLocalInputValue(defaultAt);
+			endedAt = toLocalInputValue(defaultAt);
+			milkType = 'breast';
+			volumeMl = '';
+			pumpSide = 'both';
+			pee = false;
+			poo = false;
+			leftMinutes = '';
+			rightMinutes = '';
+			formError = null;
+			startedAtError = null;
+			volumeError = null;
+		});
 	});
 
 	function handleOpenChange(next: boolean): void {

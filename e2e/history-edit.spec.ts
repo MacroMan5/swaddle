@@ -1,5 +1,24 @@
 import { expect, test } from '@playwright/test';
 
+test('manual-add sheet does not reset while open (review P1): a field keeps its value across the clock tick', async ({
+	page
+}) => {
+	await page.goto('/history');
+	await page.getByRole('button', { name: 'Ajouter' }).click();
+	await page.getByRole('button', { name: 'Biberon', exact: true }).click();
+
+	const volumeField = page.getByLabel('Volume (ml)');
+	await volumeField.fill('120');
+
+	// SyncStore's nowMs ticks every second; the sheet's init effect must not
+	// depend on it, or the field (and the whole form) resets mid-entry.
+	await page.waitForTimeout(1500);
+
+	await expect(volumeField).toHaveValue('120');
+	// Still on the bottle form, not reset back to the type chooser.
+	await expect(page.getByRole('button', { name: 'Enregistrer' })).toBeVisible();
+});
+
 test('manual-add a bottle yesterday, edit its volume, delete it with undo, then let a second delete stick', async ({
 	page
 }) => {

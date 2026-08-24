@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { onDestroy, onMount, setContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
 	import { listBabies } from '$lib/client/api';
-	import { SyncStore } from '$lib/client/sync.svelte';
+	import type { SyncStore } from '$lib/client/sync.svelte';
 	import ActiveTimersCard from '$lib/components/today/ActiveTimersCard.svelte';
 	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
 	import FeedCard from '$lib/components/today/FeedCard.svelte';
 	import SleepCard from '$lib/components/today/SleepCard.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 
-	const store = new SyncStore();
-	setContext('sync', store);
+	// Owned by +layout.svelte (the connection banner needs it too); this page
+	// just drives start() with the resolved baby id.
+	const store = getContext<SyncStore>('sync');
 
 	let babyId = $state<string | null>(null);
 	let caregiverId = $state<string | null>(null);
@@ -24,8 +25,6 @@
 			store.start(baby.id);
 		}
 	});
-
-	onDestroy(() => store.stop());
 
 	function handleSaved(message: string, onUndo: () => void): void {
 		toast = { message, onUndo };

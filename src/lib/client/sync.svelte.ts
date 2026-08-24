@@ -1,4 +1,4 @@
-import { listTodayEvents } from './api';
+import { getTimers, listTodayEvents } from './api';
 import { todayRangeIso } from './format';
 import type { EventDTO, SnapshotMessage, SyncMessage, TimerType } from './types';
 
@@ -52,6 +52,12 @@ export class SyncStore {
 		source.addEventListener('sync', (e) =>
 			this.applyChange(JSON.parse((e as MessageEvent).data) as SyncMessage)
 		);
+		// `reset` is emitted after a data restore (slice 5); older servers never send
+		// it, so this listener is simply inert until then (no feature detection
+		// needed).
+		source.addEventListener('reset', (e) =>
+			this.applyReset(JSON.parse((e as MessageEvent).data) as { serverTime: string })
+		);
 	}
 
 	stop(): void {
@@ -81,6 +87,21 @@ export class SyncStore {
 		this.everConnected = true;
 		this.timers = message.activeTimers.filter((t) => this.#isMine(t));
 		if (browser) void this.refreshEvents();
+	}
+
+	/** A restore invalidates every id, so treat it like a fresh snapshot (FR-012). */
+	applyReset(message: { serverTime: string }): void {
+		this.#setServerTime(message.serverTime);
+		if (browser) {
+			void this.refreshEvents();
+			void this.refreshTimers();
+		}
+	}
+
+	async refreshTimers(): Promise<void> {
+		if (this.babyId === null) return;
+		const { timers } = await getTimers(this.babyId);
+		this.timers = timers.filter((t) => this.#isMine(t));
 	}
 
 	applyChange(message: SyncMessage): void {

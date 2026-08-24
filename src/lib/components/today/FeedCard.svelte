@@ -33,6 +33,10 @@
 	const lastFeeding = $derived(
 		store.events.find((e) => e.type === 'nursing' || e.type === 'bottle' || e.type === 'pump')
 	);
+	const todayCount = $derived(
+		store.events.filter((e) => e.type === 'nursing' || e.type === 'bottle' || e.type === 'pump')
+			.length
+	);
 
 	const lastFeedingLabel = $derived.by(() => {
 		const event = lastFeeding;
@@ -89,6 +93,11 @@
 		<p class="text-ink-muted tabular-nums text-sm">
 			{lastFeedingLabel ?? 'Aucune tétée aujourd’hui'}
 		</p>
+		{#if todayCount > 0}
+			<p class="text-ink-muted tabular-nums text-xs">
+				{todayCount} tétée{todayCount > 1 ? 's' : ''} aujourd’hui
+			</p>
+		{/if}
 		<div class="grid grid-cols-3 gap-2">
 			<button
 				type="button"

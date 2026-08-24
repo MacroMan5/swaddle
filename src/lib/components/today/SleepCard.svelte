@@ -18,6 +18,9 @@
 	const lastSleep = $derived(
 		store.events.find((e) => e.type === 'sleep' && e.endedAt !== null)
 	);
+	const todayCount = $derived(
+		store.events.filter((e) => e.type === 'sleep' && e.endedAt !== null).length
+	);
 
 	const lastSleepLabel = $derived.by(() => {
 		const event = lastSleep;
@@ -49,6 +52,11 @@
 		<p class="text-ink-muted tabular-nums text-sm">
 			{lastSleepLabel ?? 'Aucun sommeil aujourd’hui'}
 		</p>
+		{#if todayCount > 0}
+			<p class="text-ink-muted tabular-nums text-xs">
+				{todayCount} sommeil{todayCount > 1 ? 's' : ''} aujourd’hui
+			</p>
+		{/if}
 		{#if activeSleep}
 			<p class="text-ink-muted text-sm">En cours · voir en haut</p>
 		{:else}

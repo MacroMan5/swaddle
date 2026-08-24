@@ -23,6 +23,7 @@
 	let error = $state<string | null>(null);
 
 	const lastDiaper = $derived(store.events.find((e) => e.type === 'diaper'));
+	const todayCount = $derived(store.events.filter((e) => e.type === 'diaper').length);
 
 	const lastDiaperLabel = $derived.by(() => {
 		const event = lastDiaper;
@@ -72,6 +73,11 @@
 		<p class="text-ink-muted text-sm tabular-nums">
 			{lastDiaperLabel ?? 'Aucune couche aujourd’hui'}
 		</p>
+		{#if todayCount > 0}
+			<p class="text-ink-muted tabular-nums text-xs">
+				{todayCount} couche{todayCount > 1 ? 's' : ''} aujourd’hui
+			</p>
+		{/if}
 		<div class="grid grid-cols-3 gap-2">
 			<button
 				type="button"

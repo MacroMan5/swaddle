@@ -122,3 +122,24 @@ describe('server time is authoritative (RISK-001)', () => {
 		expect(store.serverOffsetMs).toBe(-5_000);
 	});
 });
+
+describe('connected transitions', () => {
+	it('goes true on open, false on error, true again on a fresh snapshot (FR-012/AC-005)', () => {
+		expect(store.connected).toBe(false);
+		store.handleOpen();
+		expect(store.connected).toBe(true);
+		store.handleError();
+		expect(store.connected).toBe(false);
+		store.applySnapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		expect(store.connected).toBe(true);
+	});
+});
+
+describe('applyReset (slice 5 data restore)', () => {
+	it('re-derives the offset like a snapshot, harmless when the server never sends it', () => {
+		const serverTime = new Date(NOW.getTime() + 10_000).toISOString();
+		store.applyReset({ serverTime });
+		expect(store.serverOffsetMs).toBe(10_000);
+		expect(store.nowMs).toBe(NOW.getTime() + 10_000);
+	});
+});

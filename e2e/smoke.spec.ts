@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('home page renders with tokens applied', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: 'Swaddle' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Aujourd’hui' })).toBeVisible();
 });
 
 test('health endpoint reports seeded setup', async ({ request }) => {

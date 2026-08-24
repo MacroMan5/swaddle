@@ -368,10 +368,10 @@ test('AC-005: a started sleep survives a reload with correct server-based elapse
 **Interfaces:**
 - Produces: `ConnectionBanner` — rendered from the layout when `store.connected === false` after a first successful connection: fixed top, `bg-danger`-toned via tokens with icon + text « Connexion perdue — reconnexion… », `aria-live="polite"`. Cards each show: last event of their category (`formatElapsed` ago) and today's count from `store.events`.
 
-- [ ] **Step 1:** Unit-test the store's `connected` transitions (open → true, error → false, snapshot → true again).
-- [ ] **Step 2:** Implement banner + card summary lines.
-- [ ] **Step 3:** `npm run test:unit` + `npm run check` green.
-- [ ] **Step 4: Commit** — `feat: add connection banner and per-card today summaries`
+- [x] **Step 1:** Unit-test the store's `connected` transitions (open → true, error → false, snapshot → true again).
+- [x] **Step 2:** Implement banner + card summary lines.
+- [x] **Step 3:** `npm run test:unit` + `npm run check` green.
+- [x] **Step 4: Commit** — `feat: add connection banner and per-card today summaries`
 
 ---
 

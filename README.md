@@ -43,21 +43,25 @@ Les décisions structurantes sont consignées dans `docs/adr/`.
 
 ## Installation
 
-> ⚠️ Le code est en cours de construction — cette section décrit la cible.
-
 Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 
 ```sh
 mkdir swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
-docker compose up -d
+docker compose pull && docker compose up -d
 ```
 
-L'application est alors disponible sur `http://<ip-du-serveur>:3010`. Les
-données vivent dans `./data/` — sauvegardez ce dossier, c'est tout.
+Au premier lancement, ouvrez `http://<ip-du-serveur>:3010` : l'assistant de
+démarrage vous guide pour créer le profil du bébé et le premier aidant. Les
+données vivent dans `./data/` — sauvegardez ce dossier, c'est tout (export
+JSON/CSV et sauvegarde/restauration SQLite documentés dans
+[`docs/api/settings-api.md`](docs/api/settings-api.md)).
 
 **Important** : l'application est conçue pour un réseau local privé. Ne
 l'exposez pas directement à Internet (voir ADR 0001).
+
+Code PIN oublié ? Voir
+[`docs/runbooks/pin-reset.md`](docs/runbooks/pin-reset.md).
 
 Astuce : si vous avez Pi-hole, un enregistrement DNS local (ex. `bebe.home`)
 donne une adresse facile à retenir sur tous les téléphones de la maison.

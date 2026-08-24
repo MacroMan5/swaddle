@@ -284,3 +284,64 @@ describe('nursing action hardening', () => {
 			expect(() => nursingAction(db, { babyId: 'baby-1', action })).toThrowError(RepoError);
 	});
 });
+
+describe('listEvents overlap mode (history day view, AC-006)', () => {
+	it('default mode (starts-in-window) misses a sleep that started the prior day', () => {
+		const sleepEvent = createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T23:30:00.000Z',
+				endedAt: '2026-08-25T01:30:00.000Z'
+			})
+		);
+		const defaultListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z'
+		});
+		expect(defaultListing.map((e) => e.id)).not.toContain(sleepEvent.id);
+
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing.map((e) => e.id)).toContain(sleepEvent.id);
+	});
+
+	it('overlap mode includes an active (null-ended) timer started before the window', () => {
+		const activeSleep = createEvent(
+			db,
+			bottle({
+				type: 'sleep',
+				details: {},
+				startedAt: '2026-08-24T23:30:00.000Z',
+				endedAt: null
+			})
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing.map((e) => e.id)).toContain(activeSleep.id);
+	});
+
+	it('overlap mode still excludes events entirely outside the window', () => {
+		createEvent(
+			db,
+			bottle({ startedAt: '2026-08-20T10:00:00.000Z', endedAt: null })
+		);
+		const overlapListing = listEvents(db, {
+			babyId: 'baby-1',
+			from: '2026-08-25T00:00:00.000Z',
+			to: '2026-08-26T00:00:00.000Z',
+			overlap: true
+		});
+		expect(overlapListing).toHaveLength(0);
+	});
+});

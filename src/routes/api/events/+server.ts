@@ -12,7 +12,8 @@ export const GET: RequestHandler = ({ url }) => {
 	const events = listEvents(getDb(), {
 		babyId,
 		from: url.searchParams.get('from') ?? undefined,
-		to: url.searchParams.get('to') ?? undefined
+		to: url.searchParams.get('to') ?? undefined,
+		overlap: url.searchParams.get('overlap') === '1'
 	});
 	return json({ events });
 };

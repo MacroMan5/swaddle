@@ -1,6 +1,7 @@
 // Pure day-splitting summaries engine (FR-010, AC-006). Feeds both the Today
 // SummaryCard and the History day/week views — one source of truth so counts
 // and durations never disagree between screens.
+import { formatElapsed } from './format';
 import type {
 	BottleDetails,
 	DiaperDetails,
@@ -179,6 +180,38 @@ export function dailySummary(events: EventDTO[], dayKey: string, nowMs: number):
 			averageMs: sleepCompletedCount > 0 ? Math.round(sleepCompletedMs / sleepCompletedCount) : 0
 		}
 	};
+}
+
+/**
+ * Whether the nursing row should render at all (review item 5): count alone
+ * misses a carry-over day, where a session that started the day before
+ * allocates duration here (via `splitDurationByLocalDay`) but is counted on
+ * its start day only — so a carry-over day showed "Aucun résumé" despite a
+ * nonzero nursing duration.
+ */
+export function hasNursingActivity(nursing: DailySummary['nursing']): boolean {
+	return nursing.count > 0 || nursing.totalMs > 0;
+}
+
+/** FR-010 display line for nursing: count, total, and the left/right split
+ * (omitted when there is no side duration to show). */
+export function formatNursingSummary(nursing: DailySummary['nursing']): string {
+	const parts = [`${nursing.count} · ${formatElapsed(nursing.totalMs)}`];
+	if (nursing.leftMs > 0 || nursing.rightMs > 0) {
+		parts.push(`G ${formatElapsed(nursing.leftMs)} / D ${formatElapsed(nursing.rightMs)}`);
+	}
+	return parts.join(' · ');
+}
+
+/** FR-010 display line for sleep: total, plus the completed-period average
+ * (omitted while nothing has completed yet — an open timer only contributes
+ * to the total, never to the average, same rule as `dailySummary`). */
+export function formatSleepSummary(sleep: DailySummary['sleep']): string {
+	const parts = [formatElapsed(sleep.totalMs)];
+	if (sleep.completedCount > 0) {
+		parts.push(`moy. ${formatElapsed(sleep.averageMs)} (${sleep.completedCount})`);
+	}
+	return parts.join(' · ');
 }
 
 /** 7 consecutive local days starting at `mondayKey`. */

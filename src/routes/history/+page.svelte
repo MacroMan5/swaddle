@@ -5,8 +5,15 @@
 	import { getContext, onDestroy, onMount } from 'svelte';
 	import { Milk, Droplets, Moon, Plus } from '@lucide/svelte';
 	import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
-	import { dailySummary, dayRangeIso, eventOverlapsDay, localDayKey } from '$lib/client/summaries';
-	import { formatElapsed } from '$lib/client/format';
+	import {
+		dailySummary,
+		dayRangeIso,
+		eventOverlapsDay,
+		formatNursingSummary,
+		formatSleepSummary,
+		hasNursingActivity,
+		localDayKey
+	} from '$lib/client/summaries';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { CaregiverDTO, EventDTO, EventType } from '$lib/client/types';
 	import DayPicker from '$lib/components/history/DayPicker.svelte';
@@ -316,9 +323,9 @@
 			data-testid="day-summary"
 			class="border-border bg-surface-raised text-ink grid grid-cols-2 gap-x-4 gap-y-1 rounded-card border p-4 text-base tabular-nums"
 		>
-			{#if summary.nursing.count > 0}
+			{#if hasNursingActivity(summary.nursing)}
 				<dt class="text-ink-muted">Allaitement</dt>
-				<dd>{summary.nursing.count} · {formatElapsed(summary.nursing.totalMs)}</dd>
+				<dd>{formatNursingSummary(summary.nursing)}</dd>
 			{/if}
 			{#if summary.bottle.count > 0}
 				<dt class="text-ink-muted">Biberon</dt>
@@ -334,9 +341,9 @@
 			{/if}
 			{#if summary.sleep.totalMs > 0}
 				<dt class="text-ink-muted">Sommeil</dt>
-				<dd>{formatElapsed(summary.sleep.totalMs)}</dd>
+				<dd>{formatSleepSummary(summary.sleep)}</dd>
 			{/if}
-			{#if summary.nursing.count === 0 && summary.bottle.count === 0 && summary.pump.count === 0 && summary.diaper.count === 0 && summary.sleep.totalMs === 0}
+			{#if !hasNursingActivity(summary.nursing) && summary.bottle.count === 0 && summary.pump.count === 0 && summary.diaper.count === 0 && summary.sleep.totalMs === 0}
 				<dd class="text-ink-muted col-span-2">Aucun résumé pour ce jour.</dd>
 			{/if}
 		</dl>

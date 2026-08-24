@@ -1,6 +1,15 @@
 process.env.TZ = 'America/Toronto';
 import { describe, it, expect } from 'vitest';
-import { splitDurationByLocalDay, dailySummary, eventOverlapsDay, localDayKey, dayRangeIso } from './summaries';
+import {
+	splitDurationByLocalDay,
+	dailySummary,
+	eventOverlapsDay,
+	formatNursingSummary,
+	formatSleepSummary,
+	hasNursingActivity,
+	localDayKey,
+	dayRangeIso
+} from './summaries';
 import type { EventDTO } from './types';
 
 const ms = (h: number, m = 0) => (h * 60 + m) * 60_000;
@@ -135,5 +144,43 @@ describe('eventOverlapsDay (review item 2: carry-over visibility)', () => {
 	it('a timer ending exactly at the day boundary has zero overlap with the next day (half-open window)', () => {
 		const e = sleep(local(2026, 8, 23, 22, 0), local(2026, 8, 24, 0, 0));
 		expect(eventOverlapsDay(e, '2026-08-24', now)).toBe(false);
+	});
+});
+
+describe('hasNursingActivity (review item 5: show the row on a carry-over day with count 0)', () => {
+	it('true when count is nonzero', () => {
+		expect(hasNursingActivity({ count: 1, totalMs: 0, leftMs: 0, rightMs: 0 })).toBe(true);
+	});
+
+	it('true when duration was allocated but the session started the day before (count stays on start day)', () => {
+		expect(hasNursingActivity({ count: 0, totalMs: ms(0, 30), leftMs: ms(0, 30), rightMs: 0 })).toBe(true);
+	});
+
+	it('false when both are zero', () => {
+		expect(hasNursingActivity({ count: 0, totalMs: 0, leftMs: 0, rightMs: 0 })).toBe(false);
+	});
+});
+
+describe('formatNursingSummary (review item 5: G/D durations in the display)', () => {
+	it('includes the left/right breakdown', () => {
+		expect(
+			formatNursingSummary({ count: 1, totalMs: ms(0, 28), leftMs: ms(0, 10), rightMs: ms(0, 18) })
+		).toBe('1 · 28 min · G 10 min / D 18 min');
+	});
+
+	it('omits the breakdown when there is no side duration (count-only, e.g. carry-over edge case)', () => {
+		expect(formatNursingSummary({ count: 0, totalMs: 0, leftMs: 0, rightMs: 0 })).toBe('0 · 0 min');
+	});
+});
+
+describe('formatSleepSummary (review item 5: completed-average in the display)', () => {
+	it('includes the average and completed count when there is at least one completed period', () => {
+		expect(formatSleepSummary({ totalMs: ms(2), completedCount: 2, averageMs: ms(1) })).toBe(
+			'2 h 00 · moy. 1 h 00 (2)'
+		);
+	});
+
+	it('omits the average when nothing has completed yet (only an open timer contributing)', () => {
+		expect(formatSleepSummary({ totalMs: ms(0, 30), completedCount: 0, averageMs: 0 })).toBe('30 min');
 	});
 });

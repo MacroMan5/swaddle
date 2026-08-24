@@ -6,8 +6,13 @@
 	import { getContext } from 'svelte';
 	import * as Card from '$lib/components/ui/card';
 	import { ClipboardList } from '@lucide/svelte';
-	import { formatElapsed } from '$lib/client/format';
-	import { dailySummary, localDayKey } from '$lib/client/summaries';
+	import {
+		dailySummary,
+		formatNursingSummary,
+		formatSleepSummary,
+		hasNursingActivity,
+		localDayKey
+	} from '$lib/client/summaries';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 
 	const store = getContext<SyncStore>('sync');
@@ -16,7 +21,7 @@
 	const summary = $derived(dailySummary(store.events, todayKey, store.nowMs));
 
 	const hasAnything = $derived(
-		summary.nursing.count > 0 ||
+		hasNursingActivity(summary.nursing) ||
 			summary.bottle.count > 0 ||
 			summary.pump.count > 0 ||
 			summary.diaper.count > 0 ||
@@ -32,9 +37,9 @@
 				<h2 class="text-ink font-semibold">Résumé du jour</h2>
 			</div>
 			<dl class="text-ink grid grid-cols-2 gap-x-4 gap-y-1 text-base tabular-nums">
-				{#if summary.nursing.count > 0}
+				{#if hasNursingActivity(summary.nursing)}
 					<dt class="text-ink-muted">Allaitement</dt>
-					<dd>{summary.nursing.count} · {formatElapsed(summary.nursing.totalMs)}</dd>
+					<dd>{formatNursingSummary(summary.nursing)}</dd>
 				{/if}
 				{#if summary.bottle.count > 0}
 					<dt class="text-ink-muted">Biberon</dt>
@@ -50,7 +55,7 @@
 				{/if}
 				{#if summary.sleep.totalMs > 0}
 					<dt class="text-ink-muted">Sommeil</dt>
-					<dd>{formatElapsed(summary.sleep.totalMs)}</dd>
+					<dd>{formatSleepSummary(summary.sleep)}</dd>
 				{/if}
 			</dl>
 		</Card.Content>

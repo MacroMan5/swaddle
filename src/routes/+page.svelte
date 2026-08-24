@@ -1,22 +1,48 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import { Baby } from '@lucide/svelte';
+	import { onDestroy, onMount, setContext } from 'svelte';
+	import { listBabies } from '$lib/client/api';
+	import { SyncStore } from '$lib/client/sync.svelte';
+	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
+	import UndoToast from '$lib/components/UndoToast.svelte';
+
+	const store = new SyncStore();
+	setContext('sync', store);
+
+	let babyId = $state<string | null>(null);
+	let caregiverId = $state<string | null>(null);
+	let toast = $state<{ message: string; onUndo: () => void } | null>(null);
+
+	onMount(async () => {
+		caregiverId = localStorage.getItem('swaddle.caregiverId');
+		const babies = await listBabies();
+		const baby = babies[0];
+		if (baby) {
+			babyId = baby.id;
+			store.start(baby.id);
+		}
+	});
+
+	onDestroy(() => store.stop());
+
+	function handleSaved(message: string, onUndo: () => void): void {
+		toast = { message, onUndo };
+	}
 </script>
 
-<h1 class="p-4 text-2xl font-bold text-ink">Swaddle</h1>
-<p class="px-4 text-ink-muted">Suivi bébé auto-hébergé — en construction.</p>
-<div class="m-4 flex gap-2">
-	<span class="rounded-card bg-feed-100 px-3 py-2 text-feed-700">Alimentation</span>
-	<span class="rounded-card bg-diaper-100 px-3 py-2 text-diaper-700">Couche</span>
-	<span class="rounded-card bg-sleep-100 px-3 py-2 text-sleep-700">Sommeil</span>
+<div class="flex flex-col gap-4 p-4">
+	<h1 class="text-2xl font-bold text-ink">Aujourd’hui</h1>
+
+	{#if store.events.length === 0}
+		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
+	{/if}
+
+	<DiaperCard {babyId} {caregiverId} onSaved={handleSaved} />
 </div>
 
-<Card.Root class="m-4">
-	<Card.Header>
-		<Card.Title class="flex items-center gap-2"><Baby size={20} /> Swaddle</Card.Title>
-	</Card.Header>
-	<Card.Content>
-		<Button>Bouton de test</Button>
-	</Card.Content>
-</Card.Root>
+{#if toast}
+	<UndoToast
+		message={toast.message}
+		onAction={toast.onUndo}
+		onDismiss={() => (toast = null)}
+	/>
+{/if}

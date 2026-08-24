@@ -193,7 +193,7 @@ Implement `api.ts` with the typed helpers listed in Interfaces (import the `Even
   - `DiaperCard`: `bg-diaper-100`-tinted card (dark variant per design table), lucide `droplets` icon in `*-700`, three ≥ 48 px buttons **Pipi / Caca / Les deux**, immediate `active:scale-[0.97]` feedback; on tap → `createEvent({type:'diaper', startedAt: nowIso, details:{pee,poo}, babyId, caregiverId})`; only after the 201 → show UndoToast; on `ApiError` → keep the card enabled and show the error inline (FR-018: nothing is "saved" before the server says so). Card shows last diaper (« Pipi · il y a 25 min ») from the store.
   - `UndoToast`: `aria-live="polite"`, fixed above the nav, shows label + « Annuler » button ≥ 48 px for 5000 ms (DEC-005), never steals focus; `onUndo` → `deleteEvent(id)`; component is generic (message + action callback) so later flows reuse it.
 
-- [ ] **Step 1: Write the failing e2e** — `e2e/today-diaper.spec.ts`
+- [x] **Step 1: Write the failing e2e** — `e2e/today-diaper.spec.ts`
 
 ```ts
 import { expect, test } from '@playwright/test';
@@ -228,10 +228,10 @@ test('the toast disappears by itself after 5 s', async ({ page }) => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure** — `npx playwright test e2e/today-diaper.spec.ts` → FAIL (buttons absent).
-- [ ] **Step 3: Implement** the page skeleton, `DiaperCard`, `UndoToast` per the Interfaces block. Tokens only; last-activity line uses `formatElapsed(store.nowMs − Date.parse(startedAt))` with `tabular-nums`.
-- [ ] **Step 4: Run to verify pass** — the two tests above + `npm run check`.
-- [ ] **Step 5: Commit** — `feat: add today page with one-touch diaper and undo toast`
+- [x] **Step 2: Run to verify failure** — `npx playwright test e2e/today-diaper.spec.ts` → FAIL (buttons absent).
+- [x] **Step 3: Implement** the page skeleton, `DiaperCard`, `UndoToast` per the Interfaces block. Tokens only; last-activity line uses `formatElapsed(store.nowMs − Date.parse(startedAt))` with `tabular-nums`.
+- [x] **Step 4: Run to verify pass** — the two tests above + `npm run check`.
+- [x] **Step 5: Commit** — `feat: add today page with one-touch diaper and undo toast`
 
 ---
 

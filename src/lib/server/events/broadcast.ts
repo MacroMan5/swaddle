@@ -1,9 +1,8 @@
 import type { EventDTO } from './types';
 
-export type Change = {
-	kind: 'created' | 'updated' | 'deleted' | 'restored';
-	event: EventDTO;
-};
+export type Change =
+	| { kind: 'created' | 'updated' | 'deleted' | 'restored'; event: EventDTO }
+	| { kind: 'reset' };
 
 type Listener = (change: Change) => void;
 
@@ -27,4 +26,13 @@ export function publish(change: Change): void {
 			// A broken SSE consumer must not affect the others.
 		}
 	}
+}
+
+/**
+ * A restore replaces the entire dataset out from under any connected client:
+ * unlike a normal create/update/delete/restore, there is no single EventDTO
+ * to describe the change. Subscribers must refetch timers and lists instead.
+ */
+export function publishReset(): void {
+	publish({ kind: 'reset' });
 }

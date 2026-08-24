@@ -5,9 +5,14 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
 		<script>
-			if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-				document.documentElement.classList.add('dark');
-			}
+			// Read the persisted theme choice before paint to avoid a flash
+			// (design-system.md § Mode sombre): 'dark'/'light' force the class,
+			// 'auto' (or no choice yet) follows the OS preference.
+			(function () {
+				var theme = localStorage.getItem('swaddle.theme');
+				var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+				if (dark) document.documentElement.classList.add('dark');
+			})();
 		</script>
 		%sveltekit.head%
 	</head>

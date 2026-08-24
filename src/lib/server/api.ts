@@ -23,22 +23,35 @@ const repoStatus: Record<RepoError['code'], number> = {
 	no_active_timer: 404,
 	invalid_state: 409,
 	timer_conflict: 409,
-	validation_failed: 400
+	validation_failed: 400,
+	in_use: 409
 };
 
-/** better-sqlite3 raises this when baby_id or caregiver_id points nowhere. */
-function isForeignKeyError(e: unknown): boolean {
-	return (
+/**
+ * better-sqlite3 raises one of these when a write violates a table
+ * constraint (an unknown baby_id/caregiver_id, a duplicate primary key, …).
+ * Application code should catch such cases earlier with a precise RepoError,
+ * but this is the defense-in-depth fallback so a gap never surfaces as a raw
+ * 500 instead of a 400 envelope.
+ */
+function sqliteConstraintCode(e: unknown): string | undefined {
+	if (
 		typeof e === 'object' &&
 		e !== null &&
 		'code' in e &&
-		(e as { code: unknown }).code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
-	);
+		typeof (e as { code: unknown }).code === 'string' &&
+		(e as { code: string }).code.startsWith('SQLITE_CONSTRAINT')
+	)
+		return (e as { code: string }).code;
+	return undefined;
 }
 
 export function handleRepoError(e: unknown): Response {
 	if (e instanceof RepoError) return apiError(repoStatus[e.code], e.code, e.message, e.issues);
-	if (isForeignKeyError(e))
+	const constraintCode = sqliteConstraintCode(e);
+	if (constraintCode === 'SQLITE_CONSTRAINT_FOREIGNKEY')
 		return apiError(400, 'validation_failed', 'unknown babyId or caregiverId');
+	if (constraintCode !== undefined)
+		return apiError(400, 'validation_failed', 'the request violates a database constraint');
 	throw e;
 }

@@ -25,9 +25,10 @@ export const GET: RequestHandler = () => {
 				serverTime: new Date().toISOString(),
 				activeTimers: listActiveTimers(db)
 			});
-			unsubscribe = subscribe((change) =>
-				send('sync', { ...change, serverTime: new Date().toISOString() })
-			);
+			unsubscribe = subscribe((change) => {
+				if (change.kind === 'reset') send('reset', { serverTime: new Date().toISOString() });
+				else send('sync', { ...change, serverTime: new Date().toISOString() });
+			});
 			ping = setInterval(() => {
 				if (!closed)
 					try {

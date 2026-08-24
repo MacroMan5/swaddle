@@ -238,19 +238,19 @@
 	{#if viewMode === 'week'}
 		<WeekView events={weekEvents} mondayKey={mondayOf(dayKey)} {todayKey} nowMs={store.nowMs} onSelectDay={selectWeekDay} />
 	{:else}
-		<div class="flex gap-2" role="group" aria-label="Filtrer par catégorie">
+		<div class="flex min-w-0 gap-2" role="group" aria-label="Filtrer par catégorie">
 			{#each CHIPS as chip (chip.key)}
 				{@const active = selectedCategories.has(chip.key)}
 				<button
 					type="button"
 					aria-pressed={active}
 					onclick={() => toggleCategory(chip.key)}
-					class="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {active
+					class="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-control border px-1 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {active
 						? chip.activeClass
 						: 'bg-surface-raised text-ink-muted border-border'}"
 				>
 					<chip.icon size={18} aria-hidden="true" />
-					{chip.label}
+					<span class="w-full truncate text-center">{chip.label}</span>
 				</button>
 			{/each}
 		</div>

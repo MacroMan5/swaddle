@@ -50,7 +50,7 @@
 	);
 </script>
 
-<figure class="flex flex-col gap-2">
+<figure class="relative flex flex-col gap-2">
 	<div class="border-border grid grid-cols-7 gap-1 border-t pt-3">
 		{#each week.days as day, i (day.dayKey)}
 			{@const heights = barHeightPct(day.dayKey)}

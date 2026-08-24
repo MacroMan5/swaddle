@@ -95,5 +95,4 @@
 			</div>
 		</div>
 	{/each}
-	<p class="sr-only">{summaryText}</p>
 </div>

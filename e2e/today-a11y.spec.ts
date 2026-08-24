@@ -33,3 +33,28 @@ test('dark mode is not pure white', async ({ page }) => {
 	const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 	expect(background).not.toBe('rgb(255, 255, 255)');
 });
+
+for (const width of WIDTHS) {
+	test(`history: no horizontal scroll at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 800 });
+		await page.goto('/history');
+		await expect(page.getByRole('heading', { name: 'Historique' })).toBeVisible();
+
+		const overflow = await page.evaluate(
+			() => document.documentElement.scrollWidth <= window.innerWidth
+		);
+		expect(overflow).toBe(true);
+
+		for (const name of ['Jour précédent', 'Jour suivant', 'Ajouter']) {
+			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+			expect(box?.height ?? 0).toBeGreaterThanOrEqual(48);
+		}
+	});
+}
+
+test('history: dark mode is not pure white', async ({ page }) => {
+	await page.goto('/history');
+	await page.evaluate(() => document.documentElement.classList.add('dark'));
+	const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+	expect(background).not.toBe('rgb(255, 255, 255)');
+});

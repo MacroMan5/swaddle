@@ -23,7 +23,8 @@ const repoStatus: Record<RepoError['code'], number> = {
 	no_active_timer: 404,
 	invalid_state: 409,
 	timer_conflict: 409,
-	validation_failed: 400
+	validation_failed: 400,
+	in_use: 409
 };
 
 /** better-sqlite3 raises this when baby_id or caregiver_id points nowhere. */

@@ -24,4 +24,5 @@ vite.config.ts.timestamp-*
 
 # Playwright
 .playwright-data/
+.playwright-data-empty/
 test-results/

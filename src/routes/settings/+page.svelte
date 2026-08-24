@@ -90,10 +90,21 @@
 
 	// --- Unité ---
 	let volumeUnit = $state(data.household.volumeUnit);
+	let volumeUnitError = $state<string | null>(null);
 
 	async function setVolumeUnit(unit: 'ml' | 'oz') {
+		volumeUnitError = null;
+		const previousUnit = volumeUnit;
+		// Applied immediately for instant feedback (design-system.md § Mouvement);
+		// rolled back below if the save turns out to have failed, instead of
+		// presenting an unsaved change as persistent.
 		volumeUnit = unit;
-		await postJson('/api/household', 'PATCH', { volumeUnit: unit });
+
+		const { ok, value } = await postJson('/api/household', 'PATCH', { volumeUnit: unit });
+		if (!ok) {
+			volumeUnit = previousUnit;
+			volumeUnitError = errorMessage(value);
+		}
 	}
 
 	// --- Thème ---
@@ -323,19 +334,22 @@
 
 	<Card.Root>
 		<Card.Header><Card.Title>Unité</Card.Title></Card.Header>
-		<Card.Content class="flex gap-2">
-			<Button
-				type="button"
-				class="min-h-12"
-				variant={volumeUnit === 'ml' ? 'default' : 'outline'}
-				onclick={() => setVolumeUnit('ml')}>ml</Button
-			>
-			<Button
-				type="button"
-				class="min-h-12"
-				variant={volumeUnit === 'oz' ? 'default' : 'outline'}
-				onclick={() => setVolumeUnit('oz')}>oz</Button
-			>
+		<Card.Content class="flex flex-col gap-2">
+			<div class="flex gap-2">
+				<Button
+					type="button"
+					class="min-h-12"
+					variant={volumeUnit === 'ml' ? 'default' : 'outline'}
+					onclick={() => setVolumeUnit('ml')}>ml</Button
+				>
+				<Button
+					type="button"
+					class="min-h-12"
+					variant={volumeUnit === 'oz' ? 'default' : 'outline'}
+					onclick={() => setVolumeUnit('oz')}>oz</Button
+				>
+			</div>
+			{#if volumeUnitError}<p class="text-sm text-danger">{volumeUnitError}</p>{/if}
 		</Card.Content>
 	</Card.Root>
 

@@ -53,3 +53,23 @@ export function isNewLocalDay(prevMs: number, nextMs: number): boolean {
 		a.getDate() !== b.getDate()
 	);
 }
+
+/** Wall-clock time of day, in local time: "07:15". */
+export function formatTimeOfDay(ms: number): string {
+	const d = new Date(ms);
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Display span of a durational event: "07:15 – 07:40", or "07:15 – en cours"
+ * while its timer is still running (`endMs === null`).
+ *
+ * Point events (bottle, diaper) have no span by construction — call
+ * `formatTimeOfDay` for those rather than passing a null end here, so a
+ * running timer and a point event never render the same way.
+ */
+export function formatTimeRange(startMs: number, endMs: number | null): string {
+	const start = formatTimeOfDay(startMs);
+	return endMs === null ? `${start} – en cours` : `${start} – ${formatTimeOfDay(endMs)}`;
+}

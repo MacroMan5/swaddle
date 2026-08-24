@@ -107,6 +107,43 @@ Auto-hébergée via `@fontsource` (NFR-006 : aucun CDN, y compris Google Fonts).
   confirmation si saisie non enregistrée.
 
 ### Historique (T4)
+- **Grille horaire (vue jour)** — 20 px par heure, soit 480 px pour les 24 h :
+  la journée entière tient dans un écran, **sans scroll interne**. C'est la
+  raison d'être de la vue — lire la *forme* d'une journée (la nuit, les creux
+  entre les tétées, la longue sieste) d'un coup d'œil. Le détail appartient
+  à la liste chronologique juste en dessous.
+- Le compromis est assumé : à cette densité une tétée de 20 min fait 7 px et
+  ne peut pas porter de texte. Une échelle assez généreuse pour étiqueter
+  chaque bloc (96 px/h) rend la journée haute de 2300 px : on lit chaque
+  événement mais on ne voit plus la journée.
+- Deux traitements selon la hauteur : au-dessus de 26 px, teinte claire `*-100`,
+  contour fermé + bord gauche de 4 px, heure et libellé à l'intérieur ; en
+  dessous, **barre saturée `*-500` arrondie**, car un filet de 5 px en teinte
+  claire se lit comme une règle horizontale, pas comme un événement.
+- Axe de 32 px à gauche, libellé une heure sur deux (étiqueter chaque heure
+  empilerait les nombres), filets pleins aux heures paires et `border-border/40`
+  aux heures impaires.
+- Plancher de 5 px : il ne mord qu'en deçà de 15 min, et de quelques pixels.
+  Le packing raisonne sur la hauteur **dessinée**, jamais sur la durée brute,
+  sinon un bloc élevé au plancher passerait sous son voisin.
+- Chevauchements résolus en colonnes de largeur `100 % / n` (jamais en px
+  fixes) : une tétée pendant une sieste donne deux demi-blocs, aucun caché.
+- Événements ponctuels (biberon, couche) sur un rail de 20 px à droite,
+  **distingués par la forme autant que par la teinte** (biberon = disque,
+  couche = losange) : ils sont trop petits pour une icône, et la catégorie ne
+  doit pas reposer sur la seule couleur (NFR-005).
+- Minuteur en cours : borné à l'heure courante, contour en `border-dashed`
+  quand le bloc est assez haut pour en porter un. Ligne « maintenant » en
+  `--color-primary`.
+- Grille et liste chronologique coexistent, chacune précédée d'un titre
+  `sr-only` : aucune des deux n'est `aria-hidden` (la grille contient des
+  boutons focusables), un lecteur d'écran saute l'une par les titres. La liste
+  reste le chemin fiable pour atteindre un événement court au doigt.
+- Liste chronologique : heure de début et heure de fin **empilées** dans une
+  colonne de 56 px (`…` pour un minuteur en cours, rien pour un événement
+  ponctuel). Une plage sur une seule ligne mangerait un tiers de la largeur à
+  375 px ; le nom accessible de la ligne épelle la plage pour lever
+  l'ambiguïté de deux heures nues.
 - Timeline colorée par catégorie avec motif/icône en plus de la couleur.
 - Squelettes (pas de spinner bloquant) au chargement > 300 ms.
 - Barres/graphes hebdo : étiquettes directes, pas de légende détachée,

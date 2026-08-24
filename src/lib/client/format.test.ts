@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { formatElapsed, formatClock, nursingDurationMs, todayRangeIso, isNewLocalDay } from './format';
+import {
+	formatElapsed,
+	formatClock,
+	formatTimeOfDay,
+	formatTimeRange,
+	nursingDurationMs,
+	todayRangeIso,
+	isNewLocalDay
+} from './format';
 
 describe('formatElapsed', () => {
 	it('clamps negative to zero (server clock ahead)', () => {
@@ -53,5 +61,32 @@ describe('isNewLocalDay (server-corrected clock, item 3)', () => {
 	it('is false within the same day', () => {
 		const t0 = new Date(2026, 7, 24, 10, 0, 0).getTime();
 		expect(isNewLocalDay(t0, t0 + 60_000)).toBe(false);
+	});
+});
+
+describe('formatTimeOfDay', () => {
+	it('pads both fields to two digits', () => {
+		expect(formatTimeOfDay(new Date(2026, 7, 24, 7, 5).getTime())).toBe('07:05');
+		expect(formatTimeOfDay(new Date(2026, 7, 24, 23, 59).getTime())).toBe('23:59');
+		expect(formatTimeOfDay(new Date(2026, 7, 24, 0, 0).getTime())).toBe('00:00');
+	});
+});
+
+describe('formatTimeRange', () => {
+	const start = new Date(2026, 7, 24, 7, 15).getTime();
+
+	it('renders a closed span with an en dash', () => {
+		const end = new Date(2026, 7, 24, 7, 40).getTime();
+		expect(formatTimeRange(start, end)).toBe('07:15 – 07:40');
+	});
+
+	it('marks a still-running timer instead of inventing an end', () => {
+		expect(formatTimeRange(start, null)).toBe('07:15 – en cours');
+	});
+
+	it('keeps a span that crosses midnight readable on its own terms', () => {
+		const end = new Date(2026, 7, 25, 1, 30).getTime();
+		// The date is carried by the row/block, not by this string.
+		expect(formatTimeRange(new Date(2026, 7, 24, 23, 30).getTime(), end)).toBe('23:30 – 01:30');
 	});
 });

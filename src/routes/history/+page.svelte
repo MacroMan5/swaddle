@@ -17,7 +17,7 @@
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { CaregiverDTO, EventDTO, EventType } from '$lib/client/types';
 	import DayPicker from '$lib/components/history/DayPicker.svelte';
-	import DayTimeline from '$lib/components/history/DayTimeline.svelte';
+	import DayCalendar from '$lib/components/history/DayCalendar.svelte';
 	import EventEditSheet from '$lib/components/history/EventEditSheet.svelte';
 	import { manualAddDefaultTime } from '$lib/components/history/eventForm';
 	import EventList from '$lib/components/history/EventList.svelte';
@@ -363,7 +363,15 @@
 				{/each}
 			</div>
 		{:else}
-			<DayTimeline events={filteredEvents} {dayKey} nowMs={store.nowMs} />
+			<h2 class="sr-only">Grille horaire de la journée</h2>
+			<DayCalendar
+				events={filteredEvents}
+				{dayKey}
+				{todayKey}
+				nowMs={store.nowMs}
+				onSelect={selectEvent}
+			/>
+			<h2 class="sr-only">Liste chronologique</h2>
 			<EventList events={filteredEvents} {dayKey} nowMs={store.nowMs} {caregivers} onSelect={selectEvent} />
 		{/if}
 	{/if}

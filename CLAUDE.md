@@ -94,12 +94,18 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   alimentation, sommeil, minuteurs actifs) et leurs panneaux (biberon,
   tire-lait), consommant `SyncStore` via `getContext('sync')`.
 - `src/lib/components/history/` — écran « Historique » (FR-006/007/009/010) :
-  `DayPicker`/`DayTimeline`/`WeekView`/`EventList` (lecture, sélecteur jour,
-  timeline 24 h, vue semaine), `EventEditSheet`/`ManualAddSheet` (édition,
+  `DayPicker`/`DayCalendar`/`WeekView`/`EventList` (lecture, sélecteur jour,
+  grille horaire 24 h, vue semaine), `EventEditSheet`/`ManualAddSheet` (édition,
   suppression douce annulable 5 s, saisie manuelle), toutes consommant
   `dailySummary`/`weeklySummary`. `GET /api/events` prend un paramètre
   `overlap=1` (événements chevauchant la fenêtre, pas seulement ceux qui y
   commencent) pour que les sessions à cheval sur minuit restent visibles.
+  Trois modules purs portent les règles partagées, hors composants :
+  `eventDisplay.ts` (libellés FR, teintes, prédicats ponctuel/veille/lendemain),
+  `dayCalendarLayout.ts` (géométrie de la grille, packing des chevauchements en
+  colonnes, clipping de minuit) et `timelinePosition.ts` (`wallClockMinutesOf`,
+  positionnement DST-safe). La grille et la liste décrivent ainsi le même
+  événement de la même façon.
 - Horodatages ISO 8601 UTC ; données sous `DATA_DIR` (défaut `data/`).
 - UI en français ; code, identifiants et commentaires en anglais.
 

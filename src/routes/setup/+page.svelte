@@ -16,7 +16,9 @@
 		'#7C3AED'
 	];
 
-	let step = $state<1 | 2>(1);
+	let { data } = $props();
+
+	let step = $state<1 | 2>(data.hasBaby ? 2 : 1);
 
 	let babyName = $state('');
 	let birthdate = $state('');

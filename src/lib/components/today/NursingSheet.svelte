@@ -107,13 +107,14 @@
 
 <Sheet.Root bind:open>
 	<Sheet.Content side="bottom" data-testid="nursing-sheet">
-		<Sheet.Header>
+		<Sheet.Header class="border-border border-b-2">
+			<p class="text-section text-ink-muted uppercase">Minuteur</p>
 			<Sheet.Title>Allaitement</Sheet.Title>
 		</Sheet.Header>
 		<div class="flex flex-col gap-4 px-4 pb-4">
 			<div class="flex flex-col items-center gap-1">
 				<span
-					class="text-ink text-5xl font-bold tabular-nums"
+					class="text-timer text-ink tabular-nums"
 					data-testid="nursing-total"
 					aria-hidden="true"
 				>
@@ -134,7 +135,7 @@
 						aria-label={`${option.label} · ${formatElapsed(sideMs(option.value))} · ${actionLabel(option.value)}`}
 						onclick={() => tapSide(option.value)}
 						data-testid={`nursing-side-${option.value}`}
-						class="flex min-h-32 flex-col items-center justify-center gap-1 rounded-card border-2 px-2 py-3 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100 {active
+						class="flex min-h-32 flex-col items-center justify-center gap-1 rounded-card border-2 px-2 py-3 active:translate-y-0.5 motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 {active
 							? 'border-primary bg-feed-100 text-feed-700'
 							: 'border-border bg-surface-raised text-ink'}"
 					>
@@ -160,7 +161,7 @@
 				type="button"
 				disabled={pending || session === null}
 				onclick={finish}
-				class="bg-primary text-on-primary min-h-14 rounded-control px-4 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-primary text-on-primary text-field active:bg-primary-pressed flex h-[58px] items-center justify-start rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
 			>
 				Terminer la tétée
 			</button>

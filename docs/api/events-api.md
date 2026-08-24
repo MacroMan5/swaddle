@@ -1,12 +1,16 @@
-# Events API — contract (slice 2)
+# API des événements — contrat (slice 2)
 
-All timestamps are ISO 8601 UTC strings. Server time is authoritative (RISK-001):
-clients compute timer displays from `startedAt` and the latest `serverTime`,
-clamped to ≥ 0. Every error uses the envelope `{ error: { code, message, issues? } }`.
+Tous les horodatages sont des chaînes ISO 8601 UTC. L'heure du serveur fait foi
+(RISK-001) : les clients calculent l'affichage des minuteurs à partir de
+`startedAt` et du dernier `serverTime`, borné à ≥ 0. Toutes les erreurs utilisent
+l'enveloppe `{ error: { code, message, issues? } }`.
 
-Error codes: `validation_failed` (400), `not_found` / `no_active_timer` /
+Codes d'erreur : `validation_failed` (400), `not_found` / `no_active_timer` /
 `unknown_timer_type` (404), `invalid_state` / `timer_conflict` (409).
-`issues` is an array of `{ path, code, message }` (validation failures only).
+`issues` est un tableau de `{ path, code, message }` (échecs de validation
+uniquement). Un corps JSON malformé, comme un `babyId` ou un `caregiverId`
+inconnu, renvoie lui aussi `400 validation_failed` — jamais une erreur SQLite
+brute.
 
 ## EventDTO
 
@@ -17,42 +21,54 @@ Error codes: `validation_failed` (400), `not_found` / `no_active_timer` /
   caregiverId: string | null;
   type: 'nursing' | 'bottle' | 'pump' | 'diaper' | 'sleep';
   startedAt: string;
-  endedAt: string | null;   // null = point event, or a timer still running
+  endedAt: string | null;   // null = événement ponctuel, ou minuteur en cours
   note: string | null;
-  details: Details;         // per-type, below
+  details: Details;         // par type, ci-dessous
   createdAt: string;
   updatedAt: string;
-  deletedAt: string | null; // soft delete (FR-007)
+  deletedAt: string | null; // suppression douce (FR-007)
 }
 ```
 
-### `details` per type
+### `details` par type
 
-| Type | Shape |
+| Type | Forme |
 |---|---|
 | `nursing` | `{ segments: { side: 'left' \| 'right'; startedAt: string; endedAt: string \| null }[] }` |
 | `bottle` | `{ milkType: 'breast' \| 'formula' \| 'mixed'; volumeMl: number }` |
 | `pump` | `{ side: 'left' \| 'right' \| 'both'; volumeMl: number \| null }` |
-| `diaper` | `{ pee: boolean; poo: boolean }` — at least one must be `true` |
+| `diaper` | `{ pee: boolean; poo: boolean }` — au moins l'un des deux à `true` |
 | `sleep` | `{}` |
 
 ### Validation (FR-017)
 
-- `volumeMl` ∈ [1, 1000] ml (bottle `details`, pump stop payload).
+- `volumeMl` ∈ [1, 1000] ml (`details` d'un biberon, charge utile d'arrêt d'un tire-lait).
 - `endedAt >= startedAt`.
-- No timestamp more than 5 minutes in the future (`MAX_FUTURE_MS`).
-- `details` must match the event type.
-- Timer types (`nursing`, `pump`, `sleep`) require `endedAt` on `POST /api/events`
-  (live sessions go through `/api/timers`); point types (`bottle`, `diaper`)
-  must not carry an `endedAt`.
+- Aucun horodatage à plus de 5 minutes dans le futur (`MAX_FUTURE_MS`).
+- `details` doit correspondre au type de l'événement.
+- Les types à minuteur (`nursing`, `pump`, `sleep`) exigent `endedAt` sur
+  `POST /api/events` (les sessions en cours passent par `/api/timers`) ; les
+  types ponctuels (`bottle`, `diaper`) ne doivent pas porter d'`endedAt`.
 
-### Nursing pause model (DEC-001)
+Règles dépendant de l'état d'achèvement, appliquées à la création comme à la
+modification :
 
-A nursing event is **active** while `endedAt === null`. It is **paused** when it
-is active but no segment is open (every segment has an `endedAt`). Effective
-duration = sum of segment durations, so paused time is excluded by construction.
+- **Segments d'allaitement** : au moins un segment ; `endedAt >= startedAt` pour
+  chaque segment fermé ; seul le dernier segment peut être ouvert (donc jamais
+  plusieurs segments ouverts) ; une session terminée ne peut conserver aucun
+  segment ouvert.
+- **Volume du tire-lait (FR-004)** : le volume est saisi à la fin, donc
+  `volumeMl` est obligatoire dès que `endedAt` est renseigné ; `null` n'est
+  toléré que tant que le minuteur tourne.
 
-## Endpoints
+### Modèle de pause de l'allaitement (DEC-001)
+
+Un allaitement est **actif** tant que `endedAt === null`. Il est **en pause**
+lorsqu'il est actif mais qu'aucun segment n'est ouvert (tous les segments ont un
+`endedAt`). La durée effective est la somme des durées de segments : le temps de
+pause est donc exclu par construction.
+
+## Points d'entrée
 
 ### `GET /api/babies`
 
@@ -60,95 +76,106 @@ duration = sum of segment durations, so paused time is excluded by construction.
 
 ### `GET /api/events?babyId=&from=&to=`
 
-Non-deleted events for a baby, `startedAt` DESC. `from` is inclusive, `to` is
-exclusive, both compared against `startedAt`. `babyId` is required.
+Événements non supprimés d'un bébé, `startedAt` décroissant. `from` est inclusif,
+`to` est exclusif, tous deux comparés à `startedAt`. `babyId` est obligatoire.
 
-→ `200 { events: EventDTO[] }` · `400 validation_failed` when `babyId` is missing.
+→ `200 { events: EventDTO[] }` · `400 validation_failed` si `babyId` manque.
 
 ### `POST /api/events`
 
-Body: `{ babyId, caregiverId?, type, startedAt, endedAt?, note?, details }`.
-Creates a completed or manual event.
+Corps : `{ babyId, caregiverId?, type, startedAt, endedAt?, note?, details }`.
+Crée un événement terminé ou saisi manuellement.
 
-→ `201 EventDTO` · `400 validation_failed` (with `issues`).
+→ `201 EventDTO` · `400 validation_failed` (avec `issues`).
 
 ### `GET /api/events/[id]`
 
-Returns the event even if soft-deleted (`deletedAt` set).
+Renvoie l'événement même s'il est supprimé en douceur (`deletedAt` renseigné).
 
 → `200 EventDTO` · `404 not_found`.
 
 ### `PATCH /api/events/[id]`
 
-Body (all optional, unknown fields rejected): `{ caregiverId, startedAt, endedAt, note, details }`.
-`endedAt: null` is rejected — reopening a finished timer would bypass the
-unique-timer invariant. The merged event is re-validated against FR-017 and the
-per-type `details` schema.
+Corps (tous les champs optionnels, champs inconnus rejetés) :
+`{ caregiverId, startedAt, endedAt, note, details }`. `endedAt: null` est rejeté —
+rouvrir un minuteur terminé contournerait l'invariant d'unicité. La lecture, la
+fusion, la validation (FR-017 et schéma `details` du type) et l'écriture ont lieu
+dans une seule transaction : deux modifications concurrentes ne peuvent pas
+valider contre la même ligne périmée.
 
 → `200 EventDTO` · `400 validation_failed` · `404 not_found`.
 
 ### `DELETE /api/events/[id]`
 
-Soft delete (idempotent): the row stays in the DB with `deletedAt` set and
-disappears from `GET /api/events`.
+Suppression douce (idempotente) : la ligne reste en base avec `deletedAt`
+renseigné et disparaît de `GET /api/events`.
 
 → `200 EventDTO` · `404 not_found`.
 
 ### `POST /api/events/[id]/restore`
 
-Undo a soft delete.
+Annule une suppression douce.
 
-→ `200 EventDTO` · `404 not_found` · `409 timer_conflict` when the restored event
-is an active timer and another active timer of the same type now exists for that
-baby (point events are exempt).
+→ `200 EventDTO` · `404 not_found` · `409 timer_conflict` si l'événement restauré
+est un minuteur actif et qu'un autre minuteur actif du même type existe désormais
+pour ce bébé (les événements ponctuels sont exemptés).
 
-## Timers (FR-013)
+## Minuteurs (FR-013)
 
-Timer types: `nursing`, `pump`, `sleep`. At most **one active timer per type per
-baby**; different types coexist. `bottle` and `diaper` are point events.
+Types à minuteur : `nursing`, `pump`, `sleep`. Au plus **un minuteur actif par
+type et par bébé** ; les types différents coexistent. `bottle` et `diaper` sont
+des événements ponctuels.
 
 ### `GET /api/timers?babyId=`
 
-→ `200 { serverTime: string, timers: EventDTO[] }` (AC-005 state recovery).
-`babyId` is optional; omitted, it returns the active timers of every baby.
+→ `200 { serverTime: string, timers: EventDTO[] }` (reprise d'état, AC-005).
+`babyId` est optionnel ; omis, la réponse couvre tous les bébés.
 
 ### `POST /api/timers/[type]/start`
 
-Body: `{ babyId, caregiverId?, side?, startedAt? }`. `side` is `left`/`right` for
-nursing (opens the first segment; `both` is rejected) and `left`/`right`/`both`
-for pump; it defaults to `left` (nursing) / `both` (pump). `startedAt` defaults
-to server time and must not be more than 5 minutes ahead.
+Corps : `{ babyId, caregiverId?, side?, startedAt? }`. `side` vaut `left`/`right`
+pour l'allaitement (ouvre le premier segment ; `both` est rejeté) et
+`left`/`right`/`both` pour le tire-lait ; par défaut `left` (allaitement) /
+`both` (tire-lait). `startedAt` vaut l'heure du serveur par défaut et ne peut
+dépasser 5 minutes dans le futur.
 
-Check-then-insert runs in a transaction, so a concurrent start never creates a
-duplicate — it returns the existing session (AC-004).
+La vérification puis l'insertion se font dans une transaction : un démarrage
+concurrent ne crée jamais de doublon, il renvoie la session existante (AC-004).
 
-→ `201 { created: true, event }` when a session was created ·
-`200 { created: false, event }` when one was already running ·
+→ `201 { created: true, event }` si une session a été créée ·
+`200 { created: false, event }` si une session tournait déjà ·
 `400 validation_failed` · `404 unknown_timer_type`.
 
 ### `POST /api/timers/[type]/stop`
 
-Body: `{ babyId, endedAt?, volumeMl? }`. `endedAt` defaults to server time.
-`volumeMl` ∈ [1, 1000] applies to pump. Stopping a nursing session closes its
-open segment at `endedAt`.
+Corps : `{ babyId, endedAt?, volumeMl? }`. `endedAt` vaut l'heure du serveur par
+défaut. `volumeMl` ∈ [1, 1000] et devient **obligatoire** pour un tire-lait
+(FR-004). L'arrêt d'un allaitement ferme son segment ouvert à `endedAt`.
+
+L'événement fusionné est revalidé avant écriture : un `endedAt` antérieur au
+`startedAt` de la session est refusé et rien n'est persisté (la session reste
+ouverte).
 
 → `200 EventDTO` · `400 validation_failed` · `404 no_active_timer` /
 `unknown_timer_type`.
 
 ### `POST /api/timers/nursing/action`
 
-Body: `{ babyId, action: 'pause' | 'resume' | 'switch-side', side? }`.
+Corps : `{ babyId, action: 'pause' | 'resume' | 'switch-side', side? }`.
 
-- `pause` — closes the open segment; the event stays active.
-- `resume` — opens a new segment on `side`, defaulting to the last side used.
-- `switch-side` — closes the open segment (if any) and opens the other side.
+- `pause` — ferme le segment ouvert ; l'événement reste actif.
+- `resume` — ouvre un nouveau segment sur `side`, par défaut le dernier côté utilisé.
+- `switch-side` — ferme le segment ouvert (s'il y en a un) et ouvre le côté
+  opposé. Un `side` fourni par le client est ignoré pour cette action : changer
+  de côté inverse toujours le côté, sans quoi l'action pourrait ne rien faire.
 
 → `200 EventDTO` · `400 validation_failed` · `404 no_active_timer` ·
-`409 invalid_state` (pause while paused, resume while running).
+`409 invalid_state` (pause alors que déjà en pause, reprise alors que la session
+tourne, session sans aucun segment).
 
 ## SSE — `GET /api/stream`
 
-`content-type: text/event-stream`. Two named events:
+`content-type: text/event-stream`. Deux événements nommés :
 
 ```
 event: snapshot
@@ -158,8 +185,11 @@ event: sync
 data: { "kind": "created" | "updated" | "deleted" | "restored", "event": EventDTO, "serverTime": "…" }
 ```
 
-- `snapshot` is sent once on connect — reconnecting yields a fresh snapshot
-  (FR-012 state recovery); clients refetch `/api/events` for list state.
-- `sync` is broadcast on every mutation: event create/patch/delete/restore and
-  timer start/stop/nursing action.
-- A `:ping` comment heartbeat is sent every 25 s to keep the connection alive.
+- `snapshot` est envoyé une fois à la connexion — une reconnexion produit un
+  nouveau snapshot (reprise d'état, FR-012) ; les clients rechargent
+  `/api/events` pour l'état des listes.
+- `sync` est diffusé à chaque mutation : création, modification, suppression et
+  restauration d'événement, démarrage et arrêt de minuteur, actions
+  d'allaitement.
+- Un battement de cœur `:ping` (commentaire SSE) est envoyé toutes les 25 s pour
+  maintenir la connexion.

@@ -172,9 +172,9 @@ Implement `api.ts` with the typed helpers listed in Interfaces (import the `Even
 **Interfaces:**
 - Produces: fixed bottom nav, 3 destinations (Aujourd'hui `/` icon `house`, Historique `/history` icon `calendar-days`, Réglages `/settings` icon `settings`), icon + French label, active state marked by `text-primary` AND an indicator bar (color is never the only signal), targets ≥ 48 px, `pb-[env(safe-area-inset-bottom)]`, `min-h-dvh` on the page wrapper. `/settings` is a link only — the route belongs to slice 5.
 
-- [ ] **Step 1: Implement** `BottomNav.svelte` (reads `page.url.pathname` from `$app/state`) and rework `+layout.svelte`: `min-h-dvh flex flex-col bg-surface text-ink`, `<main class="flex-1 pb-20">{@render children()}</main>`, nav fixed bottom with `bg-surface-raised border-t border-border`. `/history/+page.svelte` stub: a heading « Historique » + muted « Bientôt » paragraph (slice 4 replaces it).
-- [ ] **Step 2: Verify** — `npm run check`; `npm run dev` briefly and confirm the shell renders (or rely on the Task 8 e2e).
-- [ ] **Step 3: Commit** — `feat: add app shell with bottom navigation`
+- [x] **Step 1: Implement** `BottomNav.svelte` (reads `page.url.pathname` from `$app/state`) and rework `+layout.svelte`: `min-h-dvh flex flex-col bg-surface text-ink`, `<main class="flex-1 pb-20">{@render children()}</main>`, nav fixed bottom with `bg-surface-raised border-t border-border`. `/history/+page.svelte` stub: a heading « Historique » + muted « Bientôt » paragraph (slice 4 replaces it).
+- [x] **Step 2: Verify** — `npm run check`; `npm run dev` briefly and confirm the shell renders (or rely on the Task 8 e2e).
+- [x] **Step 3: Commit** — `feat: add app shell with bottom navigation`
 
 ---
 

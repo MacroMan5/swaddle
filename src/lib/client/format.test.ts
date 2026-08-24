@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatElapsed, formatClock, nursingDurationMs, todayRangeIso } from './format';
+import { formatElapsed, formatClock, nursingDurationMs, todayRangeIso, isNewLocalDay } from './format';
 
 describe('formatElapsed', () => {
 	it('clamps negative to zero (server clock ahead)', () => {
@@ -39,5 +39,19 @@ describe('todayRangeIso', () => {
 		const { from, to } = todayRangeIso(new Date(2026, 7, 24, 14, 30));
 		expect(Date.parse(to) - Date.parse(from)).toBe(24 * 3_600_000);
 		expect(new Date(from).getHours()).toBe(0);
+	});
+});
+
+describe('isNewLocalDay (server-corrected clock, item 3)', () => {
+	it('detects a rollover using the corrected clock, even across a small skew', () => {
+		const beforeMidnight = new Date(2026, 7, 24, 23, 59, 58).getTime();
+		// Server 5s ahead of the device clock: the corrected time already crossed midnight.
+		const correctedAfterMidnight = beforeMidnight + 5000;
+		expect(isNewLocalDay(beforeMidnight, correctedAfterMidnight)).toBe(true);
+	});
+
+	it('is false within the same day', () => {
+		const t0 = new Date(2026, 7, 24, 10, 0, 0).getTime();
+		expect(isNewLocalDay(t0, t0 + 60_000)).toBe(false);
 	});
 });

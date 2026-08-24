@@ -24,7 +24,7 @@
 				<a
 					href={item.href}
 					aria-current={active ? 'page' : undefined}
-					class="focus-visible:ring-primary relative flex min-h-12 flex-col items-center justify-center gap-1 px-2 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none {active
+					class="focus-visible:ring-primary relative flex min-h-12 flex-col items-center justify-center gap-1 px-2 py-2 text-base focus-visible:ring-2 focus-visible:outline-none {active
 						? 'text-primary font-semibold'
 						: 'text-ink-muted'}"
 				>

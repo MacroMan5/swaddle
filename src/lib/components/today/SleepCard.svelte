@@ -49,16 +49,16 @@
 			<Moon size={20} class="text-sleep-700" aria-hidden="true" />
 			<h2 class="text-sleep-700 font-semibold">Sommeil</h2>
 		</div>
-		<p class="text-ink-muted tabular-nums text-sm">
+		<p class="text-ink-muted tabular-nums text-base">
 			{lastSleepLabel ?? 'Aucun sommeil aujourd’hui'}
 		</p>
 		{#if todayCount > 0}
-			<p class="text-ink-muted tabular-nums text-xs">
+			<p class="text-ink-muted tabular-nums text-base">
 				{todayCount} sommeil{todayCount > 1 ? 's' : ''} aujourd’hui
 			</p>
 		{/if}
 		{#if activeSleep}
-			<p class="text-ink-muted text-sm">En cours · voir en haut</p>
+			<p class="text-ink-muted text-base">En cours · voir en haut</p>
 		{:else}
 			<button
 				type="button"
@@ -70,7 +70,7 @@
 			</button>
 		{/if}
 		{#if error}
-			<p class="text-danger text-sm" role="alert">{error}</p>
+			<p class="text-danger text-base" role="alert">{error}</p>
 		{/if}
 	</Card.Content>
 </Card.Root>

@@ -38,3 +38,18 @@ export function todayRangeIso(now: Date): { from: string; to: string } {
 	const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 	return { from: start.toISOString(), to: end.toISOString() };
 }
+
+/**
+ * True when `nextMs`'s local calendar day differs from `prevMs`'s. Callers pass
+ * the server-corrected clock (RISK-001), not the raw device clock, so a skewed
+ * device time never masks — or falsely triggers — a midnight rollover.
+ */
+export function isNewLocalDay(prevMs: number, nextMs: number): boolean {
+	const a = new Date(prevMs);
+	const b = new Date(nextMs);
+	return (
+		a.getFullYear() !== b.getFullYear() ||
+		a.getMonth() !== b.getMonth() ||
+		a.getDate() !== b.getDate()
+	);
+}

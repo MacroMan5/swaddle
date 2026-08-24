@@ -32,6 +32,9 @@
 	--radius-card: 1rem;
 	--radius-control: 0.75rem;
 	--shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
+	/* Second (and last) shadow level — design-system.md "deux niveaux max": modal/sheet elevation. */
+	--shadow-modal: 0 8px 24px rgb(0 0 0 / 0.16), 0 2px 8px rgb(0 0 0 / 0.08);
+	--color-scrim: var(--scrim);
 	--font-sans: 'Nunito Sans', system-ui, sans-serif;
 	--font-serif: 'Lora', Georgia, serif;
 }
@@ -72,6 +75,9 @@
 	--on-primary: #ffffff;
 	--accent: #0284c7;
 	--danger: #dc2626;
+	/* Overlay scrim: stays a fixed dark neutral in both themes — it dims the page
+	   behind a sheet/dialog, it is not a themed surface. */
+	--scrim: #0f0f14;
 	--feed-100: #fef3c7;
 	--feed-700: #b45309;
 	--diaper-100: #ccfbf1;

@@ -20,7 +20,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<ConnectionBanner visible={store.everConnected && !store.connected} />
+<ConnectionBanner visible={store.connectionState === 'disconnected'} />
 
 <div class="bg-surface text-ink flex min-h-dvh flex-col">
 	<main class="mx-auto w-full max-w-2xl flex-1 pb-24">

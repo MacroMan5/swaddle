@@ -10,7 +10,7 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="bg-danger text-on-primary fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium"
+		class="bg-danger text-on-primary fixed inset-x-0 top-0 z-40 flex items-center justify-center gap-2 px-4 py-2 text-base font-medium"
 	>
 		<WifiOff size={16} aria-hidden="true" />
 		<span>Connexion perdue — reconnexion…</span>

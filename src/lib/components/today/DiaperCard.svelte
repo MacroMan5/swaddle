@@ -14,7 +14,7 @@
 	}: {
 		babyId: string | null;
 		caregiverId: string | null;
-		onSaved: (message: string, onUndo: () => void) => void;
+		onSaved: (id: string, message: string, onUndo: () => Promise<void>) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -58,8 +58,12 @@
 			return;
 		}
 		pending = false;
-		onSaved('Couche enregistrée', () => {
-			void deleteEvent(event.id);
+		// Merge the confirmed write immediately: the screen is correct even if the
+		// SSE `sync` for it never arrives or is slow (item 6).
+		store.applyServerEvent(event);
+		onSaved(event.id, 'Couche enregistrée', async () => {
+			const deleted = await deleteEvent(event.id);
+			store.applyServerEvent(deleted);
 		});
 	}
 </script>
@@ -70,11 +74,11 @@
 			<Droplets size={20} class="text-diaper-700" aria-hidden="true" />
 			<h2 class="text-diaper-700 font-semibold">Couche</h2>
 		</div>
-		<p class="text-ink-muted text-sm tabular-nums">
+		<p class="text-ink-muted text-base tabular-nums">
 			{lastDiaperLabel ?? 'Aucune couche aujourd’hui'}
 		</p>
 		{#if todayCount > 0}
-			<p class="text-ink-muted tabular-nums text-xs">
+			<p class="text-ink-muted tabular-nums text-base">
 				{todayCount} couche{todayCount > 1 ? 's' : ''} aujourd’hui
 			</p>
 		{/if}
@@ -105,7 +109,7 @@
 			</button>
 		</div>
 		{#if error}
-			<p class="text-danger text-sm" role="alert">{error}</p>
+			<p class="text-danger text-base" role="alert">{error}</p>
 		{/if}
 	</Card.Content>
 </Card.Root>

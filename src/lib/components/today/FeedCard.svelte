@@ -16,7 +16,7 @@
 	}: {
 		babyId: string | null;
 		caregiverId: string | null;
-		onSaved: (message: string, onUndo: () => void) => void;
+		onSaved: (id: string, message: string, onUndo: () => Promise<void>) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -33,10 +33,19 @@
 	const lastFeeding = $derived(
 		store.events.find((e) => e.type === 'nursing' || e.type === 'bottle' || e.type === 'pump')
 	);
-	const todayCount = $derived(
-		store.events.filter((e) => e.type === 'nursing' || e.type === 'bottle' || e.type === 'pump')
-			.length
-	);
+
+	// Per-type counts (item 11): a bottle or a pump session is not a "tétée".
+	const nursingCount = $derived(store.events.filter((e) => e.type === 'nursing').length);
+	const bottleCount = $derived(store.events.filter((e) => e.type === 'bottle').length);
+	const pumpCount = $derived(store.events.filter((e) => e.type === 'pump').length);
+
+	const todaySummaryLabel = $derived.by(() => {
+		const parts: string[] = [];
+		if (nursingCount > 0) parts.push(`${nursingCount} allaitement${nursingCount > 1 ? 's' : ''}`);
+		if (bottleCount > 0) parts.push(`${bottleCount} biberon${bottleCount > 1 ? 's' : ''}`);
+		if (pumpCount > 0) parts.push(`${pumpCount} tirage${pumpCount > 1 ? 's' : ''}`);
+		return parts.length > 0 ? `${parts.join(' · ')} aujourd’hui` : null;
+	});
 
 	const lastFeedingLabel = $derived.by(() => {
 		const event = lastFeeding;
@@ -48,9 +57,10 @@
 	});
 
 	function scrollToActiveTimers(): void {
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		document
 			.querySelector('[data-testid="active-timers"]')
-			?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
 	}
 
 	function handleNurseTap(): void {
@@ -66,7 +76,11 @@
 		pending = true;
 		error = null;
 		try {
-			await startTimer('nursing', { babyId, caregiverId, side });
+			// {created:false} adopts an already-running session started elsewhere
+			// (item 6): merge it in immediately either way, since that path emits
+			// no SSE event.
+			const result = await startTimer('nursing', { babyId, caregiverId, side });
+			store.applyServerEvent(result.event);
 			showSideChooser = false;
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
@@ -90,12 +104,12 @@
 			<Heart size={20} class="text-feed-700" aria-hidden="true" />
 			<h2 class="text-feed-700 font-semibold">Alimentation</h2>
 		</div>
-		<p class="text-ink-muted tabular-nums text-sm">
+		<p class="text-ink-muted tabular-nums text-base">
 			{lastFeedingLabel ?? 'Aucune tétée aujourd’hui'}
 		</p>
-		{#if todayCount > 0}
-			<p class="text-ink-muted tabular-nums text-xs">
-				{todayCount} tétée{todayCount > 1 ? 's' : ''} aujourd’hui
+		{#if todaySummaryLabel}
+			<p class="text-ink-muted tabular-nums text-base">
+				{todaySummaryLabel}
 			</p>
 		{/if}
 		<div class="grid grid-cols-3 gap-2">
@@ -148,7 +162,7 @@
 			</div>
 		{/if}
 		{#if error}
-			<p class="text-danger text-sm" role="alert">{error}</p>
+			<p class="text-danger text-base" role="alert">{error}</p>
 		{/if}
 	</Card.Content>
 </Card.Root>

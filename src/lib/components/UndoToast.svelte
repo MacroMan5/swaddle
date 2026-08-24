@@ -1,7 +1,9 @@
 <script lang="ts">
 	// Generic toast: a message + a single "Annuler"-style action, auto-dismissing
-	// after `duration` ms. Reused by every write flow that needs a soft-undo
-	// window (diaper now, feeding/bottle later).
+	// after `duration` ms unless the action is in flight or has failed. Reused by
+	// every write flow that needs a soft-undo window (diaper, bottle, ...).
+	// Positioning is the caller's job (see +page.svelte's toast stack) so several
+	// of these can be stacked at once (item 9).
 	let {
 		message,
 		actionLabel = 'Annuler',
@@ -11,33 +13,52 @@
 	}: {
 		message: string;
 		actionLabel?: string;
-		onAction: () => void;
+		onAction: () => Promise<void>;
 		onDismiss: () => void;
 		duration?: number;
 	} = $props();
 
+	let pending = $state(false);
+	let error = $state<string | null>(null);
+
 	$effect(() => {
+		if (error !== null) return; // stay open on failure so the user can retry
 		const timer = setTimeout(onDismiss, duration);
 		return () => clearTimeout(timer);
 	});
 
-	function handleAction(): void {
-		onAction();
-		onDismiss();
+	async function handleAction(): Promise<void> {
+		if (pending) return;
+		pending = true;
+		error = null;
+		try {
+			await onAction();
+			pending = false;
+			onDismiss();
+		} catch (e) {
+			pending = false;
+			error = e instanceof Error ? e.message : 'Impossible d’annuler. Réessayer ?';
+		}
 	}
 </script>
 
 <div
 	role="status"
 	aria-live="polite"
-	class="bg-surface-raised border-border text-ink shadow-card fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md items-center justify-between gap-3 rounded-card border px-4 py-3"
+	class="bg-surface-raised border-border text-ink shadow-card pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-card border px-4 py-3"
 >
-	<span>{message}</span>
-	<button
-		type="button"
-		onclick={handleAction}
-		class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
-	>
-		{actionLabel}
-	</button>
+	<div class="flex items-center justify-between gap-3">
+		<span class="text-base">{message}</span>
+		<button
+			type="button"
+			disabled={pending}
+			onclick={handleAction}
+			class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+		>
+			{pending ? 'Annulation…' : actionLabel}
+		</button>
+	</div>
+	{#if error}
+		<p role="alert" class="text-danger text-base">{error}</p>
+	{/if}
 </div>

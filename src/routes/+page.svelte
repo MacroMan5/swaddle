@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { getContext, onMount } from 'svelte';
-	import { listBabies } from '$lib/client/api';
+	import { listBabies, ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import ActiveTimersCard from '$lib/components/today/ActiveTimersCard.svelte';
 	import DiaperCard from '$lib/components/today/DiaperCard.svelte';
 	import FeedCard from '$lib/components/today/FeedCard.svelte';
 	import SleepCard from '$lib/components/today/SleepCard.svelte';
+	import SummaryCard from '$lib/components/today/SummaryCard.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 
 	// Owned by +layout.svelte (the connection banner needs it too); this page
@@ -14,40 +15,77 @@
 
 	let babyId = $state<string | null>(null);
 	let caregiverId = $state<string | null>(null);
-	let toast = $state<{ message: string; onUndo: () => void } | null>(null);
+	let loadError = $state<string | null>(null);
+	// Several undo windows can be open at once (item 9): a queue keyed by event id.
+	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
 
-	onMount(async () => {
-		caregiverId = localStorage.getItem('swaddle.caregiverId');
-		const babies = await listBabies();
-		const baby = babies[0];
-		if (baby) {
-			babyId = baby.id;
-			store.start(baby.id);
+	async function loadBaby(): Promise<void> {
+		loadError = null;
+		try {
+			caregiverId = localStorage.getItem('swaddle.caregiverId');
+			const babies = await listBabies();
+			const baby = babies[0];
+			if (baby) {
+				babyId = baby.id;
+				store.start(baby.id);
+			}
+		} catch (e) {
+			loadError =
+				e instanceof ApiError
+					? e.message
+					: 'Impossible de charger les données. Vérifiez votre connexion.';
 		}
+	}
+
+	onMount(() => {
+		void loadBaby();
 	});
 
-	function handleSaved(message: string, onUndo: () => void): void {
-		toast = { message, onUndo };
+	function handleSaved(id: string, message: string, onUndo: () => Promise<void>): void {
+		toasts = [...toasts.filter((t) => t.id !== id), { id, message, onUndo }];
+	}
+
+	function dismissToast(id: string): void {
+		toasts = toasts.filter((t) => t.id !== id);
 	}
 </script>
 
 <div class="flex flex-col gap-4 p-4">
 	<h1 class="text-2xl font-bold text-ink">Aujourd’hui</h1>
 
-	{#if store.events.length === 0}
-		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
+	{#if loadError}
+		<div class="border-border bg-surface-raised flex flex-col gap-2 rounded-card border p-4" role="alert">
+			<p class="text-ink text-base">{loadError}</p>
+			<button
+				type="button"
+				onclick={loadBaby}
+				class="bg-primary text-on-primary min-h-12 self-start rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
+			>
+				Réessayer
+			</button>
+		</div>
 	{/if}
 
 	<ActiveTimersCard {babyId} />
+
+	{#if store.events.length === 0 && store.timers.length === 0}
+		<p class="text-ink-muted">Aucune activité — tout commence ici</p>
+	{/if}
+
 	<FeedCard {babyId} {caregiverId} onSaved={handleSaved} />
 	<DiaperCard {babyId} {caregiverId} onSaved={handleSaved} />
 	<SleepCard {babyId} {caregiverId} />
+	<SummaryCard />
 </div>
 
-{#if toast}
-	<UndoToast
-		message={toast.message}
-		onAction={toast.onUndo}
-		onDismiss={() => (toast = null)}
-	/>
+{#if toasts.length > 0}
+	<div class="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md flex-col-reverse gap-2">
+		{#each toasts as toast (toast.id)}
+			<UndoToast
+				message={toast.message}
+				onAction={toast.onUndo}
+				onDismiss={() => dismissToast(toast.id)}
+			/>
+		{/each}
+	</div>
 {/if}

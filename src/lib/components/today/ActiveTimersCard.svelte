@@ -14,6 +14,7 @@
 	let pending = $state<Record<string, boolean>>({});
 	let error = $state<string | null>(null);
 	let pumpVolumes = $state<Record<string, string>>({});
+	let pumpVolumeErrors = $state<Record<string, string>>({});
 
 	function isPending(id: string): boolean {
 		return pending[id] === true;
@@ -39,12 +40,15 @@
 		return segments[segments.length - 1].side;
 	}
 
-	async function run(id: string, action: () => Promise<unknown>): Promise<void> {
+	/** Runs a mutation and merges its confirmed event immediately (item 6): the
+	 * card stays correct even if the SSE `sync` for it is slow or never arrives. */
+	async function run(id: string, action: () => Promise<EventDTO>): Promise<void> {
 		if (babyId === null || isPending(id)) return;
 		pending = { ...pending, [id]: true };
 		error = null;
 		try {
-			await action();
+			const event = await action();
+			store.applyServerEvent(event);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
 		} finally {
@@ -74,8 +78,16 @@
 		return run(event.id, () => stopTimer('sleep', { babyId: babyId as string }));
 	}
 
+	/** Client-side 1–1000 ml check (FR-017) before hitting the API — the server
+	 * stays the backstop of record (item 7). */
 	function finishPump(event: EventDTO): Promise<void> {
-		const volumeMl = Number(pumpVolumes[event.id]);
+		const raw = pumpVolumes[event.id] ?? '';
+		const volumeMl = Number(raw);
+		if (raw.trim() === '' || !Number.isFinite(volumeMl) || volumeMl < 1 || volumeMl > 1000) {
+			pumpVolumeErrors = { ...pumpVolumeErrors, [event.id]: 'Le volume doit être entre 1 et 1000 ml.' };
+			return Promise.resolve();
+		}
+		pumpVolumeErrors = { ...pumpVolumeErrors, [event.id]: '' };
 		return run(event.id, () => stopTimer('pump', { babyId: babyId as string, volumeMl }));
 	}
 </script>
@@ -99,7 +111,7 @@
 					</div>
 
 					{#if event.type === 'nursing'}
-						<p class="text-ink-muted text-sm">
+						<p class="text-ink-muted text-base">
 							{currentSide(event) === 'left' ? 'Gauche' : 'Droite'}
 							{isPaused(event) ? ' · En pause' : ''}
 						</p>
@@ -108,7 +120,7 @@
 								type="button"
 								disabled={isPending(event.id)}
 								onclick={() => switchSide(event)}
-								class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+								class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Changer de côté
 							</button>
@@ -117,7 +129,7 @@
 									type="button"
 									disabled={isPending(event.id)}
 									onclick={() => resume(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 								>
 									Reprendre
 								</button>
@@ -126,7 +138,7 @@
 									type="button"
 									disabled={isPending(event.id)}
 									onclick={() => pause(event)}
-									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-sm font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+									class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 								>
 									Pause
 								</button>
@@ -135,37 +147,48 @@
 								type="button"
 								disabled={isPending(event.id)}
 								onclick={() => finishNursing(event)}
-								class="bg-primary text-on-primary min-h-12 flex-1 rounded-control px-2 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+								class="bg-primary text-on-primary min-h-12 flex-1 rounded-control px-2 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Terminer
 							</button>
 						</div>
 					{:else if event.type === 'pump'}
 						<div class="flex items-center gap-2">
-							<label for={`pump-volume-${event.id}`} class="text-ink-muted text-sm"
+							<label for={`pump-volume-${event.id}`} class="text-ink-muted text-base"
 								>Volume (ml)</label
 							>
 							<input
 								id={`pump-volume-${event.id}`}
 								inputmode="decimal"
 								bind:value={pumpVolumes[event.id]}
-								class="border-border bg-surface min-h-12 w-24 rounded-control border px-2 py-1 tabular-nums"
+								aria-invalid={!!pumpVolumeErrors[event.id]}
+								aria-describedby={pumpVolumeErrors[event.id] ? `pump-volume-error-${event.id}` : undefined}
+								class="border-border bg-surface min-h-12 w-24 rounded-control border px-2 py-1 tabular-nums {pumpVolumeErrors[
+									event.id
+								]
+									? 'border-danger'
+									: ''}"
 							/>
 							<button
 								type="button"
 								disabled={isPending(event.id) || !pumpVolumes[event.id]}
 								onclick={() => finishPump(event)}
-								class="bg-primary text-on-primary min-h-12 ml-auto rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+								class="bg-primary text-on-primary min-h-12 ml-auto rounded-control px-3 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 							>
 								Terminer
 							</button>
 						</div>
+						{#if pumpVolumeErrors[event.id]}
+							<p id={`pump-volume-error-${event.id}`} class="text-danger text-base" role="alert">
+								{pumpVolumeErrors[event.id]}
+							</p>
+						{/if}
 					{:else}
 						<button
 							type="button"
 							disabled={isPending(event.id)}
 							onclick={() => finishSleep(event)}
-							class="bg-primary text-on-primary min-h-12 rounded-control px-3 py-2 text-sm font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+							class="bg-primary text-on-primary min-h-12 rounded-control px-3 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
 						>
 							Réveillé
 						</button>
@@ -173,7 +196,7 @@
 				</div>
 			{/each}
 			{#if error}
-				<p class="text-danger text-sm" role="alert">{error}</p>
+				<p class="text-danger text-base" role="alert">{error}</p>
 			{/if}
 		</Card.Content>
 	</Card.Root>

@@ -3,8 +3,8 @@ import { dirname } from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { RepoError } from '$lib/server/events/repo';
-import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
-import { parseDetails, validateDetailsContext } from '$lib/server/events/types';
+import type { BabyDTO, EventDTO, EventType, Issue } from '$lib/server/events/types';
+import { TIMER_TYPES, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
@@ -139,14 +139,21 @@ const exportSchema = z.object({
 
 type ParsedExport = z.infer<typeof exportSchema>;
 
+function isTimerType(type: EventType): boolean {
+	return (TIMER_TYPES as readonly string[]).includes(type);
+}
+
 /**
  * Everything the schema alone can't catch: ids that must be unique within
  * their own collection (each is a table primary key), event references that
- * must resolve to a baby/caregiver in the same payload, and event `details`
- * that must actually match their type — the schema only knows `details` as
+ * must resolve to a baby/caregiver in the same payload, event `details` that
+ * must actually match their type — the schema only knows `details` as
  * `unknown`, so a corrupted export could otherwise import e.g. an active
- * nursing session with `{}` and crash a later `nursingAction` call. Runs
- * before the destructive transaction so nothing is written on failure.
+ * nursing session with `{}` and crash a later `nursingAction` call — event
+ * timestamps that must be ISO-parseable and obey the same FR-017 rules as a
+ * normal write, and the FR-013 invariant (at most one undeleted active timer
+ * per baby/type). Runs before the destructive transaction so nothing is
+ * written on failure.
  */
 function validateGraph(data: ParsedExport): Issue[] {
 	const issues: Issue[] = [];
@@ -171,6 +178,7 @@ function validateGraph(data: ParsedExport): Issue[] {
 	});
 
 	const eventIds = new Set<string>();
+	const activeTimerKeys = new Set<string>();
 	data.events.forEach((e, i) => {
 		if (eventIds.has(e.id))
 			issues.push({ path: `events.${i}.id`, code: 'duplicate_id', message: `duplicate event id ${e.id}` });
@@ -188,6 +196,52 @@ function validateGraph(data: ParsedExport): Issue[] {
 				code: 'unknown_reference',
 				message: `event ${e.id} references unknown caregiverId ${e.caregiverId}`
 			});
+
+		const startedAtValid = !Number.isNaN(Date.parse(e.startedAt));
+		if (!startedAtValid)
+			issues.push({
+				path: `events.${i}.startedAt`,
+				code: 'invalid_date',
+				message: `event ${e.id} has a non-ISO startedAt`
+			});
+		const endedAtValid = e.endedAt === null || !Number.isNaN(Date.parse(e.endedAt));
+		if (!endedAtValid)
+			issues.push({
+				path: `events.${i}.endedAt`,
+				code: 'invalid_date',
+				message: `event ${e.id} has a non-ISO endedAt`
+			});
+		// Comparisons below need both timestamps to have parsed; skip them
+		// otherwise instead of comparing against NaN (which silently passes).
+		if (startedAtValid && endedAtValid)
+			issues.push(
+				...validateEventTimes(
+					{ type: e.type, startedAt: e.startedAt, endedAt: e.endedAt },
+					now
+				).map((iss) => ({ ...iss, path: `events.${i}.${iss.path}` }))
+			);
+
+		// Point events (bottle, diaper) must keep endedAt null, same as at
+		// creation; timer types (nursing, pump, sleep) may be null (active) or
+		// set (completed).
+		if (!isTimerType(e.type) && e.endedAt !== null)
+			issues.push({
+				path: `events.${i}.endedAt`,
+				code: 'ended_at_forbidden',
+				message: `${e.type} is a point event and takes no endedAt`
+			});
+
+		// FR-013: at most one undeleted active timer per baby+type.
+		if (isTimerType(e.type) && e.endedAt === null && e.deletedAt === null) {
+			const key = `${e.babyId}:${e.type}`;
+			if (activeTimerKeys.has(key))
+				issues.push({
+					path: `events.${i}`,
+					code: 'timer_conflict',
+					message: `duplicate active ${e.type} timer for baby ${e.babyId}`
+				});
+			activeTimerKeys.add(key);
+		}
 
 		const detailsResult = parseDetails(e.type, e.details);
 		if (!detailsResult.ok) {

@@ -108,6 +108,108 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 		expect(() => importJson(b, exported)).toThrow(RepoError);
 		expect(exportJson(b).events).toEqual(before.events);
 	});
+
+	it('rejects a non-ISO startedAt, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[0] = { ...exported.events[0], startedAt: 'not-a-date' };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects a non-ISO endedAt, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[1] = { ...exported.events[1], endedAt: 'not-a-date' };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects an endedAt before startedAt, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		// e2 (nursing) starts at 01:00; back-date its end before that.
+		exported.events[1] = { ...exported.events[1], endedAt: '2026-08-01T00:00:00.000Z' };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects a startedAt more than 5 minutes in the future, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[0] = {
+			...exported.events[0],
+			startedAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+		};
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects a point event (bottle/diaper) carrying an endedAt, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		// e1 is a diaper (point) event; point events must keep endedAt null.
+		exported.events[0] = { ...exported.events[0], endedAt: '2026-08-01T00:10:00.000Z' };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects two undeleted active timers of the same type for the same baby, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		// Turn e2 (nursing, completed) into a second active nursing session for
+		// the same baby as a fresh id — FR-013 allows at most one.
+		exported.events[1] = {
+			...exported.events[1],
+			id: 'e2-active',
+			endedAt: null,
+			details: { segments: [{ side: 'left', startedAt: exported.events[1].startedAt, endedAt: null }] }
+		};
+		exported.events.push({
+			...exported.events[1],
+			id: 'e2-active-dup'
+		});
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('allows a soft-deleted active-shaped timer alongside a real active one (no false conflict)', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[1] = {
+			...exported.events[1],
+			id: 'e2-active',
+			endedAt: null,
+			deletedAt: null,
+			details: { segments: [{ side: 'left', startedAt: exported.events[1].startedAt, endedAt: null }] }
+		};
+		exported.events.push({
+			...exported.events[1],
+			id: 'e2-active-deleted',
+			deletedAt: '2026-08-01T03:00:00.000Z'
+		});
+
+		const b = openDb(':memory:');
+		expect(() => importJson(b, exported)).not.toThrow();
+	});
 });
 
 describe('exportCsv', () => {

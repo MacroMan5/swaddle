@@ -19,6 +19,7 @@
 	import DayPicker from '$lib/components/history/DayPicker.svelte';
 	import DayTimeline from '$lib/components/history/DayTimeline.svelte';
 	import EventEditSheet from '$lib/components/history/EventEditSheet.svelte';
+	import { manualAddDefaultTime } from '$lib/components/history/eventForm';
 	import EventList from '$lib/components/history/EventList.svelte';
 	import { removeById, upsertById } from '$lib/components/history/historyList';
 	import ManualAddSheet from '$lib/components/history/ManualAddSheet.svelte';
@@ -253,10 +254,7 @@
 
 	const summary = $derived(dailySummary(dayEvents.filter((e) => e.deletedAt === null), dayKey, store.nowMs));
 
-	const manualAddDefault = $derived.by(() => {
-		const [y, m, d] = dayKey.split('-').map(Number);
-		return new Date(y, m - 1, d, 12, 0);
-	});
+	const manualAddDefault = $derived(manualAddDefaultTime(dayKey, todayKey, store.nowMs));
 </script>
 
 <div class="flex flex-col gap-4 p-4">

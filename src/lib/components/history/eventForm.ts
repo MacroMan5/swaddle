@@ -12,3 +12,16 @@ export function toLocalInputValue(date: Date): string {
 export function fromLocalInputValue(value: string): string {
 	return new Date(value).toISOString();
 }
+
+/**
+ * ManualAddSheet's default `startedAt` (review item 6, FR-017). A fixed noon
+ * of the day being viewed is safe for any past day, but is a *future*
+ * timestamp — rejected by the server's 5-minute tolerance — whenever today's
+ * corrected clock (`store.nowMs`) hasn't reached noon yet. For today, default
+ * to the corrected now instead; only a past day gets the fixed noon.
+ */
+export function manualAddDefaultTime(dayKey: string, todayKey: string, nowMs: number): Date {
+	if (dayKey === todayKey) return new Date(nowMs);
+	const [y, m, d] = dayKey.split('-').map(Number);
+	return new Date(y, m - 1, d, 12, 0);
+}

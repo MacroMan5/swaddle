@@ -144,9 +144,9 @@ test('FR-018: a transport failure on the volume-unit save rolls back and shows t
 
 	const mlButton = page.getByRole('button', { name: 'ml', exact: true });
 	const ozButton = page.getByRole('button', { name: 'oz', exact: true });
-	// "default" variant (selected) renders bg-primary; "outline" renders bg-background.
+	// "default" variant (selected) renders bg-primary; "outline" renders bg-surface-raised.
 	await expect(mlButton).toHaveClass(/bg-primary/);
-	await expect(ozButton).toHaveClass(/bg-background/);
+	await expect(ozButton).toHaveClass(/bg-surface-raised/);
 
 	await page.route('**/api/household', (route) => route.abort('connectionreset'));
 
@@ -155,6 +155,6 @@ test('FR-018: a transport failure on the volume-unit save rolls back and shows t
 	// known, (a)/(b) a French error appears and the buttons are clickable again.
 	await expect(page.getByText('Une erreur est survenue.')).toBeVisible();
 	await expect(mlButton).toHaveClass(/bg-primary/);
-	await expect(ozButton).toHaveClass(/bg-background/);
+	await expect(ozButton).toHaveClass(/bg-surface-raised/);
 	await expect(ozButton).toBeEnabled();
 });

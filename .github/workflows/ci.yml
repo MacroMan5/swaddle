@@ -16,7 +16,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # --ignore-scripts: `npm ci` would otherwise run better-sqlite3's default
+      # `node-gyp rebuild`, which needs a Visual Studio toolchain the runner's
+      # service account cannot discover. The package ships N-API prebuilds, so
+      # no compilation is needed (fsevents, the only other install script, is
+      # macOS-only and optional).
+      - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run test:unit
       - run: npx playwright install chromium

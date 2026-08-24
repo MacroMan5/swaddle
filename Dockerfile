@@ -1,11 +1,10 @@
 FROM node:22-slim AS build
 WORKDIR /app
-# better-sqlite3 compiles from source via node-gyp (no prebuilt binaries) —
-# requires Python and a C++ toolchain, absent from node:22-slim by default.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-	&& rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: better-sqlite3 ships N-API prebuilds (glibc + musl, x64 +
+# arm64); skipping its default `node-gyp rebuild` avoids pulling a C++
+# toolchain into the build stage and keeps arm64 builds fast under emulation.
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build && npm prune --omit=dev
 

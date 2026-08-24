@@ -3,7 +3,8 @@ import { dirname } from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { RepoError } from '$lib/server/events/repo';
-import type { BabyDTO, EventDTO } from '$lib/server/events/types';
+import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
+import { parseDetails, validateDetailsContext } from '$lib/server/events/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
@@ -132,6 +133,76 @@ const exportSchema = z.object({
 	)
 });
 
+type ParsedExport = z.infer<typeof exportSchema>;
+
+/**
+ * Everything the schema alone can't catch: ids that must be unique within
+ * their own collection (each is a table primary key), event references that
+ * must resolve to a baby/caregiver in the same payload, and event `details`
+ * that must actually match their type — the schema only knows `details` as
+ * `unknown`, so a corrupted export could otherwise import e.g. an active
+ * nursing session with `{}` and crash a later `nursingAction` call. Runs
+ * before the destructive transaction so nothing is written on failure.
+ */
+function validateGraph(data: ParsedExport): Issue[] {
+	const issues: Issue[] = [];
+	const now = new Date();
+
+	const babyIds = new Set<string>();
+	data.babies.forEach((b, i) => {
+		if (babyIds.has(b.id))
+			issues.push({ path: `babies.${i}.id`, code: 'duplicate_id', message: `duplicate baby id ${b.id}` });
+		babyIds.add(b.id);
+	});
+
+	const caregiverIds = new Set<string>();
+	data.caregivers.forEach((c, i) => {
+		if (caregiverIds.has(c.id))
+			issues.push({
+				path: `caregivers.${i}.id`,
+				code: 'duplicate_id',
+				message: `duplicate caregiver id ${c.id}`
+			});
+		caregiverIds.add(c.id);
+	});
+
+	const eventIds = new Set<string>();
+	data.events.forEach((e, i) => {
+		if (eventIds.has(e.id))
+			issues.push({ path: `events.${i}.id`, code: 'duplicate_id', message: `duplicate event id ${e.id}` });
+		eventIds.add(e.id);
+
+		if (!babyIds.has(e.babyId))
+			issues.push({
+				path: `events.${i}.babyId`,
+				code: 'unknown_reference',
+				message: `event ${e.id} references unknown babyId ${e.babyId}`
+			});
+		if (e.caregiverId !== null && !caregiverIds.has(e.caregiverId))
+			issues.push({
+				path: `events.${i}.caregiverId`,
+				code: 'unknown_reference',
+				message: `event ${e.id} references unknown caregiverId ${e.caregiverId}`
+			});
+
+		const detailsResult = parseDetails(e.type, e.details);
+		if (!detailsResult.ok) {
+			issues.push(
+				...detailsResult.issues.map((iss) => ({ ...iss, path: `events.${i}.${iss.path}` }))
+			);
+			return; // context validation needs details shaped as Details; skip it below
+		}
+		issues.push(
+			...validateDetailsContext(
+				{ type: e.type, endedAt: e.endedAt, details: detailsResult.value },
+				now
+			).map((iss) => ({ ...iss, path: `events.${i}.${iss.path}` }))
+		);
+	});
+
+	return issues;
+}
+
 export function importJson(
 	db: DB,
 	data: unknown
@@ -143,6 +214,11 @@ export function importJson(
 			'invalid export payload',
 			parsed.error.issues.map((i) => ({ path: i.path.join('.'), code: i.code, message: i.message }))
 		);
+
+	const graphIssues = validateGraph(parsed.data);
+	if (graphIssues.length > 0)
+		throw new RepoError('validation_failed', 'invalid export payload', graphIssues);
+
 	const { household, babies, caregivers, events } = parsed.data;
 	// The export never carries the pin hash (see exportJson): a restore must
 	// not silently disable the household's current PIN, so it's read before

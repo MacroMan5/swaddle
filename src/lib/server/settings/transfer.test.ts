@@ -63,6 +63,51 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 		importJson(b, exported);
 		expect(getPinHash(b)).toBe('salt:hash');
 	});
+
+	it('rejects an event referencing an unknown babyId, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[0].babyId = 'no-such-baby';
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects an event referencing an unknown caregiverId, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[0].caregiverId = 'no-such-caregiver';
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects a duplicate event id within the payload, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		exported.events[1] = { ...exported.events[1], id: exported.events[0].id };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
+
+	it('rejects an event whose details do not match its type, nothing written', () => {
+		const a = seed();
+		const exported = exportJson(a);
+		// A nursing session needs at least one segment.
+		exported.events[1] = { ...exported.events[1], details: {} };
+
+		const b = seed();
+		const before = exportJson(b);
+		expect(() => importJson(b, exported)).toThrow(RepoError);
+		expect(exportJson(b).events).toEqual(before.events);
+	});
 });
 
 describe('exportCsv', () => {

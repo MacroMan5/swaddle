@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { expect, test } from '@playwright/test';
 
 test('household defaults, patch, caregiver CRUD', async ({ request }) => {
@@ -36,9 +37,44 @@ test('AC-007: export json → restore reproduces the data and leaves a snapshot'
 	const body = await restore.json();
 	expect(body.restored.events).toBe(exported.events.length);
 	expect(body.snapshot).toContain('pre-restore');
+
+	// The pre-restore snapshot (FR-014) must be a real, openable SQLite file
+	// holding the state as it was right before the wipe — not just a path
+	// string in the response.
+	const snapshotDb = new Database(body.snapshot, { readonly: true });
+	const { n: snapshotEventCount } = snapshotDb.prepare('SELECT COUNT(*) AS n FROM event').get() as {
+		n: number;
+	};
+	snapshotDb.close();
+	expect(snapshotEventCount).toBe(exported.events.length);
+
 	const after = await (await request.get('/api/export/json')).json();
 	expect(after.events).toEqual(exported.events);
 	expect(after.babies).toEqual(exported.babies);
+});
+
+test('restore rejects a corrupted export before writing anything', async ({ request }) => {
+	const exported = await (await request.get('/api/export/json')).json();
+	const before = await (await request.get('/api/export/json')).json();
+
+	const unknownRef = { ...exported, events: [{ ...exported.events[0], babyId: 'no-such-baby' }] };
+	const missingRef = await request.post('/api/restore', { data: unknownRef });
+	expect(missingRef.status()).toBe(400);
+	expect((await missingRef.json()).error.code).toBe('validation_failed');
+
+	const duplicateId = {
+		...exported,
+		events: [exported.events[0], { ...exported.events[0] }]
+	};
+	const dup = await request.post('/api/restore', { data: duplicateId });
+	expect(dup.status()).toBe(400);
+
+	const after = await (await request.get('/api/export/json')).json();
+	const { exportedAt: _before, ...restBefore } = before;
+	const { exportedAt: _after, ...restAfter } = after;
+	void _before;
+	void _after;
+	expect(restAfter).toEqual(restBefore);
 });
 
 test('csv export has a header and one line per event', async ({ request }) => {

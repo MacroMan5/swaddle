@@ -191,3 +191,88 @@ describe('nursing session (FR-002, AC-002 segments)', () => {
 		expect(segs(stopped).every((s) => s.endedAt !== null)).toBe(true);
 	});
 });
+
+import { patchEvent } from './repo';
+
+describe('stopTimer validates the merged session (FR-017)', () => {
+	it('rejects an endedAt before the session start', () => {
+		startTimer(db, { type: 'sleep', babyId: 'baby-1', startedAt: '2026-08-23T11:00:00.000Z' });
+		expect(() =>
+			stopTimer(db, {
+				type: 'sleep',
+				babyId: 'baby-1',
+				endedAt: '2026-08-23T10:00:00.000Z'
+			})
+		).toThrowError(RepoError);
+		// The session must stay open rather than persist end < start.
+		expect(listActiveTimers(db, 'baby-1')).toHaveLength(1);
+	});
+
+	it('never persists an end before the start of a future-dated session', () => {
+		const startedAt = new Date(Date.now() + 60_000).toISOString();
+		startTimer(db, { type: 'sleep', babyId: 'baby-1', startedAt });
+		expect(() => stopTimer(db, { type: 'sleep', babyId: 'baby-1' })).toThrowError(RepoError);
+		expect(listActiveTimers(db, 'baby-1')).toHaveLength(1);
+	});
+
+	it('rejects stopping a pump without a volume (FR-004)', () => {
+		startTimer(db, { type: 'pump', babyId: 'baby-1', side: 'left' });
+		expect(() => stopTimer(db, { type: 'pump', babyId: 'baby-1' })).toThrowError(RepoError);
+		expect(() =>
+			stopTimer(db, { type: 'pump', babyId: 'baby-1', volumeMl: null })
+		).toThrowError(RepoError);
+		expect(stopTimer(db, { type: 'pump', babyId: 'baby-1', volumeMl: 90 }).endedAt).not.toBeNull();
+	});
+});
+
+describe('patchEvent merges and validates atomically', () => {
+	it('applies a valid patch', () => {
+		const created = createEvent(db, bottle());
+		const patched = patchEvent(db, created.id, { note: 'calmer' }, new Date());
+		expect(patched.note).toBe('calmer');
+	});
+
+	it('rejects a patch that would put endedAt before startedAt', () => {
+		const { event } = startTimer(db, {
+			type: 'sleep',
+			babyId: 'baby-1',
+			startedAt: '2026-08-23T11:00:00.000Z'
+		});
+		expect(() =>
+			patchEvent(db, event.id, { endedAt: '2026-08-23T10:00:00.000Z' }, new Date())
+		).toThrowError(RepoError);
+		expect(getEvent(db, event.id)?.endedAt).toBeNull();
+	});
+
+	it('rejects patching an active nursing session to an empty segment list', () => {
+		const { event } = startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		expect(() =>
+			patchEvent(db, event.id, { details: { segments: [] } }, new Date())
+		).toThrowError(RepoError);
+	});
+
+	it('throws not_found on an unknown id', () => {
+		expect(() => patchEvent(db, 'nope', { note: 'x' }, new Date())).toThrowError(RepoError);
+	});
+});
+
+describe('nursing action hardening', () => {
+	it('switch-side ignores a client-supplied side and always switches', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		const switched = nursingAction(db, {
+			babyId: 'baby-1',
+			action: 'switch-side',
+			side: 'left'
+		});
+		const segments = (switched.details as { segments: NursingSegment[] }).segments;
+		expect(segments[segments.length - 1].side).toBe('right');
+	});
+
+	it('rejects actions on a session with no segments', () => {
+		const { event } = startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		// Bypass validation to simulate a corrupted row.
+		db.prepare('UPDATE event SET details = ? WHERE id = ?').run('{"segments":[]}', event.id);
+		for (const action of ['pause', 'resume', 'switch-side'] as const)
+			expect(() => nursingAction(db, { babyId: 'baby-1', action })).toThrowError(RepoError);
+	});
+});

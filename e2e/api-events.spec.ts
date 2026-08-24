@@ -68,3 +68,20 @@ test('unknown event id yields 404 with error envelope', async ({ request }) => {
 	expect(res.status()).toBe(404);
 	expect((await res.json()).error.code).toBe('not_found');
 });
+
+test('malformed JSON body yields a 400 envelope', async ({ request }) => {
+	const res = await request.post('/api/events', {
+		headers: { 'content-type': 'application/json' },
+		data: '{ not json'
+	});
+	expect(res.status()).toBe(400);
+	expect((await res.json()).error.code).toBe('validation_failed');
+});
+
+test('unknown babyId yields a 400 envelope, not a raw SQLite error', async ({ request }) => {
+	const res = await request.post('/api/events', { data: { ...diaper, babyId: 'ghost' } });
+	expect(res.status()).toBe(400);
+	const body = await res.json();
+	expect(body.error.code).toBe('validation_failed');
+	expect(body.error.message).toContain('babyId');
+});

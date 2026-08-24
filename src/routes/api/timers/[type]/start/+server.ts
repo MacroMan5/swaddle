@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { apiError, handleRepoError } from '$lib/server/api';
+import { apiError, handleRepoError, readJson } from '$lib/server/api';
 import { MAX_FUTURE_MS, TIMER_TYPES, type TimerType } from '$lib/server/events/types';
 import { startTimer } from '$lib/server/events/repo';
 import { publish } from '$lib/server/events/broadcast';
@@ -19,7 +19,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return apiError(404, 'unknown_timer_type', `no timer type ${params.type}`);
 	const type = params.type as TimerType;
 
-	const parsed = startSchema.safeParse(await request.json().catch(() => ({})));
+	const body = await readJson(request);
+	if (!body.ok) return apiError(400, 'validation_failed', 'invalid start payload', body.issues);
+	const parsed = startSchema.safeParse(body.value);
 	if (!parsed.success) return apiError(400, 'validation_failed', 'invalid start payload');
 	const { babyId, caregiverId, side, startedAt } = parsed.data;
 	if (type === 'nursing' && side === 'both')

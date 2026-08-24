@@ -1,13 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { BabyDTO, CreateEventInput, Details, EventDTO, EventType } from './types';
+import type {
+	BabyDTO,
+	CreateEventInput,
+	Details,
+	EventDTO,
+	EventType,
+	Issue,
+	PatchEventInput
+} from './types';
+import { parseDetails, validateDetailsContext, validateEventTimes } from './types';
 
 type DB = Database.Database;
 
 export class RepoError extends Error {
 	constructor(
-		public code: 'not_found' | 'no_active_timer' | 'invalid_state' | 'timer_conflict',
-		message: string
+		public code:
+			| 'not_found'
+			| 'no_active_timer'
+			| 'invalid_state'
+			| 'timer_conflict'
+			| 'validation_failed',
+		message: string,
+		public issues?: Issue[]
 	) {
 		super(message);
 	}
@@ -119,6 +134,41 @@ export function updateEvent(
 		id
 	);
 	return getEvent(db, id)!;
+}
+
+/**
+ * Read, merge, validate (FR-017) and write in a single transaction, so two
+ * overlapping patches cannot both validate against the same stale row.
+ */
+export function patchEvent(
+	db: DB,
+	id: string,
+	patch: PatchEventInput,
+	now: Date
+): EventDTO {
+	return db.transaction(() => {
+		const current = requireEvent(db, id);
+		const startedAt = patch.startedAt ?? current.startedAt;
+		const endedAt = patch.endedAt ?? current.endedAt;
+
+		const issues = validateEventTimes({ type: current.type, startedAt, endedAt }, now);
+		let details = current.details;
+		if (patch.details !== undefined) {
+			const parsed = parseDetails(current.type, patch.details);
+			if (!parsed.ok) issues.push(...parsed.issues);
+			else details = parsed.value;
+		}
+		issues.push(...validateDetailsContext({ type: current.type, endedAt, details }));
+		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid patch', issues);
+
+		return updateEvent(db, id, {
+			caregiverId: patch.caregiverId === undefined ? undefined : (patch.caregiverId ?? null),
+			startedAt: patch.startedAt,
+			endedAt: patch.endedAt,
+			note: patch.note === undefined ? undefined : (patch.note ?? null),
+			details: patch.details === undefined ? undefined : details
+		});
+	})();
 }
 
 export function softDeleteEvent(db: DB, id: string): EventDTO {
@@ -237,6 +287,15 @@ export function stopTimer(
 		} else if (event.type === 'pump' && opts.volumeMl !== undefined) {
 			details = { ...(details as { side: Side | 'both' }), volumeMl: opts.volumeMl };
 		}
+
+		// The route only bounds endedAt in the future; the session start is only
+		// known here, so FR-017 is enforced on the merged event before writing.
+		const issues = [
+			...validateEventTimes({ type: event.type, startedAt: event.startedAt, endedAt }, new Date()),
+			...validateDetailsContext({ type: event.type, endedAt, details })
+		];
+		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid stop', issues);
+
 		return updateEvent(db, event.id, { endedAt, details });
 	})();
 }
@@ -250,6 +309,8 @@ export function nursingAction(
 		if (!event) throw new RepoError('no_active_timer', 'no active nursing session');
 		const ts = nowIso();
 		const segments = [...(event.details as { segments: NursingSegment[] }).segments];
+		if (segments.length === 0)
+			throw new RepoError('invalid_state', 'nursing session has no segment to act on');
 		const openIndex = segments.findIndex((s) => s.endedAt === null);
 		const lastSide = segments[segments.length - 1].side;
 
@@ -261,8 +322,10 @@ export function nursingAction(
 			segments.push({ side: opts.side ?? lastSide, startedAt: ts, endedAt: null });
 		} else {
 			// switch-side: close the open segment (if any) and open the other side.
+			// A client-supplied side is ignored: switching always flips the side,
+			// otherwise "switch" could be a no-op on the same breast.
 			if (openIndex !== -1) segments[openIndex] = { ...segments[openIndex], endedAt: ts };
-			const nextSide: Side = opts.side ?? (lastSide === 'left' ? 'right' : 'left');
+			const nextSide: Side = lastSide === 'left' ? 'right' : 'left';
 			segments.push({ side: nextSide, startedAt: ts, endedAt: null });
 		}
 		return updateEvent(db, event.id, { details: { segments } });

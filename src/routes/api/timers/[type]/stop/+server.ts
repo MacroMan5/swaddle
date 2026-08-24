@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { apiError, handleRepoError } from '$lib/server/api';
+import { apiError, handleRepoError, readJson } from '$lib/server/api';
 import { MAX_FUTURE_MS, TIMER_TYPES, type TimerType } from '$lib/server/events/types';
 import { stopTimer } from '$lib/server/events/repo';
 import { publish } from '$lib/server/events/broadcast';
@@ -18,7 +18,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return apiError(404, 'unknown_timer_type', `no timer type ${params.type}`);
 	const type = params.type as TimerType;
 
-	const parsed = stopSchema.safeParse(await request.json().catch(() => ({})));
+	const body = await readJson(request);
+	if (!body.ok) return apiError(400, 'validation_failed', 'invalid stop payload', body.issues);
+	const parsed = stopSchema.safeParse(body.value);
 	if (!parsed.success) return apiError(400, 'validation_failed', 'invalid stop payload');
 	const { babyId, endedAt, volumeMl } = parsed.data;
 	if (endedAt && Date.parse(endedAt) > Date.now() + MAX_FUTURE_MS)

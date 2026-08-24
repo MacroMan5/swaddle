@@ -751,7 +751,9 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Runner auto-hébergé Windows (swaddle-win) — plus de minutes GitHub-hosted.
+    # `--with-deps` est Linux-only : sur Windows, installer chromium sans ce flag.
+    runs-on: [self-hosted, Windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -761,7 +763,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run test:unit
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run test:e2e
       - run: docker build -t swaddle:ci .
 ```

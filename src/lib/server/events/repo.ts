@@ -156,3 +156,110 @@ export function listBabies(db: DB): BabyDTO[] {
 		.prepare('SELECT id, name, birthdate, timezone FROM baby ORDER BY created_at')
 		.all() as BabyDTO[];
 }
+
+import type { NursingSegment, Side, TimerType } from './types';
+import { TIMER_TYPES } from './types';
+
+export function listActiveTimers(db: DB, babyId?: string): EventDTO[] {
+	const placeholders = TIMER_TYPES.map(() => '?').join(', ');
+	let sql = `SELECT * FROM event WHERE ended_at IS NULL AND deleted_at IS NULL AND type IN (${placeholders})`;
+	const params: string[] = [...TIMER_TYPES];
+	if (babyId) {
+		sql += ' AND baby_id = ?';
+		params.push(babyId);
+	}
+	return (db.prepare(sql).all(...params) as EventRow[]).map(rowToDto);
+}
+
+function activeTimer(db: DB, babyId: string, type: TimerType): EventDTO | undefined {
+	const row = db
+		.prepare(
+			'SELECT * FROM event WHERE baby_id = ? AND type = ? AND ended_at IS NULL AND deleted_at IS NULL'
+		)
+		.get(babyId, type) as EventRow | undefined;
+	return row && rowToDto(row);
+}
+
+export function startTimer(
+	db: DB,
+	opts: {
+		type: TimerType;
+		babyId: string;
+		caregiverId?: string | null;
+		side?: Side | 'both';
+		startedAt?: string;
+	}
+): { created: boolean; event: EventDTO } {
+	// Transaction makes check-then-insert atomic: a concurrent start returns
+	// the existing session instead of creating a duplicate (FR-013).
+	return db.transaction(() => {
+		const existing = activeTimer(db, opts.babyId, opts.type);
+		if (existing) return { created: false, event: existing };
+		const startedAt = opts.startedAt ?? nowIso();
+		const details: Details =
+			opts.type === 'nursing'
+				? { segments: [{ side: (opts.side ?? 'left') as Side, startedAt, endedAt: null }] }
+				: opts.type === 'pump'
+					? { side: opts.side ?? 'both', volumeMl: null }
+					: {};
+		const event = createEvent(db, {
+			babyId: opts.babyId,
+			caregiverId: opts.caregiverId ?? null,
+			type: opts.type,
+			startedAt,
+			endedAt: null,
+			note: null,
+			details
+		});
+		return { created: true, event };
+	})();
+}
+
+export function stopTimer(
+	db: DB,
+	opts: { type: TimerType; babyId: string; endedAt?: string; volumeMl?: number | null }
+): EventDTO {
+	return db.transaction(() => {
+		const event = activeTimer(db, opts.babyId, opts.type);
+		if (!event) throw new RepoError('no_active_timer', `no active ${opts.type} timer`);
+		const endedAt = opts.endedAt ?? nowIso();
+		let details = event.details;
+		if (event.type === 'nursing') {
+			const d = details as { segments: NursingSegment[] };
+			details = {
+				segments: d.segments.map((s) => (s.endedAt === null ? { ...s, endedAt } : s))
+			};
+		} else if (event.type === 'pump' && opts.volumeMl !== undefined) {
+			details = { ...(details as { side: Side | 'both' }), volumeMl: opts.volumeMl };
+		}
+		return updateEvent(db, event.id, { endedAt, details });
+	})();
+}
+
+export function nursingAction(
+	db: DB,
+	opts: { babyId: string; action: 'pause' | 'resume' | 'switch-side'; side?: Side }
+): EventDTO {
+	return db.transaction(() => {
+		const event = activeTimer(db, opts.babyId, 'nursing');
+		if (!event) throw new RepoError('no_active_timer', 'no active nursing session');
+		const ts = nowIso();
+		const segments = [...(event.details as { segments: NursingSegment[] }).segments];
+		const openIndex = segments.findIndex((s) => s.endedAt === null);
+		const lastSide = segments[segments.length - 1].side;
+
+		if (opts.action === 'pause') {
+			if (openIndex === -1) throw new RepoError('invalid_state', 'session is already paused');
+			segments[openIndex] = { ...segments[openIndex], endedAt: ts };
+		} else if (opts.action === 'resume') {
+			if (openIndex !== -1) throw new RepoError('invalid_state', 'session is not paused');
+			segments.push({ side: opts.side ?? lastSide, startedAt: ts, endedAt: null });
+		} else {
+			// switch-side: close the open segment (if any) and open the other side.
+			if (openIndex !== -1) segments[openIndex] = { ...segments[openIndex], endedAt: ts };
+			const nextSide: Side = opts.side ?? (lastSide === 'left' ? 'right' : 'left');
+			segments.push({ side: nextSide, startedAt: ts, endedAt: null });
+		}
+		return updateEvent(db, event.id, { details: { segments } });
+	})();
+}

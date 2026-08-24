@@ -96,3 +96,98 @@ describe('event CRUD', () => {
 		]);
 	});
 });
+
+import { listActiveTimers, startTimer, stopTimer, nursingAction } from './repo';
+import type { NursingSegment } from './types';
+
+describe('timers (FR-013, AC-004)', () => {
+	it('starts a sleep timer with server start time and no end', () => {
+		const { created, event } = startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		expect(created).toBe(true);
+		expect(event.endedAt).toBeNull();
+		expect(listActiveTimers(db, 'baby-1').map((e) => e.id)).toEqual([event.id]);
+	});
+
+	it('concurrent start returns the existing session instead of creating one', () => {
+		const first = startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		const second = startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		expect(second.created).toBe(false);
+		expect(second.event.id).toBe(first.event.id);
+		expect(listActiveTimers(db, 'baby-1')).toHaveLength(1);
+	});
+
+	it('allows one active timer per category (sleep + nursing coexist)', () => {
+		startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		expect(listActiveTimers(db, 'baby-1')).toHaveLength(2);
+	});
+
+	it('stops the active timer; stopping again throws no_active_timer', () => {
+		startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		const stopped = stopTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		expect(stopped.endedAt).not.toBeNull();
+		expect(() => stopTimer(db, { type: 'sleep', babyId: 'baby-1' })).toThrowError(RepoError);
+	});
+
+	it('pump start records side, stop records the volume', () => {
+		startTimer(db, { type: 'pump', babyId: 'baby-1', side: 'both' });
+		const stopped = stopTimer(db, { type: 'pump', babyId: 'baby-1', volumeMl: 120 });
+		expect(stopped.details).toEqual({ side: 'both', volumeMl: 120 });
+	});
+
+	it('soft-deleting an active timer frees the slot', () => {
+		const { event } = startTimer(db, { type: 'sleep', babyId: 'baby-1' });
+		softDeleteEvent(db, event.id);
+		expect(startTimer(db, { type: 'sleep', babyId: 'baby-1' }).created).toBe(true);
+		expect(() => restoreEvent(db, event.id)).toThrowError(RepoError); // timer_conflict
+	});
+});
+
+describe('nursing session (FR-002, AC-002 segments)', () => {
+	const segs = (e: { details: unknown }) => (e.details as { segments: NursingSegment[] }).segments;
+
+	it('start opens a segment on the chosen side', () => {
+		const { event } = startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		expect(segs(event)).toHaveLength(1);
+		expect(segs(event)[0].side).toBe('left');
+		expect(segs(event)[0].endedAt).toBeNull();
+	});
+
+	it('pause closes the open segment (paused time lives in no segment — DEC-001)', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		const paused = nursingAction(db, { babyId: 'baby-1', action: 'pause' });
+		expect(segs(paused).every((s) => s.endedAt !== null)).toBe(true);
+		expect(paused.endedAt).toBeNull(); // still active
+	});
+
+	it('resume opens a new segment on the last side by default', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		nursingAction(db, { babyId: 'baby-1', action: 'pause' });
+		const resumed = nursingAction(db, { babyId: 'baby-1', action: 'resume' });
+		expect(segs(resumed)).toHaveLength(2);
+		expect(segs(resumed)[1].side).toBe('left');
+		expect(segs(resumed)[1].endedAt).toBeNull();
+	});
+
+	it('switch-side closes the segment and opens the other side', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		const switched = nursingAction(db, { babyId: 'baby-1', action: 'switch-side' });
+		expect(segs(switched)).toHaveLength(2);
+		expect(segs(switched)[0].endedAt).not.toBeNull();
+		expect(segs(switched)[1].side).toBe('right');
+	});
+
+	it('rejects pause while paused and resume while running', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		expect(() => nursingAction(db, { babyId: 'baby-1', action: 'resume' })).toThrowError(RepoError);
+		nursingAction(db, { babyId: 'baby-1', action: 'pause' });
+		expect(() => nursingAction(db, { babyId: 'baby-1', action: 'pause' })).toThrowError(RepoError);
+	});
+
+	it('stop closes the open segment at endedAt', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'right' });
+		const stopped = stopTimer(db, { type: 'nursing', babyId: 'baby-1' });
+		expect(stopped.endedAt).not.toBeNull();
+		expect(segs(stopped).every((s) => s.endedAt !== null)).toBe(true);
+	});
+});

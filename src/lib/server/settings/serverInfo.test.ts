@@ -47,8 +47,8 @@ describe('lastBackupAt', () => {
 describe('serverInfo', () => {
 	it('assembles address, device count and last backup', () => {
 		const dataDir = tempDataDir();
-		expect(serverInfo({ origin: 'http://bebe.home:3010', dataDir, devices: 2 })).toEqual({
-			address: 'http://bebe.home:3010',
+		expect(serverInfo({ host: 'bebe.home:3010', dataDir, devices: 2 })).toEqual({
+			address: 'bebe.home:3010',
 			connectedDevices: 2,
 			lastBackupAt: null
 		});

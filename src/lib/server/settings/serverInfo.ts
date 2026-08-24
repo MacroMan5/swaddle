@@ -5,7 +5,8 @@ import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 export type ServerInfoDTO = {
-	/** Origin the request came in on, e.g. "http://bebe.home:3010". */
+	/** Host the request came in on, e.g. "bebe.home:3010" — the protocol is
+	 * not guessed (SSR behind no TLS misreports it). */
 	address: string;
 	/** Open SSE streams right now — two tabs count as two devices. */
 	connectedDevices: number;
@@ -35,12 +36,12 @@ export function lastBackupAt(dataDir: string): string | null {
 }
 
 export function serverInfo(opts: {
-	origin: string;
+	host: string;
 	dataDir: string;
 	devices: number;
 }): ServerInfoDTO {
 	return {
-		address: opts.origin,
+		address: opts.host,
 		connectedDevices: opts.devices,
 		lastBackupAt: lastBackupAt(opts.dataDir)
 	};

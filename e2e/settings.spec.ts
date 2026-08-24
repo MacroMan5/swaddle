@@ -74,3 +74,13 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	const mamie = caregivers.caregivers.find((c: { name: string }) => c.name === 'Mamie Renommée');
 	if (mamie) await page.request.delete(`/api/caregivers/${mamie.id}`);
 });
+
+test('the Ce serveur block shows the address and connected device count', async ({ page }) => {
+	await page.goto('/settings');
+	const section = page.getByRole('heading', { name: 'Ce serveur' }).locator('..');
+	await expect(section.getByText('Adresse')).toBeVisible();
+	// The address is the origin the page itself was served from.
+	await expect(section).toContainText(new URL(page.url()).host);
+	await expect(section.getByText('Appareils connectés')).toBeVisible();
+	await expect(section.getByText('Dernière sauvegarde')).toBeVisible();
+});

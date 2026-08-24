@@ -5,5 +5,5 @@ import { listenerCount } from '$lib/server/events/broadcast';
 import { serverInfo } from '$lib/server/settings/serverInfo';
 
 export const GET: RequestHandler = ({ url }) => {
-	return json(serverInfo({ origin: url.origin, dataDir: DATA_DIR, devices: listenerCount() }));
+	return json(serverInfo({ host: url.host, dataDir: DATA_DIR, devices: listenerCount() }));
 };

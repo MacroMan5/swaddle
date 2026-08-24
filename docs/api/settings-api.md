@@ -195,14 +195,15 @@ de l'API.
 
 ```json
 {
-	"address": "http://192.168.1.20:3000",
+	"address": "192.168.1.20:3000",
 	"connectedDevices": 2,
 	"lastBackupAt": "2026-08-24T09:12:31.000Z"
 }
 ```
 
-- `address` — l'origine de la requête (`url.origin`), donc l'adresse par
-  laquelle l'appareil joint réellement le serveur.
+- `address` — l'hôte de la requête (`url.host`), donc l'adresse par laquelle
+  l'appareil joint réellement le serveur (sans protocole : derrière un serveur
+  non-TLS, le protocole vu par le SSR n'est pas fiable).
 - `connectedDevices` — nombre de flux SSE ouverts (`/api/stream`). Deux
   onglets comptent pour deux « appareils » : c'est un ordre de grandeur, pas
   un inventaire.

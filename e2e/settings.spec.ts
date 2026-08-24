@@ -61,7 +61,7 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	// Données — the four controls exist.
 	await expect(page.getByRole('link', { name: 'Exporter JSON' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Exporter CSV' })).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Télécharger une sauvegarde' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Télécharger une sauvegarde' })).toBeVisible();
 	// The native file input is visually hidden (browser-chrome English widget);
 	// the styled button is the visible control and forwards clicks to it.
 	await expect(page.getByRole('button', { name: 'Restaurer depuis un fichier…' })).toBeVisible();
@@ -83,4 +83,10 @@ test('the Ce serveur block shows the address and connected device count', async 
 	await expect(section).toContainText(new URL(page.url()).host);
 	await expect(section.getByText('Appareils connectés')).toBeVisible();
 	await expect(section.getByText('Dernière sauvegarde')).toBeVisible();
+
+	// Taking a backup refreshes the timestamp without a reload.
+	const download = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Télécharger une sauvegarde' }).click();
+	await download;
+	await expect(section).not.toContainText('jamais');
 });

@@ -128,6 +128,9 @@
 	async function loadPrevWeek(): Promise<void> {
 		if (babyId === null) return;
 		const token = ++prevWeekFetchToken;
+		// Hide the comparison while the new window loads: keeping the old week's
+		// events would summarize them against the new date range (stale deltas).
+		prevWeekEvents = null;
 		try {
 			const monday = prevMondayOf(dayKey);
 			const { from } = dayRangeIso(monday);

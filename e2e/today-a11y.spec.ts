@@ -12,16 +12,18 @@ for (const width of WIDTHS) {
 		);
 		expect(overflow).toBe(true);
 
-		for (const name of ['Allaiter', 'Biberon', 'Couche', 'Tirage', 'Commencer le sommeil']) {
-			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
-			// Rounded: fractional line heights make layout subpixel, and a 48px
-			// target can measure 47.999996 depending on its offset.
-			expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(48);
-		}
-
-		// The pee/poo picker appears under the tiles once Couche is tapped.
-		await page.getByRole('button', { name: 'Couche', exact: true }).click();
-		for (const name of ['Pipi', 'Caca', 'Les deux']) {
+		// Pipi/Caca/Les deux are measured directly: FR-001 wants them one touch
+		// from the home screen, so the picker row is visible by default.
+		for (const name of [
+			'Pipi',
+			'Caca',
+			'Les deux',
+			'Allaiter',
+			'Biberon',
+			'Couche',
+			'Tirage',
+			'Commencer le sommeil'
+		]) {
 			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
 			// Rounded: fractional line heights make layout subpixel, and a 48px
 			// target can measure 47.999996 depending on its offset.

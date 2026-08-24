@@ -231,6 +231,38 @@
 		await invalidateAll();
 	}
 
+	// --- Sauvegarde ---
+	// Fetched (not a plain download link) so the freshly written snapshot can
+	// refresh « Dernière sauvegarde » via invalidateAll once the response lands.
+	let backupPending = $state(false);
+	let backupError = $state<string | null>(null);
+
+	async function downloadBackup() {
+		if (backupPending) return;
+		backupPending = true;
+		backupError = null;
+		try {
+			const res = await fetch('/api/backup');
+			if (!res.ok) {
+				backupError = 'Une erreur est survenue.';
+				return;
+			}
+			const blob = await res.blob();
+			const match = /filename="?([^";]+)/.exec(res.headers.get('content-disposition') ?? '');
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = match?.[1] ?? 'swaddle-backup.sqlite';
+			a.click();
+			URL.revokeObjectURL(url);
+			await invalidateAll();
+		} catch {
+			backupError = 'Une erreur est survenue.';
+		} finally {
+			backupPending = false;
+		}
+	}
+
 	// --- Ce serveur ---
 	const lastBackupLabel = $derived.by(() => {
 		const at = data.serverInfo.lastBackupAt;
@@ -505,7 +537,11 @@
 				<Button href="/api/export/csv" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Exporter CSV</Button
 				>
-				<Button href="/api/backup" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+				<Button
+					variant="outline"
+					disabled={backupPending}
+					onclick={downloadBackup}
+					class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Télécharger une sauvegarde</Button
 				>
 				<!-- The native file input is visually hidden (its "Choose file / No file
@@ -526,6 +562,7 @@
 					onclick={() => restoreInput?.click()}>Restaurer depuis un fichier…</Button
 				>
 			</div>
+			{#if backupError}<p class="text-danger text-sm">{backupError}</p>{/if}
 			{#if restoreError}<p class="text-danger text-sm">{restoreError}</p>{/if}
 			{#if restoreMessage}<p class="text-ink-muted text-sm">{restoreMessage}</p>{/if}
 		</section>

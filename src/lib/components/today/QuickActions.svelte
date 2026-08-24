@@ -27,7 +27,9 @@
 
 	const store = getContext<SyncStore>('sync');
 
-	let diaperPickerOpen = $state(false);
+	// Open by default: FR-001 requires Pipi/Caca/Les deux one touch from the
+	// home screen — the tile only collapses/expands the row.
+	let diaperPickerOpen = $state(true);
 	let diaperPending = $state(false);
 	let sleepPending = $state(false);
 	let error = $state<string | null>(null);
@@ -79,7 +81,6 @@
 			return;
 		}
 		diaperPending = false;
-		diaperPickerOpen = false;
 		// Merge the confirmed write immediately: the screen is correct even if the
 		// SSE `sync` for it never arrives or is slow.
 		store.applyServerEvent(event);

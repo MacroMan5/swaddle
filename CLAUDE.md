@@ -77,6 +77,16 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   passe par un token (NFR-008) ; cibles tactiles ≥ 48 px, texte ≥ 16 px.
 - `src/lib/components/ui/` — composants shadcn-svelte (ajouts via
   `npx shadcn-svelte@latest add <composant> -y`).
+- `src/lib/client/` — couche client de l'écran « Aujourd'hui » : `api.ts`
+  (fetch typé vers `docs/api/events-api.md`, `ApiError`), `format.ts`
+  (`formatElapsed`/`formatClock`/`nursingDurationMs`/`todayRangeIso`),
+  `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
+  les événements du jour, les minuteurs actifs et l'offset serveur —
+  RISK-001 ; instanciée dans `+layout.svelte`, partagée par contexte). Ne
+  jamais importer `$lib/server/*` depuis ce dossier.
+- `src/lib/components/today/` — cartes de l'écran « Aujourd'hui » (couche,
+  alimentation, sommeil, minuteurs actifs) et leurs panneaux (biberon,
+  tire-lait), consommant `SyncStore` via `getContext('sync')`.
 - Horodatages ISO 8601 UTC ; données sous `DATA_DIR` (défaut `data/`).
 - UI en français ; code, identifiants et commentaires en anglais.
 

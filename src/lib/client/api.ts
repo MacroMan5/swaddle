@@ -1,0 +1,104 @@
+import type {
+	BabyDTO,
+	CreateEventInput,
+	EventDTO,
+	Issue,
+	NursingActionBody,
+	StartTimerBody,
+	StopTimerBody,
+	TimerType
+} from './types';
+import { todayRangeIso } from './format';
+
+/** Thrown for every non-2xx response, carrying the `{ error }` envelope. */
+export class ApiError extends Error {
+	readonly status: number;
+	readonly code: string;
+	readonly issues: Issue[];
+
+	constructor(status: number, code: string, message: string, issues: Issue[] = []) {
+		super(message);
+		this.name = 'ApiError';
+		this.status = status;
+		this.code = code;
+		this.issues = issues;
+	}
+}
+
+async function parse<T>(response: Response): Promise<T> {
+	const text = await response.text();
+	let body: unknown = null;
+	try {
+		body = text === '' ? null : JSON.parse(text);
+	} catch {
+		body = null;
+	}
+	if (!response.ok) {
+		const envelope = (body as { error?: { code?: string; message?: string; issues?: Issue[] } })
+			?.error;
+		throw new ApiError(
+			response.status,
+			envelope?.code ?? 'unknown_error',
+			envelope?.message ?? `La requête a échoué (${response.status}).`,
+			envelope?.issues ?? []
+		);
+	}
+	return body as T;
+}
+
+export async function getJson<T>(url: string): Promise<T> {
+	return parse<T>(await fetch(url));
+}
+
+export async function sendJson<T>(method: string, url: string, body?: unknown): Promise<T> {
+	return parse<T>(
+		await fetch(url, {
+			method,
+			headers: { 'content-type': 'application/json' },
+			body: body === undefined ? undefined : JSON.stringify(body)
+		})
+	);
+}
+
+export async function listBabies(): Promise<BabyDTO[]> {
+	return (await getJson<{ babies: BabyDTO[] }>('/api/babies')).babies;
+}
+
+export async function listTodayEvents(babyId: string, now = new Date()): Promise<EventDTO[]> {
+	const { from, to } = todayRangeIso(now);
+	const query = new URLSearchParams({ babyId, from, to });
+	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
+}
+
+export async function createEvent(input: CreateEventInput): Promise<EventDTO> {
+	return sendJson<EventDTO>('POST', '/api/events', input);
+}
+
+export async function deleteEvent(id: string): Promise<EventDTO> {
+	return sendJson<EventDTO>('DELETE', `/api/events/${id}`);
+}
+
+export async function restoreEvent(id: string): Promise<EventDTO> {
+	return sendJson<EventDTO>('POST', `/api/events/${id}/restore`);
+}
+
+export async function getTimers(
+	babyId: string
+): Promise<{ serverTime: string; timers: EventDTO[] }> {
+	return getJson(`/api/timers?babyId=${encodeURIComponent(babyId)}`);
+}
+
+export async function startTimer(
+	type: TimerType,
+	body: StartTimerBody
+): Promise<{ created: boolean; event: EventDTO }> {
+	return sendJson(`POST`, `/api/timers/${type}/start`, body);
+}
+
+export async function stopTimer(type: TimerType, body: StopTimerBody): Promise<EventDTO> {
+	return sendJson<EventDTO>('POST', `/api/timers/${type}/stop`, body);
+}
+
+export async function nursingAction(body: NursingActionBody): Promise<EventDTO> {
+	return sendJson<EventDTO>('POST', '/api/timers/nursing/action', body);
+}

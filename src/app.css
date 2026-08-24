@@ -1,0 +1,146 @@
+@import 'tailwindcss';
+@import '@fontsource/lora/600.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/nunito-sans/400.css';
+@import '@fontsource/nunito-sans/600.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+	/* Semantic tokens — dark values come from the :root/.dark variables below */
+	--color-surface: var(--surface);
+	--color-surface-raised: var(--surface-raised);
+	--color-ink: var(--ink);
+	--color-ink-muted: var(--ink-muted);
+	--color-border: var(--border);
+	--color-primary: var(--primary);
+	--color-on-primary: var(--on-primary);
+	--color-accent: var(--accent);
+	--color-danger: var(--danger);
+
+	/* Category palettes (design-system.md: color reinforces; icon + label carry meaning) */
+	--color-feed-100: var(--feed-100);
+	--color-feed-500: #f59e0b;
+	--color-feed-700: var(--feed-700);
+	--color-diaper-100: var(--diaper-100);
+	--color-diaper-500: #14b8a6;
+	--color-diaper-700: var(--diaper-700);
+	--color-sleep-100: var(--sleep-100);
+	--color-sleep-500: #6366f1;
+	--color-sleep-700: var(--sleep-700);
+
+	--radius-card: 1rem;
+	--radius-control: 0.75rem;
+	--shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
+	--font-sans: 'Nunito Sans', system-ui, sans-serif;
+	--font-serif: 'Lora', Georgia, serif;
+}
+
+/* shadcn-svelte ("nova" style, neutral base color) — variables consumed by the
+   $lib/components/ui/* components. --primary/--border/--accent/--on-primary are
+   already covered by our tokens above. */
+@theme {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+	--surface: #faf9f7;
+	--surface-raised: #ffffff;
+	--ink: #1c1b22;
+	--ink-muted: #6b6875;
+	--border: #ebe8e4;
+	--primary: #db2777;
+	--on-primary: #ffffff;
+	--accent: #0284c7;
+	--danger: #dc2626;
+	--feed-100: #fef3c7;
+	--feed-700: #b45309;
+	--diaper-100: #ccfbf1;
+	--diaper-700: #0f766e;
+	--sleep-100: #e0e7ff;
+	--sleep-700: #4338ca;
+
+	--radius: 0.625rem;
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--input: oklch(0.922 0 0);
+}
+
+/* Point the shadcn variables at our semantic tokens — no hard-coded values
+   (see docs/design/design-system.md). --primary and --border already share
+   their names with our tokens above: no redefinition here. */
+:root {
+	--background: var(--surface);
+	--foreground: var(--ink);
+	--card: var(--surface-raised);
+	--card-foreground: var(--ink);
+	--muted-foreground: var(--ink-muted);
+	--primary-foreground: var(--on-primary);
+	--destructive: var(--danger);
+	--ring: var(--primary);
+}
+
+/* Night-friendly dark mode: desaturated, never pure white or black (NFR-005) */
+.dark {
+	--surface: #15151a;
+	--surface-raised: #1e1e25;
+	--ink: #e9e7ee;
+	--ink-muted: #9c99a6;
+	--border: #2c2c35;
+	--primary: #f472b6;
+	--on-primary: #2b0b1b;
+	--accent: #38bdf8;
+	--danger: #f87171;
+	--feed-100: #3a2a12;
+	--feed-700: #fbbf24;
+	--diaper-100: #123230;
+	--diaper-700: #2dd4bf;
+	--sleep-100: #232345;
+	--sleep-700: #818cf8;
+
+	--popover: var(--surface-raised);
+	--popover-foreground: var(--ink);
+	--secondary: #2c2c35;
+	--secondary-foreground: var(--ink);
+	--muted: #2c2c35;
+	--accent-foreground: var(--ink);
+	--input: #2c2c35;
+}
+
+body {
+	background-color: var(--color-surface);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+}
+
+h1, h2, h3 {
+	font-family: var(--font-serif);
+}
+
+/* Obligatoire sur tout chiffre dynamique (minuteurs, totaux) */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}

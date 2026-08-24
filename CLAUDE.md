@@ -9,7 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 comme Huckleberry sans en reprendre le nom ni la marque. Usage privé, une seule
 famille, réseau local. Dépôt public : github.com/MacroMan5/swaddle.
 
-**État actuel : design et stack décidés, code pas encore écrit.** Le périmètre MVP
+**État actuel : fondations en place** (squelette SvelteKit, tokens, SQLite,
+santé, Docker, CI) ; les fonctionnalités arrivent par slices orchestrées via la
+carte wayfinder (issue #7). Le périmètre MVP
 est dans `docs/plans/2026-08-23-newborn-tracker-design.md` ; la stack et le
 déploiement sont fixés par les ADR 0001–0003 (SvelteKit + SQLite + SSE, image
 GHCR multi-arch déployée par Docker Compose sur un Raspberry Pi 4, Tailwind v4 +
@@ -34,21 +36,41 @@ l'utilisateur d'abord.
 
 ## Commandes
 
-Aucune pour l'instant — il n'y a pas encore de code. Quand la stack sera choisie,
-documenter ici : installation, lancement en dev, build, tests (y compris comment
-lancer un test unique), lint.
+- `npm ci --ignore-scripts` — installation (toujours avec `--ignore-scripts` :
+  better-sqlite3 embarque ses prebuilds N-API ; sans le flag, `npm ci` tente un
+  `node-gyp rebuild` inutile qui exige un toolchain C++).
+- `npm run dev` — serveur de développement.
+- `npm run check` — svelte-check (types + diagnostics).
+- `npm run test:unit` — tests unitaires Vitest ; un seul fichier :
+  `npx vitest run src/lib/server/db/db.test.ts`.
+- `npm run test:e2e` — e2e Playwright (fait un build de prod ; nécessite
+  `npx playwright install chromium` une première fois).
+- `npm run build` — build de production (adapter-node → `build/`).
+- `docker build -t swaddle .` — image de production (`node:22-slim`, jamais Alpine).
 
 ## Architecture
 
-À documenter quand le code existera. Mettre à jour ce fichier au fil des décisions
-plutôt que de le laisser dériver.
+Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
+
+- `src/lib/server/db/` — couche SQLite : `openDb`/`getDb` (WAL, `foreign_keys ON`),
+  migrations embarquées versionnées par `user_version` dans `migrations.ts`.
+  Schéma v1 : `household`, `baby`, `caregiver`, `event` (JSON `details` par type).
+- `src/lib/server/setup.ts` — `isSetupComplete` (bébé + aidant existent).
+- `src/routes/api/health/` — `GET /api/health` → `{ status, setupComplete }`.
+- `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn
+  re-mappées ; mode sombre par classe `.dark` sur `<html>`. Toute couleur/rayon
+  passe par un token (NFR-008) ; cibles tactiles ≥ 48 px, texte ≥ 16 px.
+- `src/lib/components/ui/` — composants shadcn-svelte (ajouts via
+  `npx shadcn-svelte@latest add <composant> -y`).
+- Horodatages ISO 8601 UTC ; données sous `DATA_DIR` (défaut `data/`).
+- UI en français ; code, identifiants et commentaires en anglais.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues suivies dans GitHub Issues via le CLI `gh` (remote pas encore créé — à pousser
-sur GitHub) ; les PRs externes ne sont pas une surface de triage. See `docs/agents/issue-tracker.md`.
+Issues suivies dans GitHub Issues via le CLI `gh` ; les PRs externes ne sont pas
+une surface de triage. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

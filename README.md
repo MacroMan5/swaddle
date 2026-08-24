@@ -64,9 +64,21 @@ donne une adresse facile à retenir sur tous les téléphones de la maison.
 
 ## Développement
 
-La stack est définie mais le code n'est pas encore commité. Les commandes
-(installation, dev, tests, lint) seront documentées ici dès le premier
-squelette applicatif.
+Prérequis : Node 22+ et Docker (pour l'image de production).
+
+```sh
+npm ci --ignore-scripts   # better-sqlite3 utilise ses prebuilds N-API
+npm run dev               # serveur de développement Vite
+npm run check             # svelte-check (types + diagnostics)
+npm run test:unit         # tests unitaires Vitest
+npx playwright install chromium   # une fois, avant les e2e
+npm run test:e2e          # tests e2e Playwright (build de prod + navigateur)
+npm run build             # build de production (adapter-node → build/)
+docker build -t swaddle .          # image de production
+```
+
+Les données de développement vivent sous `data/` (variable `DATA_DIR`), jamais
+versionnées.
 
 ## Contribuer
 

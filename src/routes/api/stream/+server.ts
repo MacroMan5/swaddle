@@ -1,0 +1,54 @@
+import type { RequestHandler } from './$types';
+import { getDb } from '$lib/server/db';
+import { listActiveTimers } from '$lib/server/events/repo';
+import { subscribe } from '$lib/server/events/broadcast';
+
+const PING_INTERVAL_MS = 25_000;
+
+export const GET: RequestHandler = () => {
+	const db = getDb();
+	let unsubscribe: (() => void) | undefined;
+	let ping: ReturnType<typeof setInterval> | undefined;
+	let closed = false;
+
+	const stream = new ReadableStream<string>({
+		start(controller) {
+			const send = (event: string, data: unknown) => {
+				if (closed) return;
+				try {
+					controller.enqueue(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+				} catch {
+					closed = true; // consumer went away between cancel and this write
+				}
+			};
+			send('snapshot', {
+				serverTime: new Date().toISOString(),
+				activeTimers: listActiveTimers(db)
+			});
+			unsubscribe = subscribe((change) =>
+				send('sync', { ...change, serverTime: new Date().toISOString() })
+			);
+			ping = setInterval(() => {
+				if (!closed)
+					try {
+						controller.enqueue(`:ping\n\n`);
+					} catch {
+						closed = true;
+					}
+			}, PING_INTERVAL_MS);
+		},
+		cancel() {
+			closed = true;
+			unsubscribe?.();
+			if (ping) clearInterval(ping);
+		}
+	});
+
+	return new Response(stream.pipeThrough(new TextEncoderStream()), {
+		headers: {
+			'content-type': 'text/event-stream',
+			'cache-control': 'no-cache',
+			connection: 'keep-alive'
+		}
+	});
+};

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { RequestHandler } from './$types';
 import { DATA_DIR, getDb } from '$lib/server/db';
 import { apiError, handleRepoError, readJson } from '$lib/server/api';
+import { publishReset } from '$lib/server/events/broadcast';
 import { importJson, snapshotTo } from '$lib/server/settings/transfer';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -17,6 +18,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	try {
 		const restored = importJson(db, body.value);
+		// Any device with an open SSE connection has stale timers/lists after a
+		// restore: tell it to refetch instead of trusting incremental sync.
+		publishReset();
 		return json({ restored, snapshot: snapshotPath });
 	} catch (e) {
 		return handleRepoError(e);

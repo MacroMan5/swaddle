@@ -231,3 +231,38 @@ export function weeklySummary(
 	});
 	return { days };
 }
+
+export type WeekTotals = {
+	sleepMs: number;
+	nursingMs: number;
+	nursingCount: number;
+	bottleCount: number;
+	bottleMl: number;
+	diaperCount: number;
+};
+
+/** Whole-week totals, for the week-over-week comparison and the 7-day averages. */
+export function weekTotals(week: { days: { summary: DailySummary }[] }): WeekTotals {
+	return week.days.reduce<WeekTotals>(
+		(acc, { summary }) => ({
+			sleepMs: acc.sleepMs + summary.sleep.totalMs,
+			nursingMs: acc.nursingMs + summary.nursing.totalMs,
+			nursingCount: acc.nursingCount + summary.nursing.count,
+			bottleCount: acc.bottleCount + summary.bottle.count,
+			bottleMl: acc.bottleMl + summary.bottle.totalMl,
+			diaperCount: acc.diaperCount + summary.diaper.count
+		}),
+		{ sleepMs: 0, nursingMs: 0, nursingCount: 0, bottleCount: 0, bottleMl: 0, diaperCount: 0 }
+	);
+}
+
+/** Signed French delta ("+ 38 min", "− 2", "± 0") — U+2212 minus, not a hyphen. */
+export function signedDeltaLabel(
+	current: number,
+	previous: number,
+	format: (value: number) => string = String
+): string {
+	const diff = current - previous;
+	if (diff === 0) return '± 0';
+	return `${diff > 0 ? '+' : '−'} ${format(Math.abs(diff))}`;
+}

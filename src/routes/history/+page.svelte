@@ -49,6 +49,9 @@
 	let selectedCategories = $state<Set<Category>>(new Set(['feed', 'diaper', 'sleep']));
 	let dayEvents = $state<EventDTO[]>([]);
 	let weekEvents = $state<EventDTO[]>([]);
+	// null until it loads: the week-over-week block hides rather than comparing
+	// against zeros after a failed fetch.
+	let prevWeekEvents = $state<EventDTO[] | null>(null);
 	let loading = $state(false);
 	let showSkeleton = $state(false);
 	let loadError = $state<string | null>(null);
@@ -63,6 +66,7 @@
 	// defense in depth against any *other* concurrent refetch still winning).
 	let dayFetchToken = 0;
 	let weekFetchToken = 0;
+	let prevWeekFetchToken = 0;
 
 	async function loadDay(): Promise<void> {
 		if (babyId === null) return;
@@ -114,9 +118,36 @@
 		}
 	}
 
+	function prevMondayOf(key: string): string {
+		const [y, m, d] = mondayOf(key).split('-').map(Number);
+		return localDayKey(new Date(y, m - 1, d - 7));
+	}
+
+	// Same race guard as loadWeek, with its own token. A failure stays silent:
+	// the comparison is an extra, not the screen.
+	async function loadPrevWeek(): Promise<void> {
+		if (babyId === null) return;
+		const token = ++prevWeekFetchToken;
+		try {
+			const monday = prevMondayOf(dayKey);
+			const { from } = dayRangeIso(monday);
+			const [y, m, d] = monday.split('-').map(Number);
+			const to = new Date(y, m - 1, d + 7).toISOString();
+			const fetched = await listEvents(babyId, from, to, true);
+			if (token !== prevWeekFetchToken) return; // superseded by a newer load
+			prevWeekEvents = fetched;
+		} catch {
+			if (token !== prevWeekFetchToken) return;
+			prevWeekEvents = null;
+		}
+	}
+
 	function refetchCurrentView(): void {
 		void loadDay();
-		if (viewMode === 'week') void loadWeek();
+		if (viewMode === 'week') {
+			void loadWeek();
+			void loadPrevWeek();
+		}
 	}
 
 	onMount(() => {
@@ -149,7 +180,10 @@
 	$effect(() => {
 		dayKey;
 		babyId;
-		if (viewMode === 'week') void loadWeek();
+		if (viewMode === 'week') {
+			void loadWeek();
+			void loadPrevWeek();
+		}
 	});
 
 	// Switching to 'week' is enough on its own: the $effect above reads
@@ -286,7 +320,15 @@
 	</div>
 
 	{#if viewMode === 'week'}
-		<WeekView events={weekEvents} mondayKey={mondayOf(dayKey)} {todayKey} nowMs={store.nowMs} onSelectDay={selectWeekDay} />
+		<WeekView
+			events={weekEvents}
+			prevEvents={prevWeekEvents}
+			mondayKey={mondayOf(dayKey)}
+			prevMondayKey={prevMondayOf(dayKey)}
+			{todayKey}
+			nowMs={store.nowMs}
+			onSelectDay={selectWeekDay}
+		/>
 	{:else}
 		<div
 			class="border-border divide-border-hair grid grid-cols-3 divide-x border-2"

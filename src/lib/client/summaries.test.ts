@@ -8,7 +8,9 @@ import {
 	formatSleepSummary,
 	hasNursingActivity,
 	localDayKey,
-	dayRangeIso
+	dayRangeIso,
+	weekTotals,
+	signedDeltaLabel
 } from './summaries';
 import type { EventDTO } from './types';
 
@@ -198,5 +200,57 @@ describe('formatSleepSummary (review item 5: completed-average in the display)',
 
 	it('omits the average when nothing has completed yet (only an open timer contributing)', () => {
 		expect(formatSleepSummary({ totalMs: ms(0, 30), completedCount: 0, averageMs: 0 })).toBe('30 min');
+	});
+});
+
+describe('weekTotals', () => {
+	it('sums every category across the seven days', () => {
+		const week = {
+			days: [
+				{
+					summary: {
+						nursing: { count: 2, totalMs: 10 * 60_000, leftMs: 0, rightMs: 0 },
+						bottle: { count: 1, totalMl: 90 },
+						pump: { count: 0, totalMl: 0 },
+						diaper: { count: 3, pee: 2, poo: 1 },
+						sleep: { totalMs: 60 * 60_000, completedCount: 1, averageMs: 60 * 60_000 }
+					}
+				},
+				{
+					summary: {
+						nursing: { count: 1, totalMs: 5 * 60_000, leftMs: 0, rightMs: 0 },
+						bottle: { count: 2, totalMl: 120 },
+						pump: { count: 0, totalMl: 0 },
+						diaper: { count: 4, pee: 4, poo: 0 },
+						sleep: { totalMs: 30 * 60_000, completedCount: 0, averageMs: 0 }
+					}
+				}
+			]
+		};
+		expect(weekTotals(week)).toEqual({
+			sleepMs: 90 * 60_000,
+			nursingMs: 15 * 60_000,
+			nursingCount: 3,
+			bottleCount: 3,
+			bottleMl: 210,
+			diaperCount: 7
+		});
+	});
+});
+
+describe('signedDeltaLabel', () => {
+	it('formats gains with a plus and losses with a true minus sign', () => {
+		expect(signedDeltaLabel(5, 3)).toBe('+ 2');
+		expect(signedDeltaLabel(3, 5)).toBe('− 2');
+	});
+
+	it('marks a flat week', () => {
+		expect(signedDeltaLabel(4, 4)).toBe('± 0');
+	});
+
+	it('applies the custom formatter to the magnitude', () => {
+		expect(signedDeltaLabel(90 * 60_000, 52 * 60_000, (v) => `${Math.round(v / 60_000)} min`)).toBe(
+			'+ 38 min'
+		);
 	});
 });

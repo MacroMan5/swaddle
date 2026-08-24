@@ -98,6 +98,7 @@
 
 	// --- Thème ---
 	let theme = $state(data.household.theme);
+	let themeError = $state<string | null>(null);
 
 	function applyTheme(t: 'light' | 'dark' | 'auto') {
 		const dark =
@@ -106,10 +107,24 @@
 	}
 
 	async function setTheme(t: 'light' | 'dark' | 'auto') {
-		theme = t;
-		localStorage.setItem('swaddle.theme', t);
+		themeError = null;
+		const previousTheme = theme;
+		const previousStoredTheme = localStorage.getItem('swaddle.theme');
+		// Applied immediately for instant feedback (design-system.md § Mouvement);
+		// rolled back below if the save turns out to have failed, instead of
+		// presenting an unsaved change as persistent.
 		applyTheme(t);
-		await postJson('/api/household', 'PATCH', { theme: t });
+		localStorage.setItem('swaddle.theme', t);
+
+		const { ok, value } = await postJson('/api/household', 'PATCH', { theme: t });
+		if (!ok) {
+			applyTheme(previousTheme);
+			if (previousStoredTheme === null) localStorage.removeItem('swaddle.theme');
+			else localStorage.setItem('swaddle.theme', previousStoredTheme);
+			themeError = errorMessage(value);
+			return;
+		}
+		theme = t;
 	}
 
 	// --- Code PIN ---
@@ -326,25 +341,28 @@
 
 	<Card.Root>
 		<Card.Header><Card.Title>Thème</Card.Title></Card.Header>
-		<Card.Content class="flex gap-2">
-			<Button
-				type="button"
-				class="min-h-12"
-				variant={theme === 'light' ? 'default' : 'outline'}
-				onclick={() => setTheme('light')}>Clair</Button
-			>
-			<Button
-				type="button"
-				class="min-h-12"
-				variant={theme === 'dark' ? 'default' : 'outline'}
-				onclick={() => setTheme('dark')}>Sombre</Button
-			>
-			<Button
-				type="button"
-				class="min-h-12"
-				variant={theme === 'auto' ? 'default' : 'outline'}
-				onclick={() => setTheme('auto')}>Auto</Button
-			>
+		<Card.Content class="flex flex-col gap-2">
+			<div class="flex gap-2">
+				<Button
+					type="button"
+					class="min-h-12"
+					variant={theme === 'light' ? 'default' : 'outline'}
+					onclick={() => setTheme('light')}>Clair</Button
+				>
+				<Button
+					type="button"
+					class="min-h-12"
+					variant={theme === 'dark' ? 'default' : 'outline'}
+					onclick={() => setTheme('dark')}>Sombre</Button
+				>
+				<Button
+					type="button"
+					class="min-h-12"
+					variant={theme === 'auto' ? 'default' : 'outline'}
+					onclick={() => setTheme('auto')}>Auto</Button
+				>
+			</div>
+			{#if themeError}<p class="text-sm text-danger">{themeError}</p>{/if}
 		</Card.Content>
 	</Card.Root>
 

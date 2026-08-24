@@ -36,6 +36,28 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 	await expect(page.locator('html')).toHaveClass(/dark/);
 	await page.getByRole('button', { name: 'Auto' }).click();
 
+	// Thème — a failed save rolls back the optimistic class/localStorage change
+	// instead of presenting an unsaved theme as persistent.
+	await page.route('**/api/household', async (route) => {
+		if (route.request().method() === 'PATCH') {
+			await route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: '{"error":{"code":"internal_error","message":"boom"}}'
+			});
+			return;
+		}
+		await route.continue();
+	});
+	await page.getByRole('button', { name: 'Sombre' }).click();
+	await expect(page.getByText('Une erreur est survenue.')).toBeVisible();
+	await expect(page.locator('html')).not.toHaveClass(/dark/);
+	const storedTheme = await page.evaluate(() => localStorage.getItem('swaddle.theme'));
+	expect(storedTheme).toBe('auto');
+	await page.unroute('**/api/household');
+	const household = await (await page.request.get('/api/household')).json();
+	expect(household.theme).toBe('auto');
+
 	// Données — the four controls exist.
 	await expect(page.getByRole('link', { name: 'Exporter JSON' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Exporter CSV' })).toBeVisible();

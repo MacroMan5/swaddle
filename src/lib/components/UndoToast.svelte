@@ -22,7 +22,10 @@
 	let error = $state<string | null>(null);
 
 	$effect(() => {
-		if (error !== null) return; // stay open on failure so the user can retry
+		// Suspend the expiry while an undo is in flight — a slow DELETE landing
+		// near the deadline must not dismiss the toast out from under its result
+		// — and stay open on failure so the user can retry.
+		if (pending || error !== null) return;
 		const timer = setTimeout(onDismiss, duration);
 		return () => clearTimeout(timer);
 	});

@@ -62,3 +62,28 @@ test('a failed undo keeps the toast open with an error and allows retry (FR-018)
 	await toast.getByRole('button', { name: 'Annuler' }).click();
 	await expect(toast).toBeHidden();
 });
+
+test('a slow undo spanning the 5 s deadline is not dismissed by the expiry timer (round 2, item 3)', async ({
+	page
+}) => {
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Caca', exact: true }).click();
+	const toast = page.getByRole('status');
+	await expect(toast).toContainText('Couche enregistrée');
+
+	// The undo's DELETE takes well longer than the toast's own 5 s expiry, so the
+	// 5.5 s check below can only pass if the expiry timer was actually suspended
+	// — not because the (much later) delayed response happened to land first.
+	await page.route('**/api/events/*', async (route) => {
+		if (route.request().method() === 'DELETE') {
+			await new Promise((resolve) => setTimeout(resolve, 8000));
+		}
+		await route.continue();
+	});
+
+	await toast.getByRole('button', { name: 'Annuler' }).click();
+	await page.waitForTimeout(5500); // past the original 5 s deadline, undo still in flight
+	await expect(toast).toBeVisible();
+	// The delayed DELETE eventually resolves and dismisses the toast on success.
+	await expect(toast).toBeHidden({ timeout: 5000 });
+});

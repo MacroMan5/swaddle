@@ -188,6 +188,13 @@ describe('applyServerEvent (HTTP-response merge, item 6)', () => {
 		store.applyServerEvent(existingSession);
 		expect(store.timers.map((t) => t.id)).toEqual(['adopted']);
 	});
+
+	it('merges a confirmed sleep start immediately, same as nursing/pump (round-2 item 4)', () => {
+		const sleepStart = sleepTimer({ id: 'sleep-started' });
+		store.applyServerEvent(sleepStart);
+		expect(store.timers.map((t) => t.id)).toEqual(['sleep-started']);
+		expect(store.events.map((e) => e.id)).toEqual(['sleep-started']);
+	});
 });
 
 describe('idempotent upserts across HTTP/SSE races (item 5)', () => {
@@ -208,8 +215,8 @@ describe('idempotent upserts across HTTP/SSE races (item 5)', () => {
 	});
 });
 
-describe('refreshEvents does not clobber a concurrent SSE change (item 2)', () => {
-	it('keeps a change applied while a GET /api/events refresh is in flight', async () => {
+describe('refreshEvents buffers a concurrent change onto the fetched baseline (item 1, round 2)', () => {
+	it('keeps both the baseline and a change that arrived mid-flight, instead of discarding one', async () => {
 		let resolveFetch!: (events: EventDTO[]) => void;
 		const deferred = new Promise<EventDTO[]>((resolve) => {
 			resolveFetch = resolve;
@@ -218,10 +225,31 @@ describe('refreshEvents does not clobber a concurrent SSE change (item 2)', () =
 
 		const refreshPromise = store.refreshEvents();
 		store.applyChange(sync('created', makeEvent({ id: 'fresh' })));
-		resolveFetch([makeEvent({ id: 'stale-snapshot' })]);
+		resolveFetch([makeEvent({ id: 'baseline' })]);
 		await refreshPromise;
 
-		expect(store.events.map((e) => e.id)).toEqual(['fresh']);
+		expect(store.events.map((e) => e.id).sort()).toEqual(['baseline', 'fresh']);
+	});
+
+	it('a change buffered mid-flight still loses to a strictly newer version already applied', async () => {
+		// The buffer replay still goes through the same last-write-wins upsert
+		// (item 5): an older buffered event never regresses a newer one.
+		let resolveFetch!: (events: EventDTO[]) => void;
+		const deferred = new Promise<EventDTO[]>((resolve) => {
+			resolveFetch = resolve;
+		});
+		vi.mocked(listTodayEvents).mockReturnValueOnce(deferred);
+
+		const older = makeEvent({ updatedAt: NOW.toISOString(), note: 'stale' });
+		const newer = makeEvent({ updatedAt: new Date(NOW.getTime() + 1000).toISOString(), note: 'fresh' });
+
+		const refreshPromise = store.refreshEvents();
+		store.applyChange(sync('created', newer));
+		resolveFetch([older]);
+		await refreshPromise;
+
+		expect(store.events).toHaveLength(1);
+		expect(store.events[0].note).toBe('fresh');
 	});
 });
 
@@ -329,6 +357,45 @@ describe('start() idempotency and cleanup (browser path, item 1)', () => {
 		expect(FakeEventSource.instances).toHaveLength(2);
 		expect(FakeEventSource.instances[0].closed).toBe(true);
 		expect(FakeEventSource.instances[1].closed).toBe(false);
+		s.stop();
+	});
+
+	it('applyReset replaces both events and timers independently, regardless of which settles first (item 2)', async () => {
+		vi.resetModules();
+		const { SyncStore: BrowserStore } = await import('./sync.svelte');
+		const { listTodayEvents: mockedListEvents, getTimers: mockedGetTimers } =
+			await import('./api');
+		const s = new BrowserStore();
+		s.babyId = 'baby-1';
+
+		let resolveEvents!: (events: EventDTO[]) => void;
+		let resolveTimers!: (result: { serverTime: string; timers: EventDTO[] }) => void;
+		vi.mocked(mockedListEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveEvents = resolve;
+			})
+		);
+		vi.mocked(mockedGetTimers).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveTimers = resolve;
+			})
+		);
+
+		s.applyReset({ serverTime: NOW.toISOString() });
+
+		// Timers settle first — must commit even though the events fetch is still pending.
+		resolveTimers({ serverTime: NOW.toISOString(), timers: [sleepTimer({ id: 'restored-timer' })] });
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(s.timers.map((t) => t.id)).toEqual(['restored-timer']);
+
+		// Events settle later — must not be invalidated by, nor invalidate, the timers commit above.
+		resolveEvents([makeEvent({ id: 'restored-event' })]);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(s.events.map((e) => e.id)).toEqual(['restored-event']);
+		expect(s.timers.map((t) => t.id)).toEqual(['restored-timer']);
+
 		s.stop();
 	});
 });

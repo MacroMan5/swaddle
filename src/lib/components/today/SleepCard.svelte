@@ -34,7 +34,11 @@
 		pending = true;
 		error = null;
 		try {
-			await startTimer('sleep', { babyId, caregiverId });
+			// {created:false} adopts an already-running session started elsewhere
+			// (item 6): merge it in immediately either way, since that path emits
+			// no SSE event. Mirrors nursing/pump start.
+			const result = await startTimer('sleep', { babyId, caregiverId });
+			store.applyServerEvent(result.event);
 		} catch (e) {
 			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
 		} finally {

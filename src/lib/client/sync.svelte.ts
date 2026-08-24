@@ -34,13 +34,21 @@ export class SyncStore {
 	#tick: ReturnType<typeof setInterval> | null = null;
 	#alive = false;
 	/**
-	 * Bumped by every state-changing operation (including stop()). refreshEvents/
-	 * refreshTimers snapshot it before their async fetch and discard the response
-	 * if it no longer matches — so a concurrent SSE change (or a stop()) is never
-	 * clobbered by a stale GET (item 2), and an in-flight fetch is a no-op once
-	 * the store has been stopped (item 1).
+	 * Bumped only by start()/stop() — identifies "this run" of the store. An
+	 * in-flight refreshEvents/refreshTimers snapshots it before the async fetch
+	 * and discards the response if it no longer matches, so a stale fetch never
+	 * lands after the store has been stopped or restarted for another baby.
+	 * Concurrent SSE/HTTP changes are handled separately below (buffering), not
+	 * by this counter, so events and timers no longer invalidate each other.
 	 */
-	#version = 0;
+	#generation = 0;
+
+	/** Changes applied while the matching refresh is in flight, replayed onto the
+	 * fetched baseline once it lands so neither side loses information. */
+	#eventsRefreshing = false;
+	#eventsBuffer: { event: EventDTO; deleted: boolean }[] = [];
+	#timersRefreshing = false;
+	#timersBuffer: { event: EventDTO; deleted: boolean }[] = [];
 
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
 	start(babyId: string): void {
@@ -48,7 +56,7 @@ export class SyncStore {
 		this.stop();
 		this.babyId = babyId;
 		this.#alive = true;
-		this.#version++;
+		this.#generation++;
 		this.nowMs = Date.now() + this.serverOffsetMs;
 		if (!browser) return;
 
@@ -75,7 +83,7 @@ export class SyncStore {
 
 	stop(): void {
 		this.#alive = false;
-		this.#version++;
+		this.#generation++;
 		if (this.#tick !== null) clearInterval(this.#tick);
 		this.#tick = null;
 		this.#source?.close();
@@ -103,20 +111,51 @@ export class SyncStore {
 		if (isNewLocalDay(prev, this.nowMs)) void this.refreshEvents();
 	}
 
+	/**
+	 * Fetches today's events and replaces the list — but first replays onto that
+	 * fetched baseline any change that arrived (via applyServerEvent/applyChange)
+	 * while this fetch was in flight, so a `sync` racing an initial/snapshot
+	 * refresh is never lost (item 1). Independent of refreshTimers: a reset's two
+	 * refreshes no longer invalidate each other (item 2).
+	 */
 	async refreshEvents(): Promise<void> {
 		if (this.babyId === null) return;
-		const versionBefore = this.#version;
-		const events = await listTodayEvents(this.babyId, new Date(this.nowMs));
-		if (this.#version !== versionBefore) return; // stopped, or a newer change already applied
-		this.#setEvents(sortByStartedAtDesc(events));
+		const generation = this.#generation;
+		this.#eventsRefreshing = true;
+		this.#eventsBuffer = [];
+		const fetched = await listTodayEvents(this.babyId, new Date(this.nowMs));
+		this.#eventsRefreshing = false;
+		if (generation !== this.#generation) {
+			this.#eventsBuffer = [];
+			return; // stopped, or restarted for another baby, meanwhile
+		}
+		let merged = sortByStartedAtDesc(fetched);
+		for (const { event, deleted } of this.#eventsBuffer) {
+			const gone = deleted || event.deletedAt !== null;
+			merged = upsert(merged, event, !gone && this.#isToday(event));
+		}
+		this.#eventsBuffer = [];
+		this.events = merged;
 	}
 
 	async refreshTimers(): Promise<void> {
 		if (this.babyId === null) return;
-		const versionBefore = this.#version;
+		const generation = this.#generation;
+		this.#timersRefreshing = true;
+		this.#timersBuffer = [];
 		const { timers } = await getTimers(this.babyId);
-		if (this.#version !== versionBefore) return;
-		this.#setTimers(timers.filter((t) => this.#isMine(t)));
+		this.#timersRefreshing = false;
+		if (generation !== this.#generation) {
+			this.#timersBuffer = [];
+			return;
+		}
+		let merged = timers.filter((t) => this.#isMine(t));
+		for (const { event, deleted } of this.#timersBuffer) {
+			const gone = deleted || event.deletedAt !== null;
+			merged = upsert(merged, event, !gone && isActiveTimer(event));
+		}
+		this.#timersBuffer = [];
+		this.timers = merged;
 	}
 
 	applySnapshot(message: SnapshotMessage): void {
@@ -154,6 +193,10 @@ export class SyncStore {
 		const gone = deleted || event.deletedAt !== null;
 		this.#setEvents(upsert(this.events, event, !gone && this.#isToday(event)));
 		this.#setTimers(upsert(this.timers, event, !gone && isActiveTimer(event)));
+		// A refresh in flight fetched its baseline before this change landed —
+		// buffer it for replay when that fetch resolves (item 1).
+		if (this.#eventsRefreshing) this.#eventsBuffer.push({ event, deleted });
+		if (this.#timersRefreshing) this.#timersBuffer.push({ event, deleted });
 	}
 
 	#isMine(event: EventDTO): boolean {
@@ -173,12 +216,10 @@ export class SyncStore {
 
 	#setEvents(list: EventDTO[]): void {
 		this.events = list;
-		this.#version++;
 	}
 
 	#setTimers(list: EventDTO[]): void {
 		this.timers = list;
-		this.#version++;
 	}
 }
 

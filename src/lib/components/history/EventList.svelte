@@ -1,12 +1,11 @@
 <script lang="ts">
 	// Chronological (ascending) list of a day's events (FR-009). Rows are large
-	// buttons opening the edit sheet; category is never color-only (icon + label).
-	// Display rules live in ./eventDisplay so this list and the calendar grid
-	// describe the same event the same way.
+	// buttons opening the edit sheet; category is never color-only (the label
+	// names the type). Display rules live in ./eventDisplay so this list and the
+	// calendar grid describe the same event the same way.
 	import { formatElapsed, formatTimeOfDay } from '$lib/client/format';
 	import {
-		ICONS,
-		TINTS,
+		BLOCK_BARS,
 		durationMs,
 		effectiveEndMs,
 		endsAfterDay,
@@ -67,9 +66,8 @@
 {#if events.length === 0}
 	<p class="text-ink-muted p-4 text-center text-base">Aucune activité ce jour-là.</p>
 {:else}
-	<ul class="flex flex-col gap-2">
+	<ul class="divide-border-hair bg-surface-raised flex flex-col divide-y">
 		{#each events as event (event.id)}
-			{@const Icon = ICONS[event.type]}
 			{@const color = caregiverColor(event.caregiverId)}
 			{@const cgName = caregiverName(event.caregiverId)}
 			<li>
@@ -78,24 +76,20 @@
 					data-testid="event-row"
 					onclick={() => onSelect(event)}
 					aria-label={rowAriaLabel(event, cgName)}
-					class="border-border bg-surface-raised flex min-h-12 w-full items-center gap-3 rounded-control border px-3 py-2 text-left active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
+					class="flex min-h-12 w-full items-center gap-2.5 px-2 py-2 text-left active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
 				>
 					<!-- Start over end, stacked: a single "07:15 – 07:40" line would eat a
 					     third of the row at 375 px and squeeze the label out. -->
-					<span class="w-14 shrink-0 text-base leading-tight tabular-nums" aria-hidden="true">
+					<span class="text-row-time w-14 shrink-0 leading-tight tabular-nums" aria-hidden="true">
 						<span class="text-ink block">{formatTimeOfDay(Date.parse(event.startedAt))}</span>
 						{#if !isPointEvent(event)}
 							<span class="text-ink-muted block">
-								{event.endedAt === null
-									? '…'
-									: formatTimeOfDay(effectiveEndMs(event, nowMs))}
+								{event.endedAt === null ? '…' : formatTimeOfDay(effectiveEndMs(event, nowMs))}
 							</span>
 						{/if}
 					</span>
-					<span class="{TINTS[event.type]} flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-						<Icon size={16} aria-hidden="true" />
-					</span>
-					<span class="text-ink min-w-0 flex-1 truncate text-base" aria-hidden="true">
+					<span class="{BLOCK_BARS[event.type]} h-[22px] w-1 shrink-0" aria-hidden="true"></span>
+					<span class="text-row text-ink min-w-0 flex-1 truncate" aria-hidden="true">
 						{#if startsBeforeDay(event, dayKey)}
 							<span class="text-ink-muted">Depuis la veille · </span>
 						{/if}
@@ -105,10 +99,10 @@
 						{/if}
 					</span>
 					{#if color}
-						<!-- The dot is color-only; the row's aria-label names the caregiver
-					     so the information isn't lost for screen readers. -->
+						<!-- The square is color-only; the row's aria-label names the caregiver
+						     so the information isn't lost for screen readers. -->
 						<span
-							class="h-3 w-3 shrink-0 rounded-full border border-border"
+							class="border-border size-2.5 shrink-0 border"
 							style:background-color={color}
 							aria-hidden="true"
 						></span>

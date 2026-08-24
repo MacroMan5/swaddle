@@ -1,5 +1,6 @@
 <script lang="ts">
-	// « ◀ / date / ▶ » day navigator (FR-009). `dayKey` is `YYYY-MM-DD` local.
+	// Full-width day navigator band (FR-009), replacing the floating « ◀ date ▶ »
+	// row. `dayKey` is `YYYY-MM-DD` local.
 	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { localDayKey } from '$lib/client/summaries';
 
@@ -23,27 +24,34 @@
 	const isToday = $derived(dayKey === todayKey);
 	const label = $derived.by(() => {
 		const [y, m, d] = dayKey.split('-').map(Number);
-		const formatted = formatter.format(new Date(y, m - 1, d));
-		return isToday ? `Aujourd’hui · ${formatted}` : formatted;
+		return formatter.format(new Date(y, m - 1, d));
 	});
+
+	const chevronCell =
+		'text-ink flex min-h-13 w-13 shrink-0 items-center justify-center active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset disabled:opacity-30';
 </script>
 
-<div class="flex items-center justify-between gap-2">
+<div class="border-border divide-border-hair flex items-stretch divide-x border-b-2">
 	<button
 		type="button"
 		aria-label="Jour précédent"
 		onclick={() => onChange(shiftDay(-1))}
-		class="border-border bg-surface-raised text-ink flex min-h-12 min-w-12 items-center justify-center rounded-control border active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
+		class={chevronCell}
 	>
 		<ChevronLeft size={22} aria-hidden="true" />
 	</button>
-	<p class="text-ink flex-1 text-center text-lg font-semibold capitalize">{label}</p>
+	<div class="flex min-w-0 flex-1 flex-col justify-center gap-1 px-3 py-2">
+		{#if isToday}
+			<span class="text-category text-primary-text uppercase">Aujourd’hui</span>
+		{/if}
+		<span class="text-field text-ink truncate capitalize">{label}</span>
+	</div>
 	<button
 		type="button"
 		aria-label="Jour suivant"
 		disabled={isToday}
 		onclick={() => onChange(shiftDay(1))}
-		class="border-border bg-surface-raised text-ink flex min-h-12 min-w-12 items-center justify-center rounded-control border active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 motion-reduce:active:scale-100"
+		class={chevronCell}
 	>
 		<ChevronRight size={22} aria-hidden="true" />
 	</button>

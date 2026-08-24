@@ -26,14 +26,15 @@ export const TINTS = {
 	sleep: 'bg-sleep-100 text-sleep-700'
 } as const;
 
-/** Calendar bar for a block too thin to hold text: saturated, so a 5 px sliver
- * still reads as an event rather than a hairline rule. */
+/** Category bar (list rows, thin calendar blocks): the 700s — the 500s sit
+ * below the 3:1 non-text contrast floor on the light surfaces, so a bar that
+ * *is* the event must not use them. */
 export const BLOCK_BARS = {
-	nursing: 'bg-feed-500',
-	bottle: 'bg-feed-500',
-	pump: 'bg-feed-500',
-	diaper: 'bg-diaper-500',
-	sleep: 'bg-sleep-500'
+	nursing: 'bg-feed-700',
+	bottle: 'bg-feed-700',
+	pump: 'bg-feed-700',
+	diaper: 'bg-diaper-700',
+	sleep: 'bg-sleep-700'
 } as const;
 
 /** Calendar block fill, border and text once there is room for a label — a

@@ -3,20 +3,13 @@
 	// filters and the day summary. Week view and editing arrive in later tasks
 	// of the same slice.
 	import { getContext, onDestroy, onMount } from 'svelte';
-	import { Milk, Droplets, Moon, Plus } from '@lucide/svelte';
+	import { Plus } from '@lucide/svelte';
 	import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
-	import {
-		dailySummary,
-		dayRangeIso,
-		eventOverlapsDay,
-		formatNursingSummary,
-		formatSleepSummary,
-		hasNursingActivity,
-		localDayKey
-	} from '$lib/client/summaries';
+	import { dayRangeIso, eventOverlapsDay, localDayKey } from '$lib/client/summaries';
 	import type { SyncStore } from '$lib/client/sync.svelte';
-	import type { CaregiverDTO, EventDTO, EventType } from '$lib/client/types';
-	import DayPicker from '$lib/components/history/DayPicker.svelte';
+	import type { CaregiverDTO, EventDTO } from '$lib/client/types';
+	import { CATEGORY_OF, type Category } from '$lib/components/today/todayDerivations';
+	import DaySelector from '$lib/components/history/DaySelector.svelte';
 	import DayCalendar from '$lib/components/history/DayCalendar.svelte';
 	import EventEditSheet from '$lib/components/history/EventEditSheet.svelte';
 	import { manualAddDefaultTime } from '$lib/components/history/eventForm';
@@ -28,24 +21,11 @@
 
 	const store = getContext<SyncStore>('sync');
 
-	type Category = 'feed' | 'diaper' | 'sleep';
-	const CATEGORY_OF: Record<EventType, Category> = {
-		nursing: 'feed',
-		bottle: 'feed',
-		pump: 'feed',
-		diaper: 'diaper',
-		sleep: 'sleep'
-	};
-	// Tailwind needs literal class names at build time (no `bg-${x}-100` templating).
-	const CHIPS: { key: Category; label: string; icon: typeof Milk; activeClass: string }[] = [
-		{ key: 'feed', label: 'Alimentation', icon: Milk, activeClass: 'bg-feed-100 text-feed-700 border-feed-100' },
-		{
-			key: 'diaper',
-			label: 'Couche',
-			icon: Droplets,
-			activeClass: 'bg-diaper-100 text-diaper-700 border-diaper-100'
-		},
-		{ key: 'sleep', label: 'Sommeil', icon: Moon, activeClass: 'bg-sleep-100 text-sleep-700 border-sleep-100' }
+	// Tailwind needs literal class names at build time (no `bg-${x}-700` templating).
+	const CHIPS: { key: Category; label: string; barClass: string }[] = [
+		{ key: 'feed', label: 'Alimentation', barClass: 'bg-feed-700' },
+		{ key: 'diaper', label: 'Couche', barClass: 'bg-diaper-700' },
+		{ key: 'sleep', label: 'Sommeil', barClass: 'bg-sleep-700' }
 	];
 
 	// Reactive, not a constant (review P2): store.nowMs ticks every second
@@ -262,33 +242,31 @@
 			.sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
 	);
 
-	const summary = $derived(dailySummary(dayEvents.filter((e) => e.deletedAt === null), dayKey, store.nowMs));
-
 	const manualAddDefault = $derived(manualAddDefaultTime(dayKey, todayKey, store.nowMs));
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="flex items-center justify-between gap-2">
-		<h1 class="text-ink text-2xl font-bold">Historique</h1>
+	<div class="border-border flex items-center justify-between gap-2 border-b-2 pb-3">
+		<h1 class="text-screen-title text-ink">Historique</h1>
 		<button
 			type="button"
 			disabled={babyId === null}
 			onclick={() => (addOpen = true)}
-			class="bg-primary text-on-primary flex min-h-12 items-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+			class="bg-primary text-on-primary active:bg-primary-pressed flex min-h-12 items-center justify-start gap-2 rounded-control px-4 py-2 font-semibold active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
 		>
 			<Plus size={18} aria-hidden="true" />
 			Ajouter
 		</button>
 	</div>
 
-	<DayPicker {dayKey} {todayKey} onChange={(next) => (dayKey = next)} />
+	<DaySelector {dayKey} {todayKey} onChange={(next) => (dayKey = next)} />
 
 	{#if loadError}
 		<p class="text-danger text-base" role="alert">{loadError}</p>
 	{/if}
 
 	<div
-		class="border-border bg-surface-raised flex min-h-12 rounded-control border p-1"
+		class="border-border divide-border-hair grid grid-cols-2 divide-x border-2"
 		role="group"
 		aria-label="Vue jour ou semaine"
 	>
@@ -297,9 +275,9 @@
 				type="button"
 				aria-pressed={viewMode === tab.mode}
 				onclick={() => selectViewMode(tab.mode)}
-				class="min-h-10 flex-1 rounded-control text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {viewMode ===
+				class="flex h-[46px] items-center justify-center text-base font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset {viewMode ===
 				tab.mode
-					? 'bg-primary text-on-primary'
+					? 'bg-ink text-surface'
 					: 'text-ink-muted'}"
 			>
 				{tab.label}
@@ -310,51 +288,27 @@
 	{#if viewMode === 'week'}
 		<WeekView events={weekEvents} mondayKey={mondayOf(dayKey)} {todayKey} nowMs={store.nowMs} onSelectDay={selectWeekDay} />
 	{:else}
-		<div class="flex min-w-0 gap-2" role="group" aria-label="Filtrer par catégorie">
+		<div
+			class="border-border divide-border-hair grid grid-cols-3 divide-x border-2"
+			role="group"
+			aria-label="Filtrer par catégorie"
+		>
 			{#each CHIPS as chip (chip.key)}
 				{@const active = selectedCategories.has(chip.key)}
 				<button
 					type="button"
 					aria-pressed={active}
 					onclick={() => toggleCategory(chip.key)}
-					class="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-control border px-1 py-2 text-base font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {active
-						? chip.activeClass
-						: 'bg-surface-raised text-ink-muted border-border'}"
+					class="flex min-h-12 min-w-0 items-center justify-center gap-2 px-1 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset {active
+						? 'bg-surface-raised text-ink'
+						: 'text-ink-muted'}"
 				>
-					<chip.icon size={18} aria-hidden="true" />
-					<span class="w-full truncate text-center">{chip.label}</span>
+					<span class="h-4 w-1 shrink-0 {active ? chip.barClass : 'bg-border-hair'}" aria-hidden="true"
+					></span>
+					<span class="truncate text-xs font-bold">{chip.label}</span>
 				</button>
 			{/each}
 		</div>
-
-		<dl
-			data-testid="day-summary"
-			class="border-border bg-surface-raised text-ink grid grid-cols-2 gap-x-4 gap-y-1 rounded-card border p-4 text-base tabular-nums"
-		>
-			{#if hasNursingActivity(summary.nursing)}
-				<dt class="text-ink-muted">Allaitement</dt>
-				<dd>{formatNursingSummary(summary.nursing)}</dd>
-			{/if}
-			{#if summary.bottle.count > 0}
-				<dt class="text-ink-muted">Biberon</dt>
-				<dd>{summary.bottle.count} · {summary.bottle.totalMl} ml</dd>
-			{/if}
-			{#if summary.pump.count > 0}
-				<dt class="text-ink-muted">Tire-lait</dt>
-				<dd>{summary.pump.count} · {summary.pump.totalMl} ml</dd>
-			{/if}
-			{#if summary.diaper.count > 0}
-				<dt class="text-ink-muted">Couches</dt>
-				<dd>{summary.diaper.pee} pipi, {summary.diaper.poo} caca</dd>
-			{/if}
-			{#if summary.sleep.totalMs > 0}
-				<dt class="text-ink-muted">Sommeil</dt>
-				<dd>{formatSleepSummary(summary.sleep)}</dd>
-			{/if}
-			{#if !hasNursingActivity(summary.nursing) && summary.bottle.count === 0 && summary.pump.count === 0 && summary.diaper.count === 0 && summary.sleep.totalMs === 0}
-				<dd class="text-ink-muted col-span-2">Aucun résumé pour ce jour.</dd>
-			{/if}
-		</dl>
 
 		{#if showSkeleton}
 			<div class="flex flex-col gap-2" aria-hidden="true">
@@ -371,7 +325,9 @@
 				nowMs={store.nowMs}
 				onSelect={selectEvent}
 			/>
-			<h2 class="sr-only">Liste chronologique</h2>
+			<h2 class="text-section text-ink-muted uppercase">
+				Événements · <span class="tabular-nums">{filteredEvents.length}</span>
+			</h2>
 			<EventList events={filteredEvents} {dayKey} nowMs={store.nowMs} {caregivers} onSelect={selectEvent} />
 		{/if}
 	{/if}

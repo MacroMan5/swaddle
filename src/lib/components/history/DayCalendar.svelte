@@ -55,8 +55,8 @@
 	/** Point markers differ by shape as well as tint, so bottle and diaper stay
 	 * distinguishable without colour — they are too small for an icon. */
 	const POINT_SHAPES = {
-		bottle: 'rounded-full bg-feed-500',
-		diaper: 'rotate-45 bg-diaper-500'
+		bottle: 'rounded-full bg-feed-700',
+		diaper: 'rotate-45 bg-diaper-700'
 	} as const;
 
 	const blocks = $derived(placeBlocks(events, dayKey, nowMs));
@@ -83,14 +83,14 @@
 	}
 </script>
 
-<div class="border-border bg-surface-raised overflow-hidden rounded-card border p-2">
+<div class="border-border bg-surface-raised overflow-hidden rounded-card border-2 p-2">
 	<div class="relative" style:height="{DAY_HEIGHT_PX}px" data-testid="calendar-track">
 		<!-- Hour rules and the axis: scaffolding, and noise for a screen reader. -->
 		{#each HOURS as hour (hour)}
 			<div
 				class="absolute inset-x-0 border-t {LABEL_HOURS.includes(hour) || hour === 0
-					? 'border-border'
-					: 'border-border/40'}"
+					? 'border-border-hair'
+					: 'border-border-hair/50'}"
 				style:top="{hour * HOUR_HEIGHT_PX}px"
 				aria-hidden="true"
 			></div>
@@ -99,7 +99,7 @@
 			<!-- Sat on its rule with the surface behind it, so the line never
 			     strikes through the number. -->
 			<span
-				class="text-ink-muted bg-surface-raised absolute left-0 w-8 -translate-y-1/2 pr-1 text-right text-base tabular-nums"
+				class="text-ink-muted bg-surface-raised text-tile-hint absolute left-0 w-8 -translate-y-1/2 pr-1 text-right tabular-nums"
 				style:top="{hour * HOUR_HEIGHT_PX}px"
 				aria-hidden="true"
 			>
@@ -122,7 +122,7 @@
 					title={blockAriaLabel(p)}
 					class="absolute overflow-hidden text-left leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary {labelled
 						? `${BLOCK_TONES[p.event.type]} rounded-sm border-y border-r border-l-4 px-1`
-						: `${BLOCK_BARS[p.event.type]} rounded-full`} {labelled && p.open
+						: BLOCK_BARS[p.event.type]} {labelled && p.open
 						? 'border-dashed'
 						: ''} {p.clippedTop ? 'rounded-t-none' : ''} {p.clippedBottom ? 'rounded-b-none' : ''}"
 					style:top="{p.topPx}px"

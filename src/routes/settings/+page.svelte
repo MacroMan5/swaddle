@@ -9,14 +9,23 @@
 
 	let { data } = $props();
 
+	// Catches transport failures (connection loss: `fetch` itself rejects) and a
+	// malformed response body (`res.json()` throws): without this, a caller
+	// like setVolumeUnit — which applies its change optimistically before
+	// awaiting this — would throw instead of reaching its rollback/error
+	// branch, leaving the optimistic write stuck with no error shown (FR-018).
 	async function postJson(url: string, method: string, body?: unknown) {
-		const res = await fetch(url, {
-			method,
-			headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-			body: body === undefined ? undefined : JSON.stringify(body)
-		});
-		const value = res.status === 204 ? null : await res.json();
-		return { ok: res.ok, value };
+		try {
+			const res = await fetch(url, {
+				method,
+				headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+				body: body === undefined ? undefined : JSON.stringify(body)
+			});
+			const value = res.status === 204 ? null : await res.json();
+			return { ok: res.ok, value };
+		} catch {
+			return { ok: false, value: null };
+		}
 	}
 
 	// --- Aidants ---
@@ -91,16 +100,21 @@
 	// --- Unité ---
 	let volumeUnit = $state(data.household.volumeUnit);
 	let volumeUnitError = $state<string | null>(null);
+	let volumeUnitPending = $state(false);
 
 	async function setVolumeUnit(unit: 'ml' | 'oz') {
 		volumeUnitError = null;
 		const previousUnit = volumeUnit;
 		// Applied immediately for instant feedback (design-system.md § Mouvement);
 		// rolled back below if the save turns out to have failed, instead of
-		// presenting an unsaved change as persistent.
+		// presenting an unsaved change as persistent. Both buttons are disabled
+		// meanwhile so a second click can't start a concurrent save whose
+		// rollback would race this one's.
 		volumeUnit = unit;
+		volumeUnitPending = true;
 
 		const { ok, value } = await postJson('/api/household', 'PATCH', { volumeUnit: unit });
+		volumeUnitPending = false;
 		if (!ok) {
 			volumeUnit = previousUnit;
 			volumeUnitError = errorMessage(value);
@@ -339,12 +353,14 @@
 				<Button
 					type="button"
 					class="min-h-12"
+					disabled={volumeUnitPending}
 					variant={volumeUnit === 'ml' ? 'default' : 'outline'}
 					onclick={() => setVolumeUnit('ml')}>ml</Button
 				>
 				<Button
 					type="button"
 					class="min-h-12"
+					disabled={volumeUnitPending}
 					variant={volumeUnit === 'oz' ? 'default' : 'outline'}
 					onclick={() => setVolumeUnit('oz')}>oz</Button
 				>

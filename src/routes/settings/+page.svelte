@@ -499,13 +499,13 @@
 		<section class="flex flex-col gap-3 p-4">
 			<h2 class="text-section text-ink-muted uppercase">Vos données</h2>
 			<div class="grid grid-cols-2 gap-2.5">
-				<Button href="/api/export/json" download variant="outline" class="min-h-13 justify-start"
+				<Button href="/api/export/json" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Exporter JSON</Button
 				>
-				<Button href="/api/export/csv" download variant="outline" class="min-h-13 justify-start"
+				<Button href="/api/export/csv" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Exporter CSV</Button
 				>
-				<Button href="/api/backup" download variant="outline" class="min-h-13 justify-start"
+				<Button href="/api/backup" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Télécharger une sauvegarde</Button
 				>
 				<!-- The native file input is visually hidden (its "Choose file / No file
@@ -522,7 +522,7 @@
 				/>
 				<Button
 					variant="outline"
-					class="text-primary-text min-h-13 justify-start"
+					class="text-primary-text h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					onclick={() => restoreInput?.click()}>Restaurer depuis un fichier…</Button
 				>
 			</div>

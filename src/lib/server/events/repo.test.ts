@@ -254,6 +254,14 @@ describe('patchEvent merges and validates atomically', () => {
 	it('throws not_found on an unknown id', () => {
 		expect(() => patchEvent(db, 'nope', { note: 'x' }, new Date())).toThrowError(RepoError);
 	});
+
+	it('rejects patching an endedAt onto a point event (bottle, diaper)', () => {
+		const created = createEvent(db, bottle());
+		expect(() =>
+			patchEvent(db, created.id, { endedAt: '2026-08-23T11:05:00.000Z' }, new Date())
+		).toThrowError(RepoError);
+		expect(getEvent(db, created.id)?.endedAt).toBeNull();
+	});
 });
 
 describe('nursing action hardening', () => {

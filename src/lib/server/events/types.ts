@@ -125,12 +125,16 @@ export function validateEventTimes(
  * Rules that depend on the completion state of the event, not just on the shape
  * of `details`. Shared by create and patch so both entry points agree.
  */
-export function validateDetailsContext(e: {
-	type: EventType;
-	endedAt: string | null;
-	details: Details;
-}): Issue[] {
+export function validateDetailsContext(
+	e: {
+		type: EventType;
+		endedAt: string | null;
+		details: Details;
+	},
+	now: Date
+): Issue[] {
 	const issues: Issue[] = [];
+	const maxTime = now.getTime() + MAX_FUTURE_MS;
 
 	if (e.type === 'nursing') {
 		const { segments } = e.details as { segments: NursingSegment[] };
@@ -141,6 +145,13 @@ export function validateDetailsContext(e: {
 				message: 'a nursing session needs at least one segment'
 			});
 		segments.forEach((s, i) => {
+			// Segments obey the same FR-017 future bound as the event itself.
+			if (Date.parse(s.startedAt) > maxTime || (s.endedAt !== null && Date.parse(s.endedAt) > maxTime))
+				issues.push({
+					path: `details.segments.${i}`,
+					code: 'too_far_in_future',
+					message: 'segment timestamps are more than 5 minutes in the future'
+				});
 			if (s.endedAt !== null && Date.parse(s.endedAt) < Date.parse(s.startedAt))
 				issues.push({
 					path: `details.segments.${i}.endedAt`,
@@ -209,7 +220,7 @@ export function parseCreateEvent(input: unknown, now: Date): Result<CreateEventI
 	if (!detailsResult.ok) issues.push(...detailsResult.issues);
 	else
 		issues.push(
-			...validateDetailsContext({ type, endedAt: endedAt ?? null, details: detailsResult.value })
+			...validateDetailsContext({ type, endedAt: endedAt ?? null, details: detailsResult.value }, now)
 		);
 
 	issues.push(...validateEventTimes({ type, startedAt, endedAt: endedAt ?? null }, now));

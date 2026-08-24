@@ -90,6 +90,25 @@ describe('parseCreateEvent — FR-017 (AC-010)', () => {
 		);
 		expect(r.ok).toBe(true);
 	});
+
+	it('rejects nursing segment timestamps more than 5 minutes in the future', () => {
+		const r = parseCreateEvent(
+			{
+				babyId: 'baby-1',
+				type: 'nursing',
+				startedAt: '2026-08-23T11:00:00.000Z',
+				endedAt: '2026-08-23T11:20:00.000Z',
+				details: {
+					segments: [
+						{ side: 'left', startedAt: '2026-08-23T13:00:00.000Z', endedAt: '2026-08-23T13:10:00.000Z' }
+					]
+				}
+			},
+			NOW
+		);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'too_far_in_future')).toBe(true);
+	});
 });
 
 describe('parsePatchEvent', () => {

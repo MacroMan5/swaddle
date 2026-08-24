@@ -152,13 +152,20 @@ export function patchEvent(
 		const endedAt = patch.endedAt ?? current.endedAt;
 
 		const issues = validateEventTimes({ type: current.type, startedAt, endedAt }, now);
+		// Point events (bottle, diaper) must keep endedAt null, same as at creation.
+		if (!isTimerType(current.type) && endedAt !== null)
+			issues.push({
+				path: 'endedAt',
+				code: 'ended_at_forbidden',
+				message: `${current.type} is a point event and takes no endedAt`
+			});
 		let details = current.details;
 		if (patch.details !== undefined) {
 			const parsed = parseDetails(current.type, patch.details);
 			if (!parsed.ok) issues.push(...parsed.issues);
 			else details = parsed.value;
 		}
-		issues.push(...validateDetailsContext({ type: current.type, endedAt, details }));
+		issues.push(...validateDetailsContext({ type: current.type, endedAt, details }, now));
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid patch', issues);
 
 		return updateEvent(db, id, {
@@ -292,7 +299,7 @@ export function stopTimer(
 		// known here, so FR-017 is enforced on the merged event before writing.
 		const issues = [
 			...validateEventTimes({ type: event.type, startedAt: event.startedAt, endedAt }, new Date()),
-			...validateDetailsContext({ type: event.type, endedAt, details })
+			...validateDetailsContext({ type: event.type, endedAt, details }, new Date())
 		];
 		if (issues.length > 0) throw new RepoError('validation_failed', 'invalid stop', issues);
 

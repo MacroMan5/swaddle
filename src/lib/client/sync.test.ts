@@ -304,6 +304,59 @@ describe('tick() and day rollover (item 3)', () => {
 	});
 });
 
+describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
+	it('invokes the listener for every sync message, with kind and event', () => {
+		const received: { kind: string; event?: EventDTO }[] = [];
+		store.subscribeChanges((change) => received.push(change));
+
+		store.applyChange(sync('created', makeEvent()));
+		store.applyChange(sync('updated', makeEvent({ note: 'x', updatedAt: new Date(NOW.getTime() + 1).toISOString() })));
+
+		expect(received).toHaveLength(2);
+		expect(received[0].kind).toBe('created');
+		expect(received[0].event?.id).toBe('ev-1');
+		expect(received[1].kind).toBe('updated');
+	});
+
+	it('signals a reset-style change on snapshot and on applyReset, so history refetches', () => {
+		const received: { kind: string }[] = [];
+		store.subscribeChanges((change) => received.push(change));
+
+		store.applySnapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		store.applyReset({ serverTime: NOW.toISOString() });
+
+		expect(received.map((c) => c.kind)).toEqual(['reset', 'reset']);
+	});
+
+	it('unsubscribe stops further notifications', () => {
+		const received: unknown[] = [];
+		const unsubscribe = store.subscribeChanges((change) => received.push(change));
+		store.applyChange(sync('created', makeEvent()));
+		unsubscribe();
+		store.applyChange(sync('created', makeEvent({ id: 'ev-2' })));
+		expect(received).toHaveLength(1);
+	});
+
+	it('swallows a listener error without breaking other listeners or the caller', () => {
+		const received: unknown[] = [];
+		store.subscribeChanges(() => {
+			throw new Error('boom');
+		});
+		store.subscribeChanges((change) => received.push(change));
+
+		expect(() => store.applyChange(sync('created', makeEvent()))).not.toThrow();
+		expect(received).toHaveLength(1);
+	});
+
+	it('stop() clears all listeners', () => {
+		const received: unknown[] = [];
+		store.subscribeChanges((change) => received.push(change));
+		store.stop();
+		store.applyChange(sync('created', makeEvent()));
+		expect(received).toHaveLength(0);
+	});
+});
+
 describe('start() idempotency and cleanup (browser path, item 1)', () => {
 	class FakeEventSource {
 		static instances: FakeEventSource[] = [];

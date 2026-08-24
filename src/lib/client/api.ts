@@ -70,6 +70,19 @@ export async function listTodayEvents(babyId: string, now = new Date()): Promise
 	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
 }
 
+/** History/timeline fetches: window overlap (see `docs/api/events-api.md`) so a
+ * midnight-crossing event stays visible from either day it touches (AC-006). */
+export async function listEvents(
+	babyId: string,
+	from: string,
+	to: string,
+	overlap = true
+): Promise<EventDTO[]> {
+	const query = new URLSearchParams({ babyId, from, to });
+	if (overlap) query.set('overlap', '1');
+	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
+}
+
 export async function createEvent(input: CreateEventInput): Promise<EventDTO> {
 	return sendJson<EventDTO>('POST', '/api/events', input);
 }

@@ -1,8 +1,13 @@
 import { getTimers, listTodayEvents } from './api';
 import { isNewLocalDay, todayRangeIso } from './format';
-import type { EventDTO, SnapshotMessage, SyncMessage, TimerType } from './types';
+import type { EventDTO, SnapshotMessage, SyncKind, SyncMessage, TimerType } from './types';
 
 const TIMER_TYPES: readonly TimerType[] = ['nursing', 'pump', 'sleep'];
+
+/** A change relayed to non-today views. A `sync` message carries `event`; a
+ * snapshot/reset (reconnect or data restore) has no single event to apply
+ * incrementally and signals "refetch your window" instead. */
+export type RelayChange = { kind: SyncKind; event: EventDTO } | { kind: 'reset' };
 
 const browser = typeof window !== 'undefined';
 
@@ -50,6 +55,10 @@ export class SyncStore {
 	#timersRefreshing = false;
 	#timersBuffer: { event: EventDTO; deleted: boolean }[] = [];
 
+	/** Listeners for non-today views (history) that need to react to changes
+	 * outside today's window, which `events`/`timers` never carry. */
+	#changeListeners = new Set<(change: RelayChange) => void>();
+
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
 	start(babyId: string): void {
 		if (this.#alive && this.babyId === babyId) return;
@@ -88,6 +97,30 @@ export class SyncStore {
 		this.#tick = null;
 		this.#source?.close();
 		this.#source = null;
+		this.#changeListeners.clear();
+	}
+
+	/**
+	 * Change relay for non-today views (history): invoked for every applied
+	 * `sync` message, and once with `{ kind: 'reset' }` on a snapshot or an
+	 * `applyReset` (reconnect/restore) — those don't carry a single event a
+	 * listener could apply incrementally, so they signal "refetch your window"
+	 * instead. Listener errors are swallowed so one bad subscriber never breaks
+	 * another, or the caller that triggered the change.
+	 */
+	subscribeChanges(fn: (change: RelayChange) => void): () => void {
+		this.#changeListeners.add(fn);
+		return () => this.#changeListeners.delete(fn);
+	}
+
+	#emitChange(change: RelayChange): void {
+		for (const fn of this.#changeListeners) {
+			try {
+				fn(change);
+			} catch {
+				// A listener's own error must not break other listeners or the caller.
+			}
+		}
 	}
 
 	handleOpen(): void {
@@ -163,6 +196,7 @@ export class SyncStore {
 		this.connectionState = 'connected';
 		this.#setTimers(message.activeTimers.filter((t) => this.#isMine(t)));
 		if (browser) void this.refreshEvents();
+		this.#emitChange({ kind: 'reset' });
 	}
 
 	/** A restore invalidates every id, so treat it like a fresh snapshot (FR-012). */
@@ -172,11 +206,13 @@ export class SyncStore {
 			void this.refreshEvents();
 			void this.refreshTimers();
 		}
+		this.#emitChange({ kind: 'reset' });
 	}
 
 	applyChange(message: SyncMessage): void {
 		this.#setServerTime(message.serverTime);
 		this.applyServerEvent(message.event, message.kind === 'deleted');
+		this.#emitChange({ kind: message.kind, event: message.event });
 	}
 
 	/**

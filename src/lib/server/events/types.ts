@@ -121,6 +121,63 @@ export function validateEventTimes(
 	return issues;
 }
 
+/**
+ * Rules that depend on the completion state of the event, not just on the shape
+ * of `details`. Shared by create and patch so both entry points agree.
+ */
+export function validateDetailsContext(e: {
+	type: EventType;
+	endedAt: string | null;
+	details: Details;
+}): Issue[] {
+	const issues: Issue[] = [];
+
+	if (e.type === 'nursing') {
+		const { segments } = e.details as { segments: NursingSegment[] };
+		if (segments.length === 0)
+			issues.push({
+				path: 'details.segments',
+				code: 'segments_required',
+				message: 'a nursing session needs at least one segment'
+			});
+		segments.forEach((s, i) => {
+			if (s.endedAt !== null && Date.parse(s.endedAt) < Date.parse(s.startedAt))
+				issues.push({
+					path: `details.segments.${i}.endedAt`,
+					code: 'end_before_start',
+					message: 'segment endedAt is before its startedAt'
+				});
+			// Only the last segment may be open, which also forbids several open ones.
+			if (s.endedAt === null && i !== segments.length - 1)
+				issues.push({
+					path: `details.segments.${i}.endedAt`,
+					code: 'segment_still_open',
+					message: 'only the last segment may be open'
+				});
+		});
+		if (e.endedAt !== null && segments.some((s) => s.endedAt === null))
+			issues.push({
+				path: 'details.segments',
+				code: 'segment_still_open',
+				message: 'a completed nursing session cannot keep an open segment'
+			});
+	}
+
+	// FR-004: the pumped volume is entered when the session ends; null is only
+	// legal while the timer is still running.
+	if (e.type === 'pump' && e.endedAt !== null) {
+		const { volumeMl } = e.details as { volumeMl: number | null };
+		if (volumeMl === null)
+			issues.push({
+				path: 'details.volumeMl',
+				code: 'volume_required',
+				message: 'a completed pump needs a volume in [1, 1000] ml'
+			});
+	}
+
+	return issues;
+}
+
 /** Details must match the event type. Returns issues or the parsed details. */
 export function parseDetails(type: EventType, details: unknown): Result<Details> {
 	const parsed = detailsSchemas[type].safeParse(details);
@@ -150,6 +207,10 @@ export function parseCreateEvent(input: unknown, now: Date): Result<CreateEventI
 
 	const detailsResult = parseDetails(type, details);
 	if (!detailsResult.ok) issues.push(...detailsResult.issues);
+	else
+		issues.push(
+			...validateDetailsContext({ type, endedAt: endedAt ?? null, details: detailsResult.value })
+		);
 
 	issues.push(...validateEventTimes({ type, startedAt, endedAt: endedAt ?? null }, now));
 	if (issues.length > 0) return { ok: false, issues };

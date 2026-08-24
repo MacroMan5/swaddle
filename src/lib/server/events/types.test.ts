@@ -105,3 +105,71 @@ describe('parsePatchEvent', () => {
 		expect(parsePatchEvent({ type: 'sleep' }).ok).toBe(false);
 	});
 });
+
+describe('nursing segment rules in context', () => {
+	const nursing = (segments: unknown, endedAt: string | null = '2026-08-23T10:30:00.000Z') => ({
+		babyId: 'baby-1',
+		type: 'nursing',
+		startedAt: '2026-08-23T10:00:00.000Z',
+		...(endedAt === null ? {} : { endedAt }),
+		details: { segments }
+	});
+	const seg = (over: object = {}) => ({
+		side: 'left',
+		startedAt: '2026-08-23T10:00:00.000Z',
+		endedAt: '2026-08-23T10:10:00.000Z',
+		...over
+	});
+
+	it('rejects an empty segment list', () => {
+		const r = parseCreateEvent(nursing([]), NOW);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'segments_required')).toBe(true);
+	});
+
+	it('rejects a segment ending before it started', () => {
+		const r = parseCreateEvent(
+			nursing([seg({ startedAt: '2026-08-23T10:10:00.000Z', endedAt: '2026-08-23T10:00:00.000Z' })]),
+			NOW
+		);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'end_before_start')).toBe(true);
+	});
+
+	it('rejects an open segment that is not the last one', () => {
+		const r = parseCreateEvent(nursing([seg({ endedAt: null }), seg()]), NOW);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'segment_still_open')).toBe(true);
+	});
+
+	it('rejects several open segments', () => {
+		const r = parseCreateEvent(nursing([seg({ endedAt: null }), seg({ endedAt: null })]), NOW);
+		expect(r.ok).toBe(false);
+	});
+
+	it('rejects an open segment on a completed session', () => {
+		const r = parseCreateEvent(nursing([seg(), seg({ endedAt: null })]), NOW);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'segment_still_open')).toBe(true);
+	});
+});
+
+describe('pump volume is required once completed (FR-004)', () => {
+	const pump = (volumeMl: number | null) => ({
+		babyId: 'baby-1',
+		type: 'pump',
+		startedAt: '2026-08-23T10:00:00.000Z',
+		endedAt: '2026-08-23T10:20:00.000Z',
+		details: { side: 'both', volumeMl }
+	});
+
+	it('rejects a completed pump without a volume', () => {
+		const r = parseCreateEvent(pump(null), NOW);
+		expect(r.ok).toBe(false);
+		expect(!r.ok && r.issues.some((i) => i.code === 'volume_required')).toBe(true);
+	});
+
+	it('accepts a completed pump with a volume', () => {
+		expect(parseCreateEvent(pump(150), NOW).ok).toBe(true);
+	});
+});

@@ -48,7 +48,7 @@
 <div
 	role="status"
 	aria-live="polite"
-	class="bg-surface-raised border-border text-ink shadow-card pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-card border px-4 py-3"
+	class="bg-surface-raised border-border text-ink shadow-md pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-card border px-4 py-3"
 >
 	<div class="flex items-center justify-between gap-3">
 		<span class="text-base">{message}</span>

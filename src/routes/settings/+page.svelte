@@ -234,7 +234,7 @@
 </script>
 
 <div class="mx-auto flex max-w-lg flex-col gap-4 p-4">
-	<h1 class="font-serif text-2xl text-ink">Réglages</h1>
+	<h1 class="text-2xl text-ink">Réglages</h1>
 
 	<Card.Root>
 		<Card.Header><Card.Title>Bébé</Card.Title></Card.Header>

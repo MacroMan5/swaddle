@@ -69,7 +69,7 @@
 	<Card.Root class="w-full max-w-sm">
 		{#if step === 1}
 			<Card.Header>
-				<Card.Title class="font-serif text-2xl">Votre bébé</Card.Title>
+				<Card.Title class="text-2xl">Votre bébé</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<form class="flex flex-col gap-4" onsubmit={submitBaby}>
@@ -101,7 +101,7 @@
 			</Card.Content>
 		{:else}
 			<Card.Header>
-				<Card.Title class="font-serif text-2xl">Qui s'en occupe ?</Card.Title>
+				<Card.Title class="text-2xl">Qui s'en occupe ?</Card.Title>
 			</Card.Header>
 			<Card.Content>
 				<form class="flex flex-col gap-4" onsubmit={submitCaregiver}>

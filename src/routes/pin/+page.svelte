@@ -33,7 +33,7 @@
 <div class="flex min-h-dvh items-center justify-center bg-surface p-4">
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
-			<Card.Title class="font-serif text-2xl">Code PIN</Card.Title>
+			<Card.Title class="text-2xl">Code PIN</Card.Title>
 		</Card.Header>
 		<Card.Content>
 			<form class="flex flex-col gap-4" onsubmit={submit}>

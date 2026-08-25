@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCreateEvent, parsePatchEvent } from './types';
+import { detailsSchemas, EVENT_TYPES, parseCreateEvent, parsePatchEvent } from './types';
 
 const NOW = new Date('2026-08-23T12:00:00.000Z');
 const base = {
@@ -190,5 +190,11 @@ describe('pump volume is required once completed (FR-004)', () => {
 
 	it('accepts a completed pump with a volume', () => {
 		expect(parseCreateEvent(pump(150), NOW).ok).toBe(true);
+	});
+});
+
+describe('detailsSchemas covers the shared vocabulary', () => {
+	it('has exactly one schema per EVENT_TYPES entry', () => {
+		expect(Object.keys(detailsSchemas).sort()).toEqual([...EVENT_TYPES].sort());
 	});
 });

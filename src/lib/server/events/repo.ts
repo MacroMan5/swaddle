@@ -7,9 +7,18 @@ import type {
 	EventDTO,
 	EventType,
 	Issue,
-	PatchEventInput
+	PatchEventInput,
+	Side,
+	TimerType
 } from './types';
-import { parseDetails, validateDetailsContext, validateEventTimes } from './types';
+import {
+	detailsOf,
+	isTimerType,
+	parseDetails,
+	TIMER_TYPES,
+	validateDetailsContext,
+	validateEventTimes
+} from './types';
 
 type DB = Database.Database;
 
@@ -238,13 +247,6 @@ export function listBabies(db: DB): BabyDTO[] {
 		.all() as BabyDTO[];
 }
 
-import type { NursingSegment, Side, TimerType } from './types';
-import { TIMER_TYPES } from './types';
-
-function isTimerType(type: EventType): type is TimerType {
-	return (TIMER_TYPES as readonly string[]).includes(type);
-}
-
 export function listActiveTimers(db: DB, babyId?: string): EventDTO[] {
 	const placeholders = TIMER_TYPES.map(() => '?').join(', ');
 	let sql = `SELECT * FROM event WHERE ended_at IS NULL AND deleted_at IS NULL AND type IN (${placeholders})`;
@@ -310,12 +312,12 @@ export function stopTimer(
 		const endedAt = opts.endedAt ?? nowIso();
 		let details = event.details;
 		if (event.type === 'nursing') {
-			const d = details as { segments: NursingSegment[] };
+			const d = detailsOf(event, 'nursing');
 			details = {
 				segments: d.segments.map((s) => (s.endedAt === null ? { ...s, endedAt } : s))
 			};
 		} else if (event.type === 'pump' && opts.volumeMl !== undefined) {
-			details = { ...(details as { side: Side | 'both' }), volumeMl: opts.volumeMl };
+			details = { ...detailsOf(event, 'pump'), volumeMl: opts.volumeMl };
 		}
 
 		// The route only bounds endedAt in the future; the session start is only
@@ -341,7 +343,7 @@ export function nursingAction(
 		const event = activeTimer(db, opts.babyId, 'nursing');
 		if (!event) throw new RepoError('no_active_timer', 'no active nursing session');
 		const ts = nowIso();
-		const segments = [...(event.details as { segments: NursingSegment[] }).segments];
+		const segments = [...detailsOf(event, 'nursing').segments];
 		if (segments.length === 0)
 			throw new RepoError('invalid_state', 'nursing session has no segment to act on');
 		const openIndex = segments.findIndex((s) => s.endedAt === null);

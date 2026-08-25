@@ -61,3 +61,24 @@ test('manual-add a bottle yesterday, edit its volume, delete it with undo, then 
 	await page.getByRole('button', { name: 'Jour précédent' }).click();
 	await expect(page.getByTestId('event-row').filter({ hasText: 'Biberon' })).toHaveCount(0);
 });
+
+test('manual-add a pump without a volume sends null, not a phantom 0 (issue #36)', async ({
+	page
+}) => {
+	// ManualAddSheet always fills in a Fin (end) time, so a manually-added pump
+	// is always a *completed* session server-side, and a completed pump still
+	// requires a volume (src/lib/server/events/types.ts). The fix isn't that
+	// this now succeeds — it's that the empty field is sent as `null` (like
+	// EventEditSheet) instead of `Number('') === 0`, so the rejection surfaces
+	// the correct business message instead of the generic "at least 1 ml" one.
+	await page.goto('/history');
+	await page.getByRole('button', { name: 'Ajouter' }).click();
+	await page.getByRole('button', { name: 'Tirage', exact: true }).click();
+
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+
+	await expect(page.getByRole('alert')).toContainText(
+		'Le volume est requis pour terminer le tirage.'
+	);
+	await expect(page.getByTestId('event-row').filter({ hasText: 'Tirage' })).toHaveCount(0);
+});

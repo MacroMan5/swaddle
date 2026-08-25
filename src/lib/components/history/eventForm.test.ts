@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { manualAddDefaultTime, toLocalInputValue, fromLocalInputValue } from './eventForm';
+import {
+	manualAddDefaultTime,
+	parsePumpVolumeMl,
+	toLocalInputValue,
+	fromLocalInputValue
+} from './eventForm';
+
+describe('parsePumpVolumeMl (issue #36: unify the empty-volume rule)', () => {
+	it('turns an empty field into null, not a phantom 0', () => {
+		expect(parsePumpVolumeMl('')).toBeNull();
+	});
+
+	it('parses a filled field as a number', () => {
+		expect(parsePumpVolumeMl('120')).toBe(120);
+	});
+});
 
 describe('manualAddDefaultTime (review item 6: FR-017 — never default into the future)', () => {
 	it('uses the corrected now for today, not a fixed noon (which would be in the future before ~11:55)', () => {

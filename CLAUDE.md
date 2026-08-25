@@ -17,15 +17,6 @@ déploiement sont fixés par les ADR 0001–0003 (SvelteKit + SQLite + SSE, imag
 GHCR multi-arch déployée par Docker Compose sur un Raspberry Pi 4, Tailwind v4 +
 shadcn-svelte avec design tokens). Ne pas dévier sans nouvel ADR.
 
-## Contraintes structurantes (déjà décidées)
-
-- **Self-host** : le service doit tourner localement (machine ou serveur domestique),
-  sans dépendance à un cloud tiers pour fonctionner.
-- **Base de données simple et locale** : un fichier ou un service local léger
-  (type SQLite ou équivalent) — pas de base managée externe. Le choix exact reste ouvert.
-- **Service web** : accessible via navigateur; le détail (SPA, SSR, PWA…) reste ouvert.
-- Prototype : privilégier la simplicité sur la généricité.
-
 ## Décisions à venir
 
 Toute décision structurante (stack, schéma de données, fonctionnalités) doit être
@@ -44,9 +35,12 @@ l'utilisateur d'abord.
 - `npm run test:unit` — tests unitaires Vitest ; un seul fichier :
   `npx vitest run src/lib/server/db/db.test.ts`.
 - `npm run test:e2e` — e2e Playwright (fait un build de prod ; nécessite
-  `npx playwright install chromium` une première fois).
+  `npx playwright install chromium` une première fois ; les ports 3000 et 3001
+  doivent être libres). Un seul spec : `npx playwright test e2e/<nom>.spec.ts`.
 - `npm run build` — build de production (adapter-node → `build/`).
 - `docker build -t swaddle .` — image de production (`node:22-slim`, jamais Alpine).
+- CI : runner self-hosted **Windows** (`swaddle-win`) — rien de Linux-only dans
+  `ci.yml` (pas de `setup-qemu-action`, pas de `--with-deps`).
 
 ## Architecture
 

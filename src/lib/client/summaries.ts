@@ -2,13 +2,8 @@
 // SummaryCard and the History day/week views — one source of truth so counts
 // and durations never disagree between screens.
 import { formatElapsed } from './format';
-import type {
-	BottleDetails,
-	DiaperDetails,
-	EventDTO,
-	NursingDetails,
-	PumpDetails
-} from './types';
+import { isTimerType, isType } from './types';
+import type { EventDTO } from './types';
 
 /** `YYYY-MM-DD` for `d`'s local calendar day. */
 export function localDayKey(d: Date): string {
@@ -46,8 +41,6 @@ export function dayRangeIso(dayKey: string): { from: string; to: string } {
 	return { from: start.toISOString(), to: end.toISOString() };
 }
 
-const TIMER_EVENT_TYPES = new Set(['nursing', 'pump', 'sleep']);
-
 /**
  * Whether `event` overlaps `dayKey`'s local day (review item 2), not merely
  * starts in it — so a carry-over session (e.g. sleep 23:30→01:30) stays
@@ -63,7 +56,7 @@ export function eventOverlapsDay(event: EventDTO, dayKey: string, nowMs: number)
 	const toMs = Date.parse(to);
 	const startedMs = Date.parse(event.startedAt);
 	if (startedMs >= toMs) return false;
-	if (TIMER_EVENT_TYPES.has(event.type)) {
+	if (isTimerType(event.type)) {
 		const endMs = event.endedAt === null ? nowMs : Date.parse(event.endedAt);
 		return endMs > fromMs;
 	}
@@ -108,8 +101,8 @@ export function dailySummary(events: EventDTO[], dayKey: string, nowMs: number):
 	for (const event of events) {
 		if (event.deletedAt !== null) continue;
 
-		if (event.type === 'nursing') {
-			const { segments } = event.details as NursingDetails;
+		if (isType(event, 'nursing')) {
+			const { segments } = event.details;
 			let eventShareMs = 0;
 			let eventLeftMs = 0;
 			let eventRightMs = 0;
@@ -135,25 +128,25 @@ export function dailySummary(events: EventDTO[], dayKey: string, nowMs: number):
 			continue;
 		}
 
-		if (event.type === 'bottle') {
+		if (isType(event, 'bottle')) {
 			if (!startsOnDay(event, dayKey)) continue;
-			const details = event.details as BottleDetails;
+			const details = event.details;
 			bottle.count += 1;
 			bottle.totalMl += details.volumeMl;
 			continue;
 		}
 
-		if (event.type === 'pump') {
+		if (isType(event, 'pump')) {
 			if (!startsOnDay(event, dayKey)) continue;
-			const details = event.details as PumpDetails;
+			const details = event.details;
 			pump.count += 1;
 			pump.totalMl += details.volumeMl ?? 0;
 			continue;
 		}
 
-		if (event.type === 'diaper') {
+		if (isType(event, 'diaper')) {
 			if (!startsOnDay(event, dayKey)) continue;
-			const details = event.details as DiaperDetails;
+			const details = event.details;
 			diaper.count += 1;
 			if (details.pee) diaper.pee += 1;
 			if (details.poo) diaper.poo += 1;

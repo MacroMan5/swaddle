@@ -5,7 +5,8 @@
 	import { startTimer, stopTimer, nursingAction, ApiError } from '$lib/client/api';
 	import { formatClock, formatElapsed, nursingDurationMs } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
-	import type { EventDTO, NursingDetails, NursingSegment, Side } from '$lib/client/types';
+	import { isType } from '$lib/client/types';
+	import type { EventDTO, NursingSegment, Side } from '$lib/client/types';
 
 	let {
 		open = $bindable(false),
@@ -32,7 +33,7 @@
 	// same clocks here as soon as its SSE `sync` lands.
 	const session = $derived(store.timers.find((t) => t.type === 'nursing') ?? null);
 	const segments = $derived<NursingSegment[]>(
-		session === null ? [] : (session.details as NursingDetails).segments
+		session !== null && isType(session, 'nursing') ? session.details.segments : []
 	);
 	const runningSide = $derived(segments.find((s) => s.endedAt === null)?.side ?? null);
 	/** Side the session would resume on; null before the first segment. */

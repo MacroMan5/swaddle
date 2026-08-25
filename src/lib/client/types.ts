@@ -1,40 +1,41 @@
-// Client-side mirror of the API contract (docs/api/events-api.md). Declared here
-// on purpose: client code must never import from $lib/server/*.
+// The shared half of the API contract (docs/api/events-api.md) lives in
+// `$lib/shared/events` — one definition for client and server. This module only
+// adds what is purely client-side: the request bodies the client sends and the
+// SSE messages it receives. It re-exports the shared names so existing imports
+// from `$lib/client/types` keep working.
 
-export type EventType = 'nursing' | 'bottle' | 'pump' | 'diaper' | 'sleep';
-export type TimerType = 'nursing' | 'pump' | 'sleep';
-export type Side = 'left' | 'right';
-export type PumpSide = Side | 'both';
-export type MilkType = 'breast' | 'formula' | 'mixed';
+export {
+	EVENT_TYPES,
+	TIMER_TYPES,
+	POINT_TYPES,
+	CATEGORY_OF,
+	isTimerType,
+	isPointType,
+	isType,
+	detailsOf
+} from '$lib/shared/events';
 
-export type NursingSegment = { side: Side; startedAt: string; endedAt: string | null };
+export type {
+	Category,
+	EventType,
+	TimerType,
+	PointType,
+	Side,
+	PumpSide,
+	MilkType,
+	NursingSegment,
+	NursingDetails,
+	BottleDetails,
+	PumpDetails,
+	DiaperDetails,
+	SleepDetails,
+	DetailsByType,
+	Details,
+	EventDTO,
+	TypedEvent
+} from '$lib/shared/events';
 
-export type NursingDetails = { segments: NursingSegment[] };
-export type BottleDetails = { milkType: MilkType; volumeMl: number };
-export type PumpDetails = { side: PumpSide; volumeMl: number | null };
-export type DiaperDetails = { pee: boolean; poo: boolean };
-export type SleepDetails = Record<string, never>;
-
-export type Details =
-	| NursingDetails
-	| BottleDetails
-	| PumpDetails
-	| DiaperDetails
-	| SleepDetails;
-
-export type EventDTO = {
-	id: string;
-	babyId: string;
-	caregiverId: string | null;
-	type: EventType;
-	startedAt: string;
-	endedAt: string | null;
-	note: string | null;
-	details: Details;
-	createdAt: string;
-	updatedAt: string;
-	deletedAt: string | null;
-};
+import type { Details, EventDTO, EventType, PumpSide, Side } from '$lib/shared/events';
 
 export type BabyDTO = { id: string; name: string; birthdate: string; timezone: string };
 
@@ -78,21 +79,3 @@ export type NursingActionBody = {
 export type SyncKind = 'created' | 'updated' | 'deleted' | 'restored';
 export type SyncMessage = { kind: SyncKind; event: EventDTO; serverTime: string };
 export type SnapshotMessage = { serverTime: string; activeTimers: EventDTO[] };
-
-/** Narrowing helpers — the DTO is a union over `type`. */
-export type TypedEvent<T extends EventType> = EventDTO & {
-	type: T;
-	details: T extends 'nursing'
-		? NursingDetails
-		: T extends 'bottle'
-			? BottleDetails
-			: T extends 'pump'
-				? PumpDetails
-				: T extends 'diaper'
-					? DiaperDetails
-					: SleepDetails;
-};
-
-export function isType<T extends EventType>(event: EventDTO, type: T): event is TypedEvent<T> {
-	return event.type === type;
-}

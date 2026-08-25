@@ -2,19 +2,14 @@
 // FeedCard/DiaperCard/SleepCard; the status strip needs them at page level,
 // so they moved here unchanged. No DOM, no store — testable with plain data.
 
-import type { EventDTO, EventType } from '$lib/client/types';
-import { isType } from '$lib/client/types';
+import type { Category, EventDTO } from '$lib/client/types';
+import { CATEGORY_OF, isType } from '$lib/client/types';
 import { formatElapsed } from '$lib/client/format';
 
-export type Category = 'feed' | 'diaper' | 'sleep';
-
-export const CATEGORY_OF: Record<EventType, Category> = {
-	nursing: 'feed',
-	bottle: 'feed',
-	pump: 'feed',
-	diaper: 'diaper',
-	sleep: 'sleep'
-};
+// The category split itself is part of the shared contract; re-exported here so
+// the Today components keep importing it from their own module.
+export { CATEGORY_OF };
+export type { Category };
 
 /**
  * Latest event of a category, given events sorted newest-first (SyncStore

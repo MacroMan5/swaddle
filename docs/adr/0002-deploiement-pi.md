@@ -5,23 +5,23 @@
 
 ## Contexte
 
-Le serveur cible est un Raspberry Pi 4 (Cortex-A72, 4 Go de RAM, aarch64,
-Debian 12, SSD USB de 228 Go) qui héberge déjà une quinzaine de conteneurs
-(n8n, Pi-hole, Vaultwarden, Portainer, Watchtower, ntfy…). Docker 20.10 et
-Compose v2 y sont installés. Un build SvelteKit sur le Pi entrerait en
-concurrence mémoire avec les services existants, et Watchtower met à jour
-automatiquement les images `:latest`.
+Le déploiement cible des serveurs domestiques aux ressources contraintes,
+notamment les Raspberry Pi 4+ en aarch64 avec Docker et Compose v2. Construire
+SvelteKit directement sur ce type d'hôte entrerait en concurrence avec les
+autres services locaux. Une mise à jour automatique d'une image `:latest`
+pourrait également appliquer une migration SQLite sans supervision.
 
 ## Décision
 
 L'image Docker est construite par GitHub Actions en multi-arch
 (linux/arm64 + linux/amd64) sur une base `node:22-slim` (glibc, requis par les
-binaires précompilés de better-sqlite3) et publiée sur GHCR. Le Pi ne
+binaires précompilés de better-sqlite3) et publiée sur GHCR. L'hôte ne
 construit jamais : il fait `docker compose pull && docker compose up -d` avec
 un tag versionné (`vX.Y.Z`) et le label
-`com.centurylinklabs.watchtower.enable=false`. L'application écoute sur le
-port 3010, configurable par variable d'environnement, avec les données dans un
-bind mount `./data` sur le SSD.
+`com.centurylinklabs.watchtower.enable=false`. Le port, le fuseau horaire et le
+répertoire persistant sont configurés par un fichier `.env` local ignoré par
+Git ; les valeurs publiques par défaut sont respectivement `3010`, `UTC` et
+`./data`.
 
 ## Conséquences
 

@@ -51,11 +51,16 @@ curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/dock
 docker compose pull && docker compose up -d
 ```
 
+Le Compose fonctionne avec des valeurs publiques par défaut. Pour choisir une
+version, un port, un fuseau ou un emplacement de données propres au serveur,
+utilisez le fichier local `.env` décrit dans le
+[guide de déploiement](deploy/README.md).
+
 Au premier lancement, ouvrez `http://<ip-du-serveur>:3010` : l'assistant de
 démarrage vous guide pour créer le profil du bébé et le premier aidant. Les
-données vivent dans `./data/` — sauvegardez ce dossier, c'est tout (export
-JSON/CSV et sauvegarde/restauration SQLite documentés dans
-[`docs/api/settings-api.md`](docs/api/settings-api.md)).
+données vivent par défaut dans `./data/` (`SWADDLE_DATA_DIR`) — sauvegardez ce
+dossier, c'est tout (export JSON/CSV et sauvegarde/restauration SQLite
+documentés dans [`docs/api/settings-api.md`](docs/api/settings-api.md)).
 
 **Important** : l'application est conçue pour un réseau local privé. Ne
 l'exposez pas directement à Internet (voir ADR 0001).

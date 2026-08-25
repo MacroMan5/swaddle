@@ -31,6 +31,14 @@
 	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
 
 	const babyId = $derived(baby?.id ?? null);
+	// One alert for the whole bootstrap: the baby/caregiver load and the events
+	// load (issue #47) fail the same way from the user's point of view.
+	const bootstrapError = $derived(loadError ?? store.eventsError);
+
+	async function retryBootstrap(): Promise<void> {
+		if (loadError !== null) await loadBaby();
+		else await store.refreshEvents();
+	}
 
 	async function loadBaby(): Promise<void> {
 		loadError = null;
@@ -73,15 +81,16 @@
 		<TodayHeader babyName={baby?.name ?? null} birthdate={baby?.birthdate ?? null} />
 	</div>
 
-	{#if loadError}
+	{#if bootstrapError}
 		<div
 			class="border-border bg-surface-raised flex flex-col gap-2 rounded-card border-2 p-4"
 			role="alert"
+			data-testid="bootstrap-error"
 		>
-			<p class="text-ink text-base">{loadError}</p>
+			<p class="text-ink text-base">{bootstrapError}</p>
 			<button
 				type="button"
-				onclick={loadBaby}
+				onclick={retryBootstrap}
 				class="bg-primary text-on-primary active:bg-primary-pressed min-h-12 self-start rounded-control px-4 py-2 font-semibold active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 			>
 				Réessayer

@@ -99,7 +99,10 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
   les événements du jour, les minuteurs actifs, l'offset serveur — RISK-001 —
   et `subscribeChanges` : relais de changements pour les vues hors
-  « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte).
+  « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte),
+  `eventList.ts` (`upsert` — fusion idempotente last-write-wins gardée par
+  `updatedAt` — et les tris `sortByStartedAtAsc/Desc` ; toute liste
+  d'événements côté client passe par là, jamais par une copie locale).
   Ne jamais importer `$lib/server/*` depuis ce dossier.
 - `src/lib/components/today/` — écran « Aujourd'hui » en direction « Registre »
   (palette 2b, `docs/design/design-system.md`) : `TodayHeader` (titre + âge),
@@ -124,7 +127,13 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `dayCalendarLayout.ts` (géométrie de la grille, packing des chevauchements en
   colonnes, clipping de minuit) et `timelinePosition.ts` (`wallClockMinutesOf`,
   positionnement DST-safe). La grille et la liste décrivent ainsi le même
-  événement de la même façon.
+  événement de la même façon. `historyWindow.svelte.ts` (`HistoryWindow`,
+  classe à runes instanciée par `/history`) possède l'état de l'écran : jour
+  et mode sélectionnés, les trois chargements (jour / semaine / semaine
+  précédente) avec un jeton anti-course chacun, le minuteur de squelette,
+  l'abonnement à `subscribeChanges` et la fusion directe d'une écriture
+  confirmée (FR-018) via l'`upsert` partagé. `+page.svelte` n'a plus que du
+  markup et l'état de présentation (filtres, feuilles, toasts).
 - Horodatages ISO 8601 UTC ; données sous `DATA_DIR` (défaut `data/`).
 - UI en français ; code, identifiants et commentaires en anglais.
 

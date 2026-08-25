@@ -1,4 +1,5 @@
 import { getTimers, listTodayEvents } from './api';
+import { sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
 import { isTimerType } from './types';
@@ -170,7 +171,7 @@ export class SyncStore {
 		let merged = sortByStartedAtDesc(fetched);
 		for (const { event, deleted } of this.#eventsBuffer) {
 			const gone = deleted || event.deletedAt !== null;
-			merged = upsert(merged, event, !gone && this.#isToday(event));
+			merged = upsert(merged, event, !gone && this.#isToday(event), sortByStartedAtDesc);
 		}
 		this.#eventsBuffer = [];
 		this.events = merged;
@@ -190,7 +191,7 @@ export class SyncStore {
 		let merged = timers.filter((t) => this.#isMine(t));
 		for (const { event, deleted } of this.#timersBuffer) {
 			const gone = deleted || event.deletedAt !== null;
-			merged = upsert(merged, event, !gone && isActiveTimer(event));
+			merged = upsert(merged, event, !gone && isActiveTimer(event), sortByStartedAtDesc);
 		}
 		this.#timersBuffer = [];
 		this.timers = merged;
@@ -223,7 +224,7 @@ export class SyncStore {
 	/**
 	 * Merges one authoritative event (from an SSE `sync` message, or straight from
 	 * an HTTP response) into `events`/`timers`. Idempotent and order-independent:
-	 * `upsert` below ignores anything older than what is already stored by
+	 * `upsert` (see `eventList.ts`) ignores anything older than what is already stored by
 	 * `updatedAt`, so applying the same mutation twice — via SSE and via the HTTP
 	 * response, in either order — never duplicates or regresses state (item 5).
 	 * UI call sites use this directly after a write so the screen is correct even
@@ -232,8 +233,8 @@ export class SyncStore {
 	applyServerEvent(event: EventDTO, deleted = false): void {
 		if (!this.#isMine(event)) return;
 		const gone = deleted || event.deletedAt !== null;
-		this.#setEvents(upsert(this.events, event, !gone && this.#isToday(event)));
-		this.#setTimers(upsert(this.timers, event, !gone && isActiveTimer(event)));
+		this.#setEvents(upsert(this.events, event, !gone && this.#isToday(event), sortByStartedAtDesc));
+		this.#setTimers(upsert(this.timers, event, !gone && isActiveTimer(event), sortByStartedAtDesc));
 		// A refresh in flight fetched its baseline before this change landed —
 		// buffer it for replay when that fetch resolves (item 1).
 		if (this.#eventsRefreshing) this.#eventsBuffer.push({ event, deleted });
@@ -268,22 +269,4 @@ export class SyncStore {
 	#setTimers(list: EventDTO[]): void {
 		this.timers = list;
 	}
-}
-
-function sortByStartedAtDesc(events: EventDTO[]): EventDTO[] {
-	return [...events].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-}
-
-/**
- * Insert/replace `event` when `keep`, otherwise remove it — but only if `event`
- * is not older (by `updatedAt`) than whatever is already stored for that id.
- * Makes every caller an idempotent, order-independent, last-write-wins upsert
- * (item 5): applying the same mutation twice, or two mutations out of order,
- * never duplicates or regresses the list.
- */
-function upsert(list: EventDTO[], event: EventDTO, keep: boolean): EventDTO[] {
-	const existing = list.find((e) => e.id === event.id);
-	if (existing && Date.parse(event.updatedAt) < Date.parse(existing.updatedAt)) return list;
-	const without = list.filter((e) => e.id !== event.id);
-	return keep ? sortByStartedAtDesc([...without, event]) : without;
 }

@@ -35,9 +35,17 @@
 	// load (issue #47) fail the same way from the user's point of view.
 	const bootstrapError = $derived(loadError ?? store.eventsError);
 
+	/**
+	 * Retries every failed part, not just the first one. Both can be in error at
+	 * once: the store is layout-scoped, so an events error survives a trip to
+	 * another screen and back, where a fresh loadBaby() may fail in its turn. A
+	 * successful start() for a *new* baby clears the events error itself (it
+	 * resets the store), but start() for the baby already running is a no-op —
+	 * hence the second check, which then reloads the day.
+	 */
 	async function retryBootstrap(): Promise<void> {
 		if (loadError !== null) await loadBaby();
-		else await store.refreshEvents();
+		if (store.eventsError !== null) await store.refreshEvents();
 	}
 
 	async function loadBaby(): Promise<void> {

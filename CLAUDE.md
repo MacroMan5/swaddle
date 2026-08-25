@@ -82,7 +82,10 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `npx shadcn-svelte@latest add <composant> -y`).
 - `src/lib/client/` — couche client partagée par « Aujourd'hui » et
   « Historique » : `api.ts` (fetch typé vers `docs/api/events-api.md`,
-  `ApiError`, `listEvents(babyId, from, to, overlap?)` pour l'historique),
+  `ApiError` — dont le `userMessage` français, dérivé du `code` via
+  `$lib/errors.ts` ; l'UI affiche toujours `userMessage`, jamais
+  `error.message` (texte serveur anglais) —, `listEvents(babyId, from, to,
+  overlap?)` pour l'historique),
   `format.ts` (`formatElapsed`/`formatClock`/`nursingDurationMs`/
   `todayRangeIso`), `summaries.ts` (moteur pur de résumés — FR-010, AC-006 :
   `dailySummary`/`weeklySummary`/`splitDurationByLocalDay` répartissent les

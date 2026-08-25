@@ -27,3 +27,46 @@ jobs:
       - run: npx playwright install chromium
       - run: npm run test:e2e
       - run: docker build -t swaddle:ci .
+      # Non-root smoke test: the image must run as an unprivileged uid and
+      # still create/reopen the SQLite db on a host-mounted volume across a
+      # restart (Docker Desktop on this Windows runner uses Linux containers,
+      # so `docker run`/`docker exec` behave the same as on the Pi).
+      - name: Non-root persistence smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $data = Join-Path $env:RUNNER_TEMP "swaddle-ci-data"
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          docker run -d --name swaddle-smoke -p 3011:3000 -v "${data}:/app/data" swaddle:ci
+          try {
+            $uid = (docker exec swaddle-smoke id -u).Trim()
+            Write-Host "Container uid: $uid"
+            if ($uid -eq "0") { throw "container is running as root (uid $uid)" }
+
+            $healthy = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              try {
+                $resp = Invoke-RestMethod -Uri "http://localhost:3011/api/health" -TimeoutSec 2
+                if ($resp.status -eq "ok") { $healthy = $true; break }
+              } catch {}
+              Start-Sleep -Seconds 1
+            }
+            if (-not $healthy) { throw "health check did not become ready" }
+            if (-not (Test-Path (Join-Path $data "swaddle.db"))) { throw "database file was not created on the host volume" }
+
+            docker restart swaddle-smoke | Out-Null
+
+            $healthyAfterRestart = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              try {
+                $resp = Invoke-RestMethod -Uri "http://localhost:3011/api/health" -TimeoutSec 2
+                if ($resp.status -eq "ok") { $healthyAfterRestart = $true; break }
+              } catch {}
+              Start-Sleep -Seconds 1
+            }
+            if (-not $healthyAfterRestart) { throw "health check did not recover after restart (data/permissions issue?)" }
+          } finally {
+            docker logs swaddle-smoke
+            docker rm -f swaddle-smoke | Out-Null
+            Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
+          }

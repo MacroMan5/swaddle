@@ -9,6 +9,9 @@ services:
     ports:
       - "${SWADDLE_PORT:-3010}:3000"
     volumes:
+      # Le conteneur tourne en uid/gid 1000 (non root) : ce dossier doit
+      # appartenir à 1000:1000 sur l'hôte avant le premier démarrage — voir
+      # README.md.
       - "${SWADDLE_DATA_DIR:-./data}:/app/data"
     environment:
       - "TZ=${TZ:-UTC}"

@@ -38,8 +38,9 @@ Variables prises en charge :
 | `SWADDLE_DATA_DIR` | `./data` | Répertoire persistant de SQLite |
 | `TZ` | `UTC` | Fuseau horaire du conteneur |
 
-Un chemin relatif dans `SWADDLE_DATA_DIR` est résolu depuis `deploy/`. Un
-chemin absolu peut être utilisé pour placer les données sur un disque dédié.
+Un chemin relatif dans `SWADDLE_DATA_DIR` est résolu depuis le dossier qui
+contient `docker-compose.yml` (`deploy/` dans un clone du dépôt). Un chemin
+absolu peut être utilisé pour placer les données sur un disque dédié.
 
 Pour des réglages Compose plus avancés, créez
 `docker-compose.override.yml` dans ce dossier. Les overrides reconnus et les

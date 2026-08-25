@@ -11,10 +11,8 @@ Thumbs.db
 
 # Déploiement local — état et overrides propres à l'hôte
 /deploy/data/
-/deploy/compose.override.yml
-/deploy/compose.override.yaml
-/deploy/docker-compose.override.yml
-/deploy/docker-compose.override.yaml
+/deploy/compose.override.*
+/deploy/docker-compose.override.*
 
 # SvelteKit / Node
 node_modules

@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { DATA_DIR } from '$lib/server/db';
 import { handler } from '$lib/server/http';
 import { publishReset } from '$lib/server/events/broadcast';
+import { pruneSnapshots } from '$lib/server/settings/retention';
 import { importJson, snapshotTo } from '$lib/server/settings/transfer';
 
 export const POST: RequestHandler = handler<unknown>({
@@ -13,9 +14,13 @@ export const POST: RequestHandler = handler<unknown>({
 	invalidMessage: 'invalid restore payload',
 	run: ({ db, body }) => {
 		const stamp = new Date().toISOString().replace(/:/g, '-');
-		const snapshotPath = join(DATA_DIR, 'backups', `pre-restore-${stamp}.sqlite`);
+		const backupsDir = join(DATA_DIR, 'backups');
+		const snapshotPath = join(backupsDir, `pre-restore-${stamp}.sqlite`);
 		// FR-014: an automatic snapshot of the current state is always taken first.
 		snapshotTo(db, snapshotPath);
+		// #57: prune before the data replacement proceeds, not after — the
+		// snapshot just taken is what pruning must never be able to cost.
+		pruneSnapshots(backupsDir, 'pre-restore');
 
 		const restored = importJson(db, body);
 		// Any device with an open SSE connection has stale timers/lists after a

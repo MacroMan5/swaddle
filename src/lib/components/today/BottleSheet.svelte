@@ -3,6 +3,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
 	import { createEvent, deleteEvent, ApiError } from '$lib/client/api';
+	import { fieldMessage } from '$lib/errors';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { MilkType } from '$lib/client/types';
 
@@ -96,9 +97,9 @@
 			pending = false;
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {
-					if (issue.path.endsWith('volumeMl')) volumeError = issue.message;
-					else if (issue.path.endsWith('startedAt')) timeError = issue.message;
-					else formError = issue.message;
+					if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
+					else if (issue.path.endsWith('startedAt')) timeError = fieldMessage(issue);
+					else formError = fieldMessage(issue);
 				}
 			} else {
 				formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';

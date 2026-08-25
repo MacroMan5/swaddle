@@ -5,6 +5,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
 	import { ApiError, createEvent } from '$lib/client/api';
+	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
@@ -176,9 +177,9 @@
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {
-					if (issue.path.endsWith('startedAt')) startedAtError = issue.message;
-					else if (issue.path.endsWith('volumeMl')) volumeError = issue.message;
-					else formError = issue.message;
+					if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue);
+					else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
+					else formError = fieldMessage(issue);
 				}
 			} else {
 				formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';

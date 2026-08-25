@@ -138,7 +138,10 @@ pour ce bébé (les événements ponctuels sont exemptés).
 
 Types à minuteur : `nursing`, `pump`, `sleep`. Au plus **un minuteur actif par
 type et par bébé** ; les types différents coexistent. `bottle` et `diaper` sont
-des événements ponctuels.
+des événements ponctuels. Cette unicité est aussi garantie au niveau du schéma
+par un index UNIQUE partiel sur `event (baby_id, type)` (migration v2, restreint
+aux types à minuteur non terminés et non supprimés) : les gardes applicatives
+restent la source des erreurs métier, l'index est le filet de dernier ressort.
 
 ### `GET /api/timers?babyId=`
 

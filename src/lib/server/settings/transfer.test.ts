@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '$lib/server/db';
+import { EVENT_COLUMNS } from '$lib/server/events/eventRow';
 import { RepoError } from '$lib/server/events/repo';
 import { createBaby, createCaregiver, getPinHash, setPinHash } from './repo';
 import { exportCsv, exportJson, importJson, snapshotTo } from './transfer';
@@ -62,6 +63,17 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 		setPinHash(b, 'salt:hash');
 		importJson(b, exported);
 		expect(getPinHash(b)).toBe('salt:hash');
+	});
+
+	it('preserves deletedAt on a soft-deleted event (the restore is verbatim)', () => {
+		const a = seed();
+		const b = openDb(':memory:');
+		importJson(b, exportJson(a));
+
+		const restored = exportJson(b).events.find((e) => e.id === 'e3');
+		expect(restored?.deletedAt).toBe('2026-08-01T02:05:00.000Z');
+		expect(restored?.createdAt).toBe('2026-08-01T02:00:00.000Z');
+		expect(restored?.updatedAt).toBe('2026-08-01T02:05:00.000Z');
 	});
 
 	it('rejects an event referencing an unknown babyId, nothing written', () => {
@@ -231,6 +243,12 @@ describe('exportCsv', () => {
 		// contains a literal (non-separator) embedded LF inside its quoting.
 		expect(csv.split('\r\n')).toHaveLength(1 /* header */ + 3 /* events */ + 1 /* trailing */);
 		expect(csv.endsWith('\r\n')).toBe(true);
+	});
+
+	it('has one column per event column (the camelCase header stays a literal contract)', () => {
+		const db = seed();
+		const header = exportCsv(db).split('\r\n')[0];
+		expect(header.split(',')).toHaveLength(EVENT_COLUMNS.length);
 	});
 
 	it('quotes a field containing only a bare CR', () => {

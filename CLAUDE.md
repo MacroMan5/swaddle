@@ -54,7 +54,10 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 
 - `src/lib/server/db/` — couche SQLite : `openDb`/`getDb` (WAL, `foreign_keys ON`),
   migrations embarquées versionnées par `user_version` dans `migrations.ts`.
-  Schéma v1 : `household`, `baby`, `caregiver`, `event` (JSON `details` par type).
+  Schéma v1 + v2 (index UNIQUE minuteur actif) : `household`, `baby`,
+  `caregiver`, `event` (JSON `details` par type). Le mapping colonne↔DTO et
+  l'insertion fidèle vivent dans `src/lib/server/events/eventRow.ts`, partagés
+  par le repo et `settings/transfer.ts`.
 - `src/lib/server/events/` — domaine des événements : `types.ts` (zod, FR-017),
   `repo.ts` (CRUD, soft delete, minuteurs uniques FR-013), `broadcast.ts`
   (fan-out SSE). Routes : `/api/babies`, `/api/events[...]`, `/api/timers[...]`,

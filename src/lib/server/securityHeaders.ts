@@ -8,8 +8,14 @@
  * bootstrap of `src/app.html` (`%sveltekit.nonce%`). CSP only ever lands on
  * HTML responses; the headers below must also reach JSON, SSE and downloads,
  * which is why they live in the `handle` hook instead.
+ *
+ * The hook does not see quite everything: in production adapter-node serves
+ * the static assets — `/_app/immutable/`, `static/` — from its own middleware,
+ * ahead of SvelteKit. `server.js`, the production entrypoint, repeats this
+ * list on every response before delegating to the built handler; the test
+ * beside this file keeps the two copies in sync.
  */
-const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
+export const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
 	// No MIME sniffing: an export or a backup must be taken at its declared type.
 	['x-content-type-options', 'nosniff'],
 	// Referrer never leaves the origin (CSP frame-ancestors' legacy companion
@@ -27,7 +33,8 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
  * - responses that already chose a policy (the SSE stream's `no-cache`);
  * - the immutable build assets under `/_app/immutable/`, which adapter-node
  *   serves from its static middleware, before `handle` ever runs, and which
- *   therefore keep their long-term caching.
+ *   therefore keep their long-term caching (`server.js` adds the security
+ *   headers to those responses without touching their cache policy).
  */
 export function applySecurityHeaders(response: Response): Response {
 	for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);

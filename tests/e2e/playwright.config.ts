@@ -6,7 +6,7 @@ export default defineConfig({
 	workers: 1,
 	webServer: [
 		{
-			command: 'npm run build && node build',
+			command: 'npm run build && node server.js',
 			cwd: '../..',
 			port: 3000,
 			env: { DATA_DIR: '.playwright-data' },
@@ -15,7 +15,7 @@ export default defineConfig({
 		{
 			// Reuses the build produced by the first server; starts on an empty
 			// data dir so the onboarding wizard (AC-008) sees a fresh install.
-			command: 'node build',
+			command: 'node server.js',
 			cwd: '../..',
 			port: 3001,
 			env: { DATA_DIR: '.playwright-data-empty', PORT: '3001' },

@@ -4,6 +4,8 @@
 	// every write flow that needs a soft-undo window (diaper, bottle, ...).
 	// Positioning is the caller's job (see +page.svelte's toast stack) so several
 	// of these can be stacked at once (item 9).
+	import { ApiError } from '$lib/client/api';
+
 	let {
 		message,
 		actionLabel = 'Annuler',
@@ -40,7 +42,7 @@
 			onDismiss();
 		} catch (e) {
 			pending = false;
-			error = e instanceof Error ? e.message : 'Impossible d’annuler. Réessayer ?';
+			error = e instanceof ApiError ? e.userMessage : 'Impossible d’annuler. Réessayer ?';
 		}
 	}
 </script>

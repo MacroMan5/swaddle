@@ -46,7 +46,7 @@
 		} catch (e) {
 			loadError =
 				e instanceof ApiError
-					? e.message
+					? e.userMessage
 					: 'Impossible de charger les données. Vérifiez votre connexion.';
 		}
 	}

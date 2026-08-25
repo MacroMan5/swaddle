@@ -208,7 +208,7 @@
 			onSaved(updated);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) applyIssues(e.issues);
-			else formError = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+			else formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {
 			pending = false;
 		}
@@ -235,7 +235,7 @@
 				}
 			});
 		} catch (e) {
-			formError = e instanceof ApiError ? e.message : 'Impossible de supprimer.';
+			formError = e instanceof ApiError ? e.userMessage : 'Impossible de supprimer.';
 		} finally {
 			deleting = false;
 		}

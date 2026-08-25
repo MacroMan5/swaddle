@@ -98,6 +98,29 @@ describe('pruneSnapshots', () => {
 		expect(remaining.filter((n) => n.startsWith('pre-restore-'))).toHaveLength(10);
 	});
 
+	it('protects the just-written snapshot from deletion even when it is not the newest by mtime, keeping it plus the newest (keep - 1) others so the total lands at keep', () => {
+		const dataDir = tempDataDir();
+		// The just-created snapshot, stamped "now" — but a backward clock jump
+		// or future-dated files copied into the directory mean it is not the
+		// newest by mtime among the 10 other matching files below.
+		const protectedName = 'backup-just-created.sqlite';
+		snapshot(dataDir, protectedName, 0);
+		// 10 other snapshots, all future-dated relative to the protected one.
+		for (let i = 1; i <= 10; i++) snapshot(dataDir, `backup-future-${i}.sqlite`, -i);
+
+		pruneSnapshots(dataDir, 'backup', 10, join(dataDir, protectedName));
+
+		const remaining = readdirSync(dataDir);
+		expect(remaining).toContain(protectedName);
+		// Priority is protecting the just-created snapshot over the exact
+		// count of 10: it always survives, and the newest 9 of the others
+		// survive alongside it — the oldest of the 10 "other" files (the
+		// least future-dated one) is the one dropped — so the total still
+		// lands at 10, not 11.
+		expect(remaining).toHaveLength(10);
+		expect(remaining).not.toContain('backup-future-1.sqlite');
+	});
+
 	it('does not throw and keeps the retained files when a victim cannot be deleted', () => {
 		const dataDir = tempDataDir();
 		for (let i = 0; i < 9; i++) snapshot(dataDir, `backup-${i}.sqlite`, i);

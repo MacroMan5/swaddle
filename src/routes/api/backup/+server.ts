@@ -13,8 +13,10 @@ export const GET: RequestHandler = handler({
 		const path = join(backupsDir, `backup-${stamp}.sqlite`);
 		snapshotTo(db, path);
 		// #57: prune only after the new snapshot is on disk, so a pruning
-		// failure never costs the backup that was just requested.
-		pruneSnapshots(backupsDir, 'backup');
+		// failure never costs the backup that was just requested; the path
+		// itself is protected so it survives even if its mtime somehow isn't
+		// the newest (clock skew, future-dated files in the directory).
+		pruneSnapshots(backupsDir, 'backup', undefined, path);
 		const buffer = readFileSync(path);
 		return new Response(buffer, {
 			headers: {

@@ -19,8 +19,11 @@ export const POST: RequestHandler = handler<unknown>({
 		// FR-014: an automatic snapshot of the current state is always taken first.
 		snapshotTo(db, snapshotPath);
 		// #57: prune before the data replacement proceeds, not after — the
-		// snapshot just taken is what pruning must never be able to cost.
-		pruneSnapshots(backupsDir, 'pre-restore');
+		// snapshot just taken is what pruning must never be able to cost, and
+		// it's passed as protected so it survives even if its mtime somehow
+		// isn't the newest (clock skew, future-dated files in the directory) —
+		// the response below reports this exact path as the recovery point.
+		pruneSnapshots(backupsDir, 'pre-restore', undefined, snapshotPath);
 
 		const restored = importJson(db, body);
 		// Any device with an open SSE connection has stale timers/lists after a

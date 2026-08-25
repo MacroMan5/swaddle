@@ -5,6 +5,7 @@
 *.log
 .DS_Store
 Thumbs.db
+/.vscode/
 
 # Données locales (base de données, uploads) — jamais versionnées
 /data/

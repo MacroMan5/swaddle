@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 // Relative import: $lib aliases do not resolve in Playwright setup files.
-import { openDb } from '../src/lib/server/db';
+import { openDb } from '../../src/lib/server/db';
 
 // Playwright runs this before starting the webServer: wipe the data dir from
 // previous runs and seed the baby/caregiver every API test relies on.

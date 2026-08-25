@@ -3,7 +3,11 @@ build
 .svelte-kit
 data
 .playwright-data
+.playwright-data-empty
+.playwright-mcp
 test-results
+tests
+.vscode
 docs
 deploy
 .git

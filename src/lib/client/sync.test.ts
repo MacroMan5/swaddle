@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { listTodayEvents, getTimers } from './api';
+import { ApiError, listTodayEvents, getTimers } from './api';
 import { SyncStore } from './sync.svelte';
 import type { EventDTO, SyncKind } from './types';
 
-vi.mock('./api', () => ({
-	listTodayEvents: vi.fn(),
-	getTimers: vi.fn()
-}));
+vi.mock('./api', async () => {
+	const actual = await vi.importActual<typeof import('./api')>('./api');
+	return {
+		ApiError: actual.ApiError,
+		listTodayEvents: vi.fn(),
+		getTimers: vi.fn()
+	};
+});
 
 const NOW = new Date('2026-08-24T14:00:00.000Z');
 
@@ -276,6 +280,189 @@ describe('refreshEvents buffers a concurrent change onto the fetched baseline (i
 
 		expect(store.events).toHaveLength(1);
 		expect(store.events[0].note).toBe('fresh');
+	});
+});
+
+describe('bootstrap loading/error/retry state (issue #47)', () => {
+	it('starts idle, goes loading while the first fetch is in flight, then ready', async () => {
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+
+		expect(store.eventsStatus).toBe('idle');
+		const refreshPromise = store.refreshEvents();
+		expect(store.eventsStatus).toBe('loading');
+
+		resolveFetch([]);
+		await refreshPromise;
+		expect(store.eventsStatus).toBe('ready');
+		expect(store.eventsError).toBeNull();
+	});
+
+	it('an API failure surfaces the French userMessage instead of an authoritative empty day, without rejecting', async () => {
+		vi.mocked(listTodayEvents).mockRejectedValueOnce(
+			new ApiError(404, 'not_found', 'baby not found')
+		);
+
+		// The `void this.refreshEvents()` call sites must never raise an unhandled
+		// rejection: the promise resolves even on failure.
+		await expect(store.refreshEvents()).resolves.toBeUndefined();
+		expect(store.eventsStatus).toBe('error');
+		expect(store.eventsError).toBe('Introuvable.');
+		expect(store.events).toHaveLength(0);
+	});
+
+	it('a transport failure (no envelope to read) falls back to the generic French sentence', async () => {
+		vi.mocked(listTodayEvents).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+		await store.refreshEvents();
+		expect(store.eventsStatus).toBe('error');
+		expect(store.eventsError).toBe(
+			'Impossible de charger les activités. Vérifiez votre connexion.'
+		);
+	});
+
+	it('retry keeps the error until authoritative data lands, then clears it', async () => {
+		vi.mocked(listTodayEvents).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+		await store.refreshEvents();
+		expect(store.eventsStatus).toBe('error');
+
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+		const retry = store.refreshEvents();
+		// Still in flight: the message must not disappear before the data arrives.
+		expect(store.eventsStatus).toBe('loading');
+		expect(store.eventsError).not.toBeNull();
+
+		resolveFetch([makeEvent()]);
+		await retry;
+		expect(store.eventsStatus).toBe('ready');
+		expect(store.eventsError).toBeNull();
+		expect(store.events.map((e) => e.id)).toEqual(['ev-1']);
+	});
+
+	it('a failed refresh keeps the events already loaded rather than blanking them', async () => {
+		vi.mocked(listTodayEvents).mockResolvedValueOnce([makeEvent()]);
+		await store.refreshEvents();
+
+		vi.mocked(listTodayEvents).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+		await store.refreshEvents();
+		expect(store.eventsStatus).toBe('error');
+		expect(store.events.map((e) => e.id)).toEqual(['ev-1']);
+	});
+
+	it('refreshTimers swallows a failure and keeps the current timers (SSE snapshots re-deliver them)', async () => {
+		store.applyServerEvent(sleepTimer());
+		vi.mocked(getTimers).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+		await expect(store.refreshTimers()).resolves.toBeUndefined();
+		expect(store.timers.map((t) => t.id)).toEqual(['timer-1']);
+	});
+});
+
+describe('events refresh coalescing (issue #47)', () => {
+	it('startup and the initial SSE snapshot perform one request and share its result', async () => {
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+
+		// start()'s refresh and applySnapshot()'s refresh, same tick.
+		const first = store.refreshEvents();
+		const second = store.refreshEvents();
+		expect(first).toBe(second);
+		expect(vi.mocked(listTodayEvents)).toHaveBeenCalledTimes(1);
+
+		resolveFetch([
+			makeEvent({ id: 'b' }),
+			makeEvent({ id: 'a', startedAt: new Date(NOW.getTime() - 1000).toISOString() })
+		]);
+		await Promise.all([first, second]);
+
+		expect(store.events.map((e) => e.id)).toEqual(['b', 'a']);
+		expect(store.eventsStatus).toBe('ready');
+	});
+
+	it('coalesced callers still get the mid-flight change replayed onto the single baseline', async () => {
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+
+		const first = store.refreshEvents();
+		const second = store.refreshEvents();
+		store.applyChange(sync('created', makeEvent({ id: 'fresh' })));
+		resolveFetch([makeEvent({ id: 'baseline' })]);
+		await Promise.all([first, second]);
+
+		expect(vi.mocked(listTodayEvents)).toHaveBeenCalledTimes(1);
+		expect(store.events.map((e) => e.id).sort()).toEqual(['baseline', 'fresh']);
+	});
+
+	it('a later refresh, once the first has settled, is a real new request', async () => {
+		await store.refreshEvents();
+		await store.refreshEvents();
+		expect(vi.mocked(listTodayEvents)).toHaveBeenCalledTimes(2);
+	});
+
+	it('a midnight rollover is not coalesced with the in-flight fetch of the previous day, and the stale one cannot land after it', async () => {
+		const beforeMidnight = new Date(2026, 7, 24, 23, 59, 58);
+		vi.setSystemTime(beforeMidnight);
+		store.serverOffsetMs = 0;
+		store.nowMs = Date.now();
+
+		let resolveYesterday!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveYesterday = resolve;
+			})
+		);
+		const yesterdayFetch = store.refreshEvents();
+
+		vi.setSystemTime(new Date(2026, 7, 25, 0, 0, 1));
+		store.tick(); // crosses local midnight → a distinct request for the new day
+		expect(vi.mocked(listTodayEvents)).toHaveBeenCalledTimes(2);
+
+		// The new day's fetch settles first, then the stale one: the stale response
+		// must not clobber it.
+		await Promise.resolve();
+		await Promise.resolve();
+		resolveYesterday([makeEvent({ id: 'yesterday', startedAt: beforeMidnight.toISOString() })]);
+		await yesterdayFetch;
+		expect(store.events).toHaveLength(0);
+	});
+
+	it('start() for another baby discards the previous in-flight fetch instead of letting it be joined', async () => {
+		let resolveFirst!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveFirst = resolve;
+			})
+		);
+		const stale = store.refreshEvents();
+
+		store.babyId = 'baby-2';
+		store.start('baby-2'); // no browser globals here: start() resets state without refetching
+		expect(store.eventsStatus).toBe('idle');
+
+		vi.mocked(listTodayEvents).mockResolvedValueOnce([makeEvent({ id: 'fresh', babyId: 'baby-2' })]);
+		const fresh = store.refreshEvents();
+		expect(vi.mocked(listTodayEvents)).toHaveBeenCalledTimes(2);
+
+		resolveFirst([makeEvent({ id: 'stale' })]);
+		await Promise.all([stale, fresh]);
+		expect(store.events.map((e) => e.id)).toEqual(['fresh']);
 	});
 });
 

@@ -181,7 +181,7 @@
 					else formError = issue.message;
 				}
 			} else {
-				formError = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+				formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 			}
 		} finally {
 			pending = false;

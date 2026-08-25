@@ -91,7 +91,7 @@
 			dayEvents = fetched;
 		} catch (e) {
 			if (token !== dayFetchToken) return;
-			loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
+			loadError = e instanceof ApiError ? e.userMessage : 'Impossible de charger l’historique.';
 		} finally {
 			clearTimeout(skeletonTimer);
 			if (token === dayFetchToken) {
@@ -114,7 +114,7 @@
 			weekEvents = fetched;
 		} catch (e) {
 			if (token !== weekFetchToken) return;
-			loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
+			loadError = e instanceof ApiError ? e.userMessage : 'Impossible de charger l’historique.';
 		}
 	}
 
@@ -165,7 +165,7 @@
 				}
 				caregivers = await listCaregivers();
 			} catch (e) {
-				loadError = e instanceof ApiError ? e.message : 'Impossible de charger l’historique.';
+				loadError = e instanceof ApiError ? e.userMessage : 'Impossible de charger l’historique.';
 			}
 		})();
 	});

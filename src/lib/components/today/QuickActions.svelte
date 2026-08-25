@@ -76,7 +76,7 @@
 				details: { pee, poo }
 			});
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 			diaperPending = false;
 			return;
 		}
@@ -104,7 +104,7 @@
 			const result = await startTimer('sleep', { babyId, caregiverId });
 			store.applyServerEvent(result.event);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {
 			sleepPending = false;
 		}

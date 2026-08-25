@@ -75,7 +75,7 @@
 			store.applyServerEvent(await action());
 			return true;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 			return false;
 		} finally {
 			pending = false;

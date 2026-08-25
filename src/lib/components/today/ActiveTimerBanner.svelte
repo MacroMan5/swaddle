@@ -80,7 +80,7 @@
 			const event = await action();
 			store.applyServerEvent(event);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Une erreur est survenue.';
+			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {
 			pending = { ...pending, [id]: false };
 		}

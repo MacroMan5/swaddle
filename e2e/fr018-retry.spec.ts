@@ -36,10 +36,11 @@ test('FR-018: a failed bottle write keeps the input, lets the user retry, and on
 
 		await page.getByRole('button', { name: 'Enregistrer' }).click();
 
-		// (a) failure surfaces the server's French message verbatim (the sheet
-		// shows ApiError.message as-is, unlike settings' errorMessage() mapping),
+		// (a) failure surfaces ApiError.userMessage, the French text derived from
+		// the mocked code ('internal' is unmapped, so it falls back to the generic
+		// message) — never the raw server text, English or otherwise —,
 		// (c) nothing renders as saved yet.
-		await expect(page.getByRole('alert')).toHaveText('Service temporairement indisponible.');
+		await expect(page.getByRole('alert')).toHaveText('Une erreur est survenue.');
 		await expect(page.getByRole('status')).toHaveCount(0);
 		// The sheet stays open and the volume the user typed is still there.
 		await expect(page.getByLabel(/volume/i)).toHaveValue('90');

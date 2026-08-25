@@ -11,12 +11,18 @@ import type {
 	TimerType
 } from './types';
 import { todayRangeIso } from './format';
+import { userMessage } from '../errors';
 
-/** Thrown for every non-2xx response, carrying the `{ error }` envelope. */
+/**
+ * Thrown for every non-2xx response, carrying the `{ error }` envelope.
+ * `message` is the raw English server text (useful in the console);
+ * `userMessage` is the French text to show, derived from `code`.
+ */
 export class ApiError extends Error {
 	readonly status: number;
 	readonly code: string;
 	readonly issues: Issue[];
+	readonly userMessage: string;
 
 	constructor(status: number, code: string, message: string, issues: Issue[] = []) {
 		super(message);
@@ -24,6 +30,7 @@ export class ApiError extends Error {
 		this.status = status;
 		this.code = code;
 		this.issues = issues;
+		this.userMessage = userMessage(code, issues);
 	}
 }
 

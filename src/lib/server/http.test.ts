@@ -105,6 +105,26 @@ describe('handler', () => {
 		});
 	});
 
+	it('maps a unique-index violation onto 409 timer_conflict', async () => {
+		const response = await call(
+			handler({
+				run: () => {
+					throw Object.assign(new Error('UNIQUE constraint failed'), {
+						code: 'SQLITE_CONSTRAINT_UNIQUE'
+					});
+				}
+			})
+		);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({
+			error: {
+				code: 'timer_conflict',
+				message: 'an active timer already exists for this baby and type'
+			}
+		});
+	});
+
 	it('rethrows an unknown error so SvelteKit still answers 500', async () => {
 		const boom = new Error('boom');
 		await expect(

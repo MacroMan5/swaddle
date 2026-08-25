@@ -51,6 +51,13 @@ export function handleRepoError(e: unknown): Response {
 	const constraintCode = sqliteConstraintCode(e);
 	if (constraintCode === 'SQLITE_CONSTRAINT_FOREIGNKEY')
 		return apiError(400, 'validation_failed', 'unknown babyId or caregiverId');
+	// The schema holds exactly one unique index: the partial one enforcing a
+	// single active timer per baby and type (FR-013, migration v2). Duplicate
+	// primary keys surface as SQLITE_CONSTRAINT_PRIMARYKEY, not _UNIQUE, so this
+	// mapping cannot catch anything else. The application guards answer first in
+	// practice; this is the net behind them.
+	if (constraintCode === 'SQLITE_CONSTRAINT_UNIQUE')
+		return apiError(409, 'timer_conflict', 'an active timer already exists for this baby and type');
 	if (constraintCode !== undefined)
 		return apiError(400, 'validation_failed', 'the request violates a database constraint');
 	throw e;

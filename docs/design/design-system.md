@@ -56,7 +56,7 @@ remplissage ou marqueur porteur d'information utilise le **700**.
 
 | Catégorie | 100 (clair) | 500 | 700 | Sombre : fond / texte |
 |---|---|---|---|---|
-| Alimentation `feed` | `#FEF3C7` | `#F59E0B` | `#8A3F07` | `#3A2A12` / `#FBBF24` |
+| Alimentation `feed` | `#FFE8D9` | `#F97316` | `#9A3412` | `#3B2114` / `#FB923C` |
 | Couche `diaper` | `#CCFBF1` | `#14B8A6` | `#0B5B55` | `#123230` / `#2DD4BF` |
 | Sommeil `sleep` | `#E0E7FF` | `#6366F1` | `#3730A3` | `#232345` / `#818CF8` |
 
@@ -179,7 +179,15 @@ Quatre mouvements, tous derrière `prefers-reduced-motion` :
   horizontale, pas comme un événement.
 - Axe de 32 px à gauche, libellé une heure sur deux (étiqueter chaque heure
   empilerait les nombres), filets pleins aux heures paires et `border-border/40`
-  aux heures impaires.
+  aux heures impaires ; les filets démarrent après l'axe (jamais à travers un
+  nombre).
+- **Bande de nuit** décorative (00 h–07 h et 19 h–24 h, heures fixes par
+  convention) : lavis `sleep-500` à 10 % en clair, `sleep-100` à 50 % en
+  sombre — la forme de la journée (la nuit, les creux) se lit avant même les
+  blocs. Purement décoratif : le sommeil réel reste porté par les événements.
+- Ligne « maintenant » : pastille d'heure (fond `--primary`, texte
+  `--on-primary`, 9 px tabular) + trait + point, centrée sur la minute
+  courante.
 - Plancher de 5 px : il ne mord qu'en deçà de 15 min, et de quelques pixels.
   Le packing raisonne sur la hauteur **dessinée**, jamais sur la durée brute,
   sinon un bloc élevé au plancher passerait sous son voisin.

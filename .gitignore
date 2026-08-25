@@ -1,4 +1,4 @@
-# Générique — à compléter quand la stack sera choisie
+# Configuration locale — les exemples restent versionnés
 .env
 .env.*
 !.env.example
@@ -8,6 +8,13 @@ Thumbs.db
 
 # Données locales (base de données, uploads) — jamais versionnées
 /data/
+
+# Déploiement local — état et overrides propres à l'hôte
+/deploy/data/
+/deploy/compose.override.yml
+/deploy/compose.override.yaml
+/deploy/docker-compose.override.yml
+/deploy/docker-compose.override.yaml
 
 # SvelteKit / Node
 node_modules

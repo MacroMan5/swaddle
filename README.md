@@ -97,4 +97,5 @@ Les bugs et idées passent par les issues GitHub.
 
 ## Licence
 
-[MIT](LICENSE) — faites-en bon usage pour vos propres nuits courtes.
+[PolyForm Noncommercial License 1.0.0](LICENSE) — usage non commercial
+uniquement. Voir le texte complet de la licence et [la page officielle](https://polyformproject.org/licenses/noncommercial/1.0.0).

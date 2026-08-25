@@ -97,7 +97,7 @@ const patchEventSchema = z.strictObject({
 });
 export type PatchEventInput = z.infer<typeof patchEventSchema>;
 
-function zodIssues(error: z.ZodError): Issue[] {
+export function zodIssues(error: z.ZodError): Issue[] {
 	return error.issues.map((i) => ({
 		path: i.path.join('.'),
 		code: i.code,

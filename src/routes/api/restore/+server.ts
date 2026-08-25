@@ -1,28 +1,26 @@
 import { json } from '@sveltejs/kit';
 import { join } from 'node:path';
 import type { RequestHandler } from './$types';
-import { DATA_DIR, getDb } from '$lib/server/db';
-import { apiError, handleRepoError, readJson } from '$lib/server/api';
+import { DATA_DIR } from '$lib/server/db';
+import { handler } from '$lib/server/http';
 import { publishReset } from '$lib/server/events/broadcast';
 import { importJson, snapshotTo } from '$lib/server/settings/transfer';
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await readJson(request);
-	if (!body.ok) return apiError(400, 'validation_failed', 'invalid restore payload', body.issues);
+export const POST: RequestHandler = handler<unknown>({
+	// The payload itself is validated by `importJson`; the schema step only
+	// turns an unreadable body into the 400 envelope, before the snapshot.
+	schema: (value) => ({ ok: true, value }),
+	invalidMessage: 'invalid restore payload',
+	run: ({ db, body }) => {
+		const stamp = new Date().toISOString().replace(/:/g, '-');
+		const snapshotPath = join(DATA_DIR, 'backups', `pre-restore-${stamp}.sqlite`);
+		// FR-014: an automatic snapshot of the current state is always taken first.
+		snapshotTo(db, snapshotPath);
 
-	const db = getDb();
-	const stamp = new Date().toISOString().replace(/:/g, '-');
-	const snapshotPath = join(DATA_DIR, 'backups', `pre-restore-${stamp}.sqlite`);
-	// FR-014: an automatic snapshot of the current state is always taken first.
-	snapshotTo(db, snapshotPath);
-
-	try {
-		const restored = importJson(db, body.value);
+		const restored = importJson(db, body);
 		// Any device with an open SSE connection has stale timers/lists after a
 		// restore: tell it to refetch instead of trusting incremental sync.
 		publishReset();
 		return json({ restored, snapshot: snapshotPath });
-	} catch (e) {
-		return handleRepoError(e);
 	}
-};
+});

@@ -122,13 +122,26 @@ test('SSE still connects and keeps its own cache policy', async ({ baseURL }) =>
 	await reader.cancel();
 });
 
-test('immutable build assets keep their long-term cache policy', async ({ request }) => {
+// Static assets never reach the handle hook — adapter-node serves them from
+// its own middleware — so they are covered by the production entrypoint
+// (server.js), which the webServer command runs.
+test('immutable build assets carry the headers and keep their long-term cache policy', async ({
+	request
+}) => {
 	const html = await (await request.get('/')).text();
 	const asset = html.match(/\/_app\/immutable\/[^"']+/)?.[0];
 	expect(asset, 'the page must reference a build asset').toBeTruthy();
 	const res = await request.get(asset!);
 	expect(res.ok()).toBeTruthy();
+	expectBaseHeaders(res.headers());
 	expect(res.headers()['cache-control']).toContain('immutable');
+	expect(res.headers()['cache-control']).not.toContain('no-store');
+});
+
+test('static files carry the headers too', async ({ request }) => {
+	const res = await request.get('/robots.txt');
+	expect(res.ok()).toBeTruthy();
+	expectBaseHeaders(res.headers());
 });
 
 test('the theme bootstrap runs under CSP, with no violation reported', async ({ page }) => {

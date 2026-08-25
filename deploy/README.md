@@ -12,7 +12,8 @@ Sur le serveur :
 cd deploy
 cp .env.example .env
 ${EDITOR:-vi} .env
-mkdir -p "${SWADDLE_DATA_DIR:-./data}" && sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
+data_dir="$(grep -E '^SWADDLE_DATA_DIR=' .env | cut -d= -f2-)"
+mkdir -p "${data_dir:-./data}" && sudo chown -R 1000:1000 "${data_dir:-./data}"
 docker compose config
 docker compose pull
 docker compose up -d
@@ -27,7 +28,8 @@ curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/dock
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/.env.example
 cp .env.example .env
 ${EDITOR:-vi} .env
-mkdir -p "${SWADDLE_DATA_DIR:-./data}" && sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
+data_dir="$(grep -E '^SWADDLE_DATA_DIR=' .env | cut -d= -f2-)"
+mkdir -p "${data_dir:-./data}" && sudo chown -R 1000:1000 "${data_dir:-./data}"
 docker compose pull && docker compose up -d
 ```
 
@@ -53,7 +55,8 @@ ce correctif, sur le serveur :
 ```sh
 cd ~/swaddle   # ou le dossier contenant votre docker-compose.yml
 docker compose stop swaddle
-sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
+data_dir="$(grep -E '^SWADDLE_DATA_DIR=' .env | cut -d= -f2-)"
+sudo chown -R 1000:1000 "${data_dir:-./data}"
 docker compose pull
 docker compose up -d
 ```

@@ -48,13 +48,18 @@ Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 ```sh
 mkdir swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
+mkdir -p data && sudo chown -R 1000:1000 data
 docker compose pull && docker compose up -d
 ```
 
 Le Compose fonctionne avec des valeurs publiques par défaut. Pour choisir une
 version, un port, un fuseau ou un emplacement de données propres au serveur,
 utilisez le fichier local `.env` décrit dans le
-[guide de déploiement](deploy/README.md).
+[guide de déploiement](deploy/README.md). Le conteneur tourne sous un
+utilisateur non root fixe (uid/gid `1000`) : le `chown` ci-dessus est
+nécessaire pour que le premier démarrage puisse créer la base SQLite (détails
+et migration d'une installation existante dans le
+[guide de déploiement](deploy/README.md#permissions-du-répertoire-de-données)).
 
 Au premier lancement, ouvrez `http://<ip-du-serveur>:3010` (ou le port défini
 par `SWADDLE_PORT`) : l'assistant de démarrage vous guide pour créer le profil

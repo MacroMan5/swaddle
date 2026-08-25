@@ -12,6 +12,7 @@ Sur le serveur :
 cd deploy
 cp .env.example .env
 ${EDITOR:-vi} .env
+mkdir -p "${SWADDLE_DATA_DIR:-./data}" && sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
 docker compose config
 docker compose pull
 docker compose up -d
@@ -26,8 +27,40 @@ curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/dock
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/.env.example
 cp .env.example .env
 ${EDITOR:-vi} .env
+mkdir -p "${SWADDLE_DATA_DIR:-./data}" && sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
 docker compose pull && docker compose up -d
 ```
+
+## Permissions du répertoire de données
+
+Le conteneur tourne sous un utilisateur fixe non root (`node`, uid/gid `1000`,
+intégré à l'image `node:22-slim`) : il ne peut écrire que dans
+`SWADDLE_DATA_DIR`. Le répertoire de données monté doit donc appartenir à
+`1000:1000` sur l'hôte *avant* le premier `docker compose up` — Docker crée
+sinon le dossier en tant que `root`, ce qui bloque l'ouverture de la base au
+démarrage. Les commandes d'installation ci-dessus incluent cette étape
+(`mkdir -p` + `chown -R 1000:1000`) ; sur un hôte sans `sudo` disponible,
+créez et chownez le dossier avec les privilèges appropriés avant de lancer
+Compose.
+
+### Migration d'une installation existante (données appartenant à `root`)
+
+Les déploiements antérieurs à ce changement font tourner le conteneur en
+`root`, donc `SWADDLE_DATA_DIR` (ex. `~/swaddle/data` sur le Raspberry Pi de
+référence) appartient à `root:root`. Avant de passer à une image qui inclut
+ce correctif, sur le serveur :
+
+```sh
+cd ~/swaddle   # ou le dossier contenant votre docker-compose.yml
+docker compose stop swaddle
+sudo chown -R 1000:1000 "${SWADDLE_DATA_DIR:-./data}"
+docker compose pull
+docker compose up -d
+```
+
+Arrêter le service avant le `chown` évite de modifier les fichiers WAL sous
+un processus encore actif. Vérifiez ensuite que l'application répond
+normalement et que les données existantes sont toujours visibles.
 
 Variables prises en charge :
 

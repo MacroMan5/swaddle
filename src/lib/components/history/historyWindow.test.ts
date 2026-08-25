@@ -1,0 +1,433 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { listBabies, listCaregivers, listEvents } from '$lib/client/api';
+import { localDayKey } from '$lib/client/summaries';
+import { SyncStore } from '$lib/client/sync.svelte';
+import type { EventDTO, SyncKind } from '$lib/client/types';
+import { HistoryWindow } from './historyWindow.svelte';
+
+vi.mock('$lib/client/api', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/client/api')>();
+	return {
+		// ApiError is a real class the module under test narrows on.
+		ApiError: actual.ApiError,
+		listBabies: vi.fn(),
+		listCaregivers: vi.fn(),
+		listEvents: vi.fn(),
+		listTodayEvents: vi.fn(),
+		getTimers: vi.fn()
+	};
+});
+
+// Local noon, so every derived local day key is unambiguous whatever the TZ.
+const NOW = new Date(2026, 7, 24, 12, 0, 0);
+const TODAY = localDayKey(NOW);
+const YESTERDAY = localDayKey(new Date(2026, 7, 23));
+
+function makeEvent(over: Partial<EventDTO> = {}): EventDTO {
+	const at = new Date(2026, 7, 24, 9, 0, 0).toISOString();
+	return {
+		id: 'ev-1',
+		babyId: 'baby-1',
+		caregiverId: null,
+		type: 'bottle',
+		startedAt: at,
+		endedAt: null,
+		note: null,
+		details: { milkType: 'formula', volumeMl: 120 },
+		createdAt: at,
+		updatedAt: at,
+		deletedAt: null,
+		...over
+	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
+/** Lets every already-resolved promise chain settle under fake timers. */
+async function flush(): Promise<void> {
+	for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
+function sync(kind: SyncKind, event: EventDTO) {
+	return { kind, event, serverTime: NOW.toISOString() };
+}
+
+let store: SyncStore;
+let view: HistoryWindow;
+
+beforeEach(() => {
+	vi.useFakeTimers();
+	vi.setSystemTime(NOW);
+	vi.mocked(listBabies).mockResolvedValue([
+		{ id: 'baby-1', name: 'Bébé', birthdate: '2026-08-01', timezone: 'America/Toronto' }
+	]);
+	vi.mocked(listCaregivers).mockResolvedValue([]);
+	vi.mocked(listEvents).mockResolvedValue([]);
+	store = new SyncStore();
+	view = new HistoryWindow(store);
+});
+
+afterEach(() => {
+	view.stop();
+	store.stop();
+	vi.useRealTimers();
+	vi.clearAllMocks();
+});
+
+describe('initial window', () => {
+	it('opens on today, in day mode', () => {
+		expect(view.dayKey).toBe(TODAY);
+		expect(view.viewMode).toBe('day');
+	});
+
+	it('start() resolves the baby, starts the sync store and loads the day', async () => {
+		view.start();
+		await flush();
+		expect(view.babyId).toBe('baby-1');
+		expect(store.babyId).toBe('baby-1');
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+	});
+
+	it('subscribes to the change relay before starting the sync store, so the subscription survives its reset', async () => {
+		view.start();
+		await flush();
+		vi.mocked(listEvents).mockClear();
+
+		store.applyChange(sync('created', makeEvent()));
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+	});
+
+	it('stop() unsubscribes: a later change no longer refetches', async () => {
+		view.start();
+		await flush();
+		view.stop();
+		vi.mocked(listEvents).mockClear();
+
+		store.applyChange(sync('created', makeEvent()));
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+});
+
+describe('out-of-order day responses (the CI race behind #19)', () => {
+	beforeEach(() => {
+		view.babyId = 'baby-1';
+	});
+
+	it('an earlier-issued but slower response never clobbers a newer one', async () => {
+		const slow = deferred<EventDTO[]>();
+		const fast = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise);
+
+		const first = view.loadDay();
+		const second = view.loadDay();
+
+		fast.resolve([makeEvent({ id: 'newer' })]);
+		await second;
+		slow.resolve([makeEvent({ id: 'older' })]);
+		await first;
+
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['newer']);
+	});
+
+	it('a stale failure never overwrites a newer success with an error banner', async () => {
+		const failing = deferred<EventDTO[]>();
+		const ok = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(failing.promise).mockReturnValueOnce(ok.promise);
+
+		const first = view.loadDay();
+		const second = view.loadDay();
+
+		ok.resolve([makeEvent({ id: 'newer' })]);
+		await second;
+		failing.reject(new Error('network'));
+		await first;
+
+		expect(view.loadError).toBeNull();
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['newer']);
+	});
+
+	it('changing the day mid-flight discards the previous day’s response', async () => {
+		const yesterdayFetch = deferred<EventDTO[]>();
+		const todayFetch = deferred<EventDTO[]>();
+		vi.mocked(listEvents)
+			.mockReturnValueOnce(yesterdayFetch.promise)
+			.mockReturnValueOnce(todayFetch.promise);
+
+		view.dayKey = YESTERDAY;
+		const stale = view.loadDay();
+		// The user moves back to today before yesterday's fetch lands.
+		view.setDayKey(TODAY);
+
+		todayFetch.resolve([makeEvent({ id: 'today' })]);
+		await flush();
+		yesterdayFetch.resolve([makeEvent({ id: 'yesterday' })]);
+		await stale;
+
+		expect(view.dayKey).toBe(TODAY);
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['today']);
+	});
+
+	it('week and previous-week windows have their own tokens', async () => {
+		const slow = deferred<EventDTO[]>();
+		const fast = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise);
+
+		const first = view.loadWeek();
+		const second = view.loadWeek();
+		fast.resolve([makeEvent({ id: 'newer' })]);
+		await second;
+		slow.resolve([makeEvent({ id: 'older' })]);
+		await first;
+
+		expect(view.weekEvents.map((e) => e.id)).toEqual(['newer']);
+	});
+
+	it('a superseded previous-week load leaves the newer comparison alone', async () => {
+		const slow = deferred<EventDTO[]>();
+		const fast = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise);
+
+		const first = view.loadPrevWeek();
+		const second = view.loadPrevWeek();
+		fast.resolve([makeEvent({ id: 'newer' })]);
+		await second;
+		slow.reject(new Error('network'));
+		await first;
+
+		expect(view.prevWeekEvents?.map((e) => e.id)).toEqual(['newer']);
+	});
+});
+
+describe('skeleton timer', () => {
+	beforeEach(() => {
+		view.babyId = 'baby-1';
+	});
+
+	it('stays hidden when the load resolves before the delay', async () => {
+		await view.loadDay();
+		vi.advanceTimersByTime(1000);
+		expect(view.showSkeleton).toBe(false);
+		expect(view.loading).toBe(false);
+	});
+
+	it('appears once a load is slow enough', async () => {
+		const slow = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(slow.promise);
+		const pending = view.loadDay();
+		vi.advanceTimersByTime(400);
+		expect(view.showSkeleton).toBe(true);
+		slow.resolve([]);
+		await pending;
+		expect(view.showSkeleton).toBe(false);
+	});
+
+	it('a superseded load’s orphaned timer can never flip the skeleton back on', async () => {
+		const slow = deferred<EventDTO[]>();
+		const fast = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise);
+
+		const first = view.loadDay(); // its skeleton timer is still armed
+		const second = view.loadDay();
+		fast.resolve([makeEvent({ id: 'newer' })]);
+		await second;
+		expect(view.showSkeleton).toBe(false);
+
+		// The first call's timer fires while the first call is still in flight:
+		// its token no longer matches, so it must not touch the newer call's state.
+		vi.advanceTimersByTime(400);
+		expect(view.showSkeleton).toBe(false);
+
+		slow.resolve([]);
+		await first;
+		expect(view.showSkeleton).toBe(false);
+		expect(view.loading).toBe(false);
+	});
+});
+
+describe('direct merge of a confirmed write (FR-018)', () => {
+	it('inserts a created event immediately, without waiting for a refetch', () => {
+		view.mergeEvent(makeEvent());
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['ev-1']);
+	});
+
+	it('replaces by id instead of duplicating', () => {
+		view.mergeEvent(makeEvent());
+		view.mergeEvent(
+			makeEvent({ note: 'edited', updatedAt: new Date(NOW.getTime() + 1000).toISOString() })
+		);
+		expect(view.dayEvents).toHaveLength(1);
+		expect(view.dayEvents[0].note).toBe('edited');
+	});
+
+	it('a stale response never regresses a newer version already displayed (updatedAt guard)', () => {
+		const newer = makeEvent({
+			note: 'second',
+			updatedAt: new Date(NOW.getTime() + 1000).toISOString()
+		});
+		const older = makeEvent({ note: 'first', updatedAt: NOW.toISOString() });
+
+		view.mergeEvent(newer);
+		view.mergeEvent(older);
+
+		expect(view.dayEvents).toHaveLength(1);
+		expect(view.dayEvents[0].note).toBe('second');
+	});
+
+	it('a stale delete never removes a newer version already displayed', () => {
+		const newer = makeEvent({ updatedAt: new Date(NOW.getTime() + 1000).toISOString() });
+		view.mergeEvent(newer);
+		view.removeEvent(makeEvent({ deletedAt: NOW.toISOString(), updatedAt: NOW.toISOString() }));
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['ev-1']);
+	});
+
+	it('removes a confirmed delete from both windows', () => {
+		view.weekEvents = [makeEvent()];
+		view.mergeEvent(makeEvent());
+		const deleted = makeEvent({
+			deletedAt: NOW.toISOString(),
+			updatedAt: new Date(NOW.getTime() + 1000).toISOString()
+		});
+		view.removeEvent(deleted);
+		expect(view.dayEvents).toHaveLength(0);
+		expect(view.weekEvents).toHaveLength(0);
+	});
+
+	it('leaves the week window alone while it has never been loaded', () => {
+		view.mergeEvent(makeEvent());
+		expect(view.weekEvents).toHaveLength(0);
+	});
+
+	it('keeps the day window in ascending order, unlike the Today screen', () => {
+		const morning = makeEvent({ id: 'morning', startedAt: new Date(2026, 7, 24, 8).toISOString() });
+		const evening = makeEvent({ id: 'evening', startedAt: new Date(2026, 7, 24, 20).toISOString() });
+		view.mergeEvent(evening);
+		view.mergeEvent(morning);
+		expect(view.dayEvents.map((e) => e.id)).toEqual(['morning', 'evening']);
+	});
+});
+
+describe('visibleDayEvents', () => {
+	it('hides soft-deleted events', () => {
+		view.dayEvents = [makeEvent({ deletedAt: NOW.toISOString() })];
+		expect(view.visibleDayEvents).toHaveLength(0);
+	});
+
+	it('keeps a session that only overlaps the day, not merely one starting in it', () => {
+		const startedAt = new Date(2026, 7, 23, 23, 30).toISOString();
+		const endedAt = new Date(2026, 7, 24, 1, 30).toISOString();
+		view.dayEvents = [makeEvent({ id: 'carry-over', type: 'sleep', details: {}, startedAt, endedAt })];
+		expect(view.visibleDayEvents.map((e) => e.id)).toEqual(['carry-over']);
+	});
+});
+
+describe('window changes', () => {
+	beforeEach(() => {
+		view.babyId = 'baby-1';
+	});
+
+	it('switching to the week view loads both week windows once', async () => {
+		view.setViewMode('week');
+		await flush();
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(2);
+	});
+
+	it('switching back to the day view refetches nothing: the day window was never dropped', async () => {
+		view.setViewMode('week');
+		await flush();
+		vi.mocked(listEvents).mockClear();
+		view.setViewMode('day');
+		await flush();
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('re-selecting the current mode or day is a no-op', async () => {
+		view.setViewMode('day');
+		view.setDayKey(view.dayKey);
+		await flush();
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('changing the day in the week view reloads all three windows', async () => {
+		view.setViewMode('week');
+		await flush();
+		vi.mocked(listEvents).mockClear();
+		view.setDayKey(YESTERDAY);
+		await flush();
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(3);
+	});
+
+	it('picking a day inside the week view zooms into it and loads only that day', async () => {
+		view.setViewMode('week');
+		await flush();
+		vi.mocked(listEvents).mockClear();
+		view.selectWeekDay(YESTERDAY);
+		await flush();
+		expect(view.viewMode).toBe('day');
+		expect(view.dayKey).toBe(YESTERDAY);
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+	});
+
+	it('derives the Monday of the selected week and the one before it', () => {
+		view.setDayKey('2026-08-27'); // a Thursday
+		expect(view.mondayKey).toBe('2026-08-24');
+		expect(view.prevMondayKey).toBe('2026-08-17');
+	});
+});
+
+describe('relayed changes (SSE and data restore)', () => {
+	beforeEach(async () => {
+		view.start();
+		await flush();
+		vi.mocked(listEvents).mockClear();
+	});
+
+	it('a sync message refetches the day window', () => {
+		store.applyChange(sync('updated', makeEvent()));
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+	});
+
+	it('a reset (reconnect or restore) refetches too', () => {
+		store.applyReset({ serverTime: NOW.toISOString() });
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+	});
+
+	it('refetches all three windows while the week view is open', async () => {
+		view.setViewMode('week');
+		await flush();
+		vi.mocked(listEvents).mockClear();
+		store.applyChange(sync('created', makeEvent()));
+		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe('load errors', () => {
+	it('surfaces a French message when the day fetch fails', async () => {
+		view.babyId = 'baby-1';
+		vi.mocked(listEvents).mockRejectedValueOnce(new Error('network'));
+		await view.loadDay();
+		expect(view.loadError).toBe('Impossible de charger l’historique.');
+	});
+
+	it('a failing previous-week fetch stays silent: the comparison is an extra', async () => {
+		view.babyId = 'baby-1';
+		vi.mocked(listEvents).mockRejectedValueOnce(new Error('network'));
+		await view.loadPrevWeek();
+		expect(view.prevWeekEvents).toBeNull();
+		expect(view.loadError).toBeNull();
+	});
+
+	it('fetches nothing until a baby is known', async () => {
+		await view.loadDay();
+		await view.loadWeek();
+		await view.loadPrevWeek();
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+});

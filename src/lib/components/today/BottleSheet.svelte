@@ -59,6 +59,14 @@
 		}
 	});
 
+	/** One-handed entry: nudge the volume by ±10 ml, clamped to the server's
+	 * 1–1000 range (FR-017 — the server stays the backstop of record). */
+	function bump(delta: number): void {
+		const current = Number(volume);
+		const base = Number.isFinite(current) && volume.trim() !== '' ? current : 0;
+		volume = String(Math.min(1000, Math.max(1, base + delta)));
+	}
+
 	function handleOpenChange(next: boolean): void {
 		if (!next && isDirty) {
 			const confirmed =
@@ -114,7 +122,8 @@
      lets bits-ui close itself even when the dirty-guard refuses. -->
 <Sheet.Root bind:open={() => open, handleOpenChange}>
 	<Sheet.Content side="bottom">
-		<Sheet.Header>
+		<Sheet.Header class="border-border border-b-2">
+			<p class="text-section text-ink-muted uppercase">Enregistrer</p>
 			<Sheet.Title>Biberon</Sheet.Title>
 		</Sheet.Header>
 		<div class="flex flex-col gap-4 px-4 pb-4">
@@ -122,17 +131,21 @@
 				<p class="text-danger text-base" role="alert">{formError}</p>
 			{/if}
 			<div class="flex flex-col gap-2">
-				<span id="milk-type-label" class="text-base font-medium text-ink">Type de lait</span>
-				<div class="grid grid-cols-3 gap-2" role="group" aria-labelledby="milk-type-label">
+				<span id="milk-type-label" class="text-section text-ink-muted uppercase">Type de lait</span>
+				<div
+					class="border-border divide-border grid grid-cols-3 divide-x-2 border-2"
+					role="group"
+					aria-labelledby="milk-type-label"
+				>
 					{#each MILK_TYPES as option (option.value)}
 						<button
 							type="button"
 							aria-pressed={milkType === option.value}
 							onclick={() => (milkType = option.value)}
-							class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {milkType ===
+							class="flex h-[50px] items-center justify-start truncate px-3 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset {milkType ===
 							option.value
-								? 'border-feed-500 bg-feed-100 text-feed-700'
-								: 'border-border bg-surface-raised text-ink-muted'}"
+								? 'bg-ink text-surface'
+								: 'bg-surface-raised text-ink-muted'}"
 						>
 							{option.label}
 						</button>
@@ -140,32 +153,61 @@
 				</div>
 			</div>
 			<div class="flex flex-col gap-2">
-				<label for="bottle-volume" class="text-base font-medium text-ink">Volume (ml)</label>
-				<input
-					id="bottle-volume"
-					inputmode="decimal"
-					bind:value={volume}
-					aria-invalid={volumeError !== null}
-					aria-describedby={volumeError !== null ? 'bottle-volume-error' : undefined}
-					class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
-						? 'border-danger'
-						: ''}"
-				/>
+				<label for="bottle-volume" class="text-section text-ink-muted uppercase">Volume (ml)</label>
+				<div
+					class="flex items-stretch border-2 {volumeError ? 'border-danger' : 'border-border'} bg-surface-raised"
+				>
+					<input
+						id="bottle-volume"
+						inputmode="decimal"
+						bind:value={volume}
+						aria-invalid={volumeError !== null}
+						aria-describedby={volumeError !== null ? 'bottle-volume-error' : undefined}
+						class="text-amount text-ink w-0 min-w-0 flex-1 bg-transparent px-3 py-2 tabular-nums focus-visible:outline-none"
+					/>
+					<button
+						type="button"
+						aria-label="Moins 10 ml"
+						onclick={() => bump(-10)}
+						class="border-border text-ink w-14 shrink-0 border-l-2 text-2xl font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+					>
+						−
+					</button>
+					<button
+						type="button"
+						aria-label="Plus 10 ml"
+						onclick={() => bump(10)}
+						class="border-border text-ink w-14 shrink-0 border-l-2 text-2xl font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+					>
+						+
+					</button>
+				</div>
+				<div class="grid grid-cols-4 gap-2">
+					{#each [60, 90, 120, 150] as preset (preset)}
+						<button
+							type="button"
+							onclick={() => (volume = String(preset))}
+							class="border-border text-value text-ink h-10 border tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+						>
+							{preset}
+						</button>
+					{/each}
+				</div>
 				{#if volumeError}
 					<p id="bottle-volume-error" class="text-danger text-base" role="alert">{volumeError}</p>
 				{/if}
 			</div>
 			<div class="flex flex-col gap-2">
-				<label for="bottle-time" class="text-base font-medium text-ink">Heure</label>
+				<label for="bottle-time" class="text-section text-ink-muted uppercase">Heure</label>
 				<input
 					id="bottle-time"
 					type="datetime-local"
 					bind:value={time}
 					aria-invalid={timeError !== null}
 					aria-describedby={timeError !== null ? 'bottle-time-error' : undefined}
-					class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {timeError
+					class="bg-surface-raised text-field text-ink h-13 rounded-control border-2 px-3 py-2 tabular-nums {timeError
 						? 'border-danger'
-						: ''}"
+						: 'border-border'}"
 				/>
 				{#if timeError}
 					<p id="bottle-time-error" class="text-danger text-base" role="alert">{timeError}</p>
@@ -175,7 +217,7 @@
 				type="button"
 				disabled={pending || babyId === null}
 				onclick={submit}
-				class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+				class="bg-primary text-on-primary text-field active:bg-primary-pressed flex h-[58px] items-center justify-start gap-2 rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
 			>
 				{#if pending}
 					<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />

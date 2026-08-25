@@ -380,15 +380,47 @@ describe('patchEvent validates nursing segments (review item 7)', () => {
 });
 
 describe('nursing action hardening', () => {
-	it('switch-side ignores a client-supplied side and always switches', () => {
+	it('switch-side honours a client-supplied target side', () => {
 		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
 		const switched = nursingAction(db, {
 			babyId: 'baby-1',
 			action: 'switch-side',
-			side: 'left'
+			side: 'right'
 		});
 		const segments = (switched.details as { segments: NursingSegment[] }).segments;
-		expect(segments[segments.length - 1].side).toBe('right');
+		expect(segments).toHaveLength(2);
+		expect(segments[0].endedAt).not.toBeNull();
+		expect(segments[1].side).toBe('right');
+	});
+
+	it('switch-side is a no-op when the target side is already running', () => {
+		// Multi-device race: this client's view is stale and another device
+		// already switched to the requested side — the session must not flip
+		// back or grow an extra segment.
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		const unchanged = nursingAction(db, {
+			babyId: 'baby-1',
+			action: 'switch-side',
+			side: 'left'
+		});
+		const segments = (unchanged.details as { segments: NursingSegment[] }).segments;
+		expect(segments).toHaveLength(1);
+		expect(segments[0].side).toBe('left');
+		expect(segments[0].endedAt).toBeNull();
+	});
+
+	it('switch-side with a target opens that side when the session is paused', () => {
+		startTimer(db, { type: 'nursing', babyId: 'baby-1', side: 'left' });
+		nursingAction(db, { babyId: 'baby-1', action: 'pause' });
+		const resumed = nursingAction(db, {
+			babyId: 'baby-1',
+			action: 'switch-side',
+			side: 'left'
+		});
+		const segments = (resumed.details as { segments: NursingSegment[] }).segments;
+		expect(segments).toHaveLength(2);
+		expect(segments[1].side).toBe('left');
+		expect(segments[1].endedAt).toBeNull();
 	});
 
 	it('rejects actions on a session with no segments', () => {

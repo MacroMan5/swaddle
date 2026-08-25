@@ -47,17 +47,18 @@
 
 <Sheet.Root bind:open>
 	<Sheet.Content side="bottom">
-		<Sheet.Header>
+		<Sheet.Header class="border-border border-b-2">
+			<p class="text-section text-ink-muted uppercase">Démarrer</p>
 			<Sheet.Title>Tirage</Sheet.Title>
 		</Sheet.Header>
 		<div class="flex flex-col gap-4 px-4 pb-4">
-			<div class="grid grid-cols-3 gap-2">
+			<div class="border-border divide-border grid grid-cols-3 divide-x-2 border-2">
 				{#each SIDES as option (option.value)}
 					<button
 						type="button"
 						disabled={pending || babyId === null}
 						onclick={() => start(option.value)}
-						class="border-border bg-surface-raised text-ink min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+						class="bg-surface-raised text-ink flex h-[50px] items-center justify-start truncate px-3 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset disabled:opacity-50"
 					>
 						{option.label}
 					</button>

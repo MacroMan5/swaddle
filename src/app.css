@@ -1,8 +1,9 @@
 @import 'tailwindcss';
-@import '@fontsource/lora/600.css';
-@import '@fontsource/lora/700.css';
-@import '@fontsource/nunito-sans/400.css';
-@import '@fontsource/nunito-sans/600.css';
+@import '@fontsource/archivo/400.css';
+@import '@fontsource/archivo/500.css';
+@import '@fontsource/archivo/600.css';
+@import '@fontsource/archivo/700.css';
+@import '@fontsource/archivo/800.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -12,31 +13,145 @@
 	--color-surface-raised: var(--surface-raised);
 	--color-ink: var(--ink);
 	--color-ink-muted: var(--ink-muted);
+	--color-ink-label: var(--ink-label);
+	/* Strong rules are ink, not a grey; --border-hair is the thin in-block rule */
 	--color-border: var(--border);
+	--color-border-hair: var(--border-hair);
 	--color-primary: var(--primary);
+	/* Accent at body sizes — --primary alone is below AA on --surface (4.37:1) */
+	--color-primary-text: var(--primary-text);
+	--color-primary-pressed: var(--primary-pressed);
 	--color-on-primary: var(--on-primary);
 	--color-accent: var(--accent);
 	--color-danger: var(--danger);
+	--color-scrim: var(--scrim);
 
-	/* Category palettes (design-system.md: color reinforces; icon + label carry meaning) */
+	/* Category palettes (design-system.md: color reinforces; icon + label carry meaning).
+	   The 500s are decorative only — below 3:1 on --surface, never the sole carrier
+	   of information (bars and fills use the 700s). */
 	--color-feed-100: var(--feed-100);
-	--color-feed-500: #f59e0b;
+	--color-feed-500: var(--feed-500);
 	--color-feed-700: var(--feed-700);
 	--color-diaper-100: var(--diaper-100);
-	--color-diaper-500: #14b8a6;
+	--color-diaper-500: var(--diaper-500);
 	--color-diaper-700: var(--diaper-700);
 	--color-sleep-100: var(--sleep-100);
-	--color-sleep-500: #6366f1;
+	--color-sleep-500: var(--sleep-500);
 	--color-sleep-700: var(--sleep-700);
 
-	--radius-card: 1rem;
-	--radius-control: 0.75rem;
-	--shadow-card: 0 1px 3px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
-	/* Second (and last) shadow level — design-system.md "deux niveaux max": modal/sheet elevation. */
-	--shadow-modal: 0 8px 24px rgb(0 0 0 / 0.16), 0 2px 8px rgb(0 0 0 / 0.08);
-	--color-scrim: var(--scrim);
-	--font-sans: 'Nunito Sans', system-ui, sans-serif;
-	--font-serif: 'Lora', Georgia, serif;
+	/* One radius for everything (Registre, palette 2b) */
+	--radius-card: 6px;
+	--radius-control: 6px;
+
+	/* Three elevation levels: tile / floating / sheet-dialog */
+	--shadow-sm: 0 1px 0 rgb(28 27 34 / 0.05), 0 1px 2px rgb(28 27 34 / 0.06);
+	--shadow-md: 0 2px 4px rgb(28 27 34 / 0.07), 0 6px 14px rgb(28 27 34 / 0.06);
+	--shadow-lg: 0 -2px 8px rgb(28 27 34 / 0.08), 0 12px 32px rgb(28 27 34 / 0.18);
+
+	/* Single family — Archivo everywhere; the serif utility is retired */
+	--font-sans: 'Archivo', system-ui, sans-serif;
+	--font-serif: initial;
+
+	/* Type scale — one token per role (sizes are final, see design-system.md) */
+	--text-screen-title: 20px;
+	--text-screen-title--line-height: 1.15;
+	--text-screen-title--font-weight: 800;
+	--text-screen-title--letter-spacing: -0.01em;
+
+	--text-onboarding-title: 34px;
+	--text-onboarding-title--line-height: 1.1;
+	--text-onboarding-title--font-weight: 800;
+	--text-onboarding-title--letter-spacing: -0.015em;
+
+	--text-stat: 26px;
+	--text-stat--line-height: 1.05;
+	--text-stat--font-weight: 700;
+
+	--text-timer: 56px;
+	--text-timer--line-height: 1;
+	--text-timer--font-weight: 800;
+	--text-timer--letter-spacing: -0.02em;
+
+	--text-section: 10px;
+	--text-section--line-height: 1;
+	--text-section--font-weight: 700;
+	--text-section--letter-spacing: 0.14em;
+
+	--text-category: 9.5px;
+	--text-category--line-height: 1;
+	--text-category--font-weight: 700;
+	--text-category--letter-spacing: 0.13em;
+
+	--text-status: 10px;
+	--text-status--line-height: 1;
+	--text-status--font-weight: 700;
+	--text-status--letter-spacing: 0.16em;
+
+	--text-brand: 13px;
+	--text-brand--line-height: 1;
+	--text-brand--font-weight: 800;
+	--text-brand--letter-spacing: 0.2em;
+
+	--text-tile: 16px;
+	--text-tile--line-height: 1.1;
+	--text-tile--font-weight: 800;
+
+	--text-tile-hint: 11px;
+	--text-tile-hint--line-height: 1.2;
+	--text-tile-hint--font-weight: 600;
+
+	--text-value: 15px;
+	--text-value--line-height: 1.2;
+	--text-value--font-weight: 700;
+
+	--text-meta: 13px;
+	--text-meta--line-height: 1.2;
+	--text-meta--font-weight: 600;
+
+	--text-label: 14px;
+	--text-label--line-height: 1.3;
+	--text-label--font-weight: 600;
+
+	--text-row: 14px;
+	--text-row--line-height: 1.2;
+	--text-row--font-weight: 600;
+
+	--text-row-time: 14px;
+	--text-row-time--line-height: 1.2;
+	--text-row-time--font-weight: 700;
+
+	--text-delta: 20px;
+	--text-delta--line-height: 1;
+	--text-delta--font-weight: 800;
+
+	--text-sheet-title: 22px;
+	--text-sheet-title--line-height: 1.15;
+	--text-sheet-title--font-weight: 800;
+
+	--text-amount: 32px;
+	--text-amount--line-height: 1;
+	--text-amount--font-weight: 800;
+
+	--text-field: 17px;
+	--text-field--line-height: 1.2;
+	--text-field--font-weight: 700;
+
+	--text-field-lg: 18px;
+	--text-field-lg--line-height: 1.2;
+	--text-field-lg--font-weight: 700;
+
+	--text-nav: 11px;
+	--text-nav--line-height: 1;
+	--text-nav--font-weight: 600;
+	--text-nav--letter-spacing: 0.06em;
+
+	--text-body: 14px;
+	--text-body--line-height: 1.5;
+	--text-body--font-weight: 400;
+
+	/* Motion */
+	--animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+	--animate-grow-y: grow-y 500ms ease-out both;
 }
 
 /* shadcn-svelte ("nova" style, neutral base color) — variables consumed by the
@@ -59,19 +174,24 @@
 	--color-input: var(--input);
 	--color-ring: var(--ring);
 
-	--radius-sm: calc(var(--radius) - 4px);
-	--radius-md: calc(var(--radius) - 2px);
-	--radius-lg: var(--radius);
-	--radius-xl: calc(var(--radius) + 4px);
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 6px;
+	--radius-xl: 8px;
 }
 
 :root {
 	--surface: #faf9f7;
 	--surface-raised: #ffffff;
 	--ink: #1c1b22;
-	--ink-muted: #67646f;
-	--border: #ebe8e4;
+	/* 6.19:1 or better on all three category pastels — the audit's central fix */
+	--ink-muted: #55525e;
+	--ink-label: #444141;
+	--border: var(--ink);
+	--border-hair: color-mix(in srgb, var(--ink) 22%, transparent);
 	--primary: #db2777;
+	--primary-text: #9d174d;
+	--primary-pressed: #be185d;
 	--on-primary: #ffffff;
 	--accent: #0284c7;
 	--danger: #dc2626;
@@ -79,20 +199,23 @@
 	   behind a sheet/dialog, it is not a themed surface. */
 	--scrim: #0f0f14;
 	--feed-100: #fef3c7;
-	--feed-700: #b45309;
+	--feed-500: #f59e0b;
+	--feed-700: #8a3f07;
 	--diaper-100: #ccfbf1;
-	--diaper-700: #0f766e;
+	--diaper-500: #14b8a6;
+	--diaper-700: #0b5b55;
 	--sleep-100: #e0e7ff;
-	--sleep-700: #4338ca;
+	--sleep-500: #6366f1;
+	--sleep-700: #3730a3;
 
-	--radius: 0.625rem;
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.145 0 0);
-	--secondary: oklch(0.97 0 0);
-	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
-	--accent-foreground: oklch(0.205 0 0);
-	--input: oklch(0.922 0 0);
+	--radius: 6px;
+	--popover: var(--surface-raised);
+	--popover-foreground: var(--ink);
+	--secondary: var(--surface);
+	--secondary-foreground: var(--ink);
+	--muted: var(--surface);
+	--accent-foreground: var(--ink);
+	--input: var(--border);
 }
 
 /* Point the shadcn variables at our semantic tokens — no hard-coded values
@@ -111,42 +234,88 @@
 
 /* Night-friendly dark mode: desaturated, never pure white or black (NFR-005) */
 .dark {
-	--surface: #15151a;
-	--surface-raised: #1e1e25;
-	--ink: #e9e7ee;
-	--ink-muted: #9c99a6;
-	--border: #2c2c35;
+	--surface: #16151a;
+	--surface-raised: #1f1e23;
+	--ink: #f2f0ee;
+	--ink-muted: #a8a4a4;
+	--ink-label: #cfcbc9;
+	/* Slightly softened ink: a full-ink 2px rule glares at 3am */
+	--border: #cfcbc9;
+	--border-hair: color-mix(in srgb, var(--ink) 20%, transparent);
 	--primary: #f472b6;
+	--primary-text: #f9a8d4;
+	--primary-pressed: #ec4899;
 	--on-primary: #2b0b1b;
 	--accent: #38bdf8;
 	--danger: #f87171;
 	--feed-100: #3a2a12;
+	--feed-500: #f59e0b;
 	--feed-700: #fbbf24;
 	--diaper-100: #123230;
+	--diaper-500: #2dd4bf;
 	--diaper-700: #2dd4bf;
 	--sleep-100: #232345;
+	--sleep-500: #818cf8;
 	--sleep-700: #818cf8;
 
 	--popover: var(--surface-raised);
 	--popover-foreground: var(--ink);
-	--secondary: #2c2c35;
+	--secondary: #2a2930;
 	--secondary-foreground: var(--ink);
-	--muted: #2c2c35;
+	--muted: #2a2930;
 	--accent-foreground: var(--ink);
-	--input: #2c2c35;
+	--input: var(--border);
 }
 
 body {
 	background-color: var(--color-surface);
 	color: var(--color-ink);
 	font-family: var(--font-sans);
-}
-
-h1, h2, h3 {
-	font-family: var(--font-serif);
+	font-size: var(--text-body);
+	line-height: 1.5;
 }
 
 /* Obligatoire sur tout chiffre dynamique (minuteurs, totaux) */
 .tabular {
 	font-variant-numeric: tabular-nums;
+}
+
+@keyframes enter-up {
+	from {
+		opacity: 0;
+		transform: translateY(14px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes pulse-dot {
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.35;
+		transform: scale(0.82);
+	}
+}
+
+@keyframes grow-y {
+	from {
+		transform: scaleY(0);
+	}
+	to {
+		transform: scaleY(1);
+	}
+}
+
+/* Block entrance — first mount only (applied to sections that SSE never remounts) */
+@media (prefers-reduced-motion: no-preference) {
+	.enter {
+		animation: enter-up 450ms ease-out both;
+		animation-delay: var(--enter-delay, 0ms);
+	}
 }

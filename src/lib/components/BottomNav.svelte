@@ -15,25 +15,24 @@
 
 <nav
 	aria-label="Navigation principale"
-	class="bg-surface-raised border-border fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)]"
+	class="bg-surface-raised border-border fixed inset-x-0 bottom-0 z-30 border-t-2 pb-[env(safe-area-inset-bottom)]"
 >
-	<ul class="mx-auto flex max-w-2xl">
+	<ul class="divide-border-hair mx-auto flex max-w-2xl divide-x">
 		{#each items as item (item.href)}
 			{@const active = isActive(item.href)}
 			<li class="flex-1">
 				<a
 					href={item.href}
 					aria-current={active ? 'page' : undefined}
-					class="focus-visible:ring-primary relative flex min-h-12 flex-col items-center justify-center gap-1 px-2 py-2 text-base focus-visible:ring-2 focus-visible:outline-none {active
-						? 'text-primary font-semibold'
-						: 'text-ink-muted'}"
+					class="focus-visible:ring-primary relative flex min-h-16 flex-col items-center justify-center gap-1.5 px-2 py-2 focus-visible:ring-2 focus-visible:outline-none {active
+						? 'text-primary'
+						: 'text-ink-label'}"
 				>
 					<!-- Active state is carried by an indicator bar too: colour is never the only signal. -->
-					<span
-						class="absolute top-0 h-0.5 w-10 rounded-full {active ? 'bg-primary' : 'bg-transparent'}"
+					<span class="absolute inset-x-0 top-0 h-1 {active ? 'bg-primary' : 'bg-transparent'}"
 					></span>
-					<item.icon size={22} strokeWidth={2} aria-hidden="true" />
-					<span>{item.label}</span>
+					<item.icon size={22} strokeWidth={active ? 2.2 : 2} aria-hidden="true" />
+					<span class="text-nav uppercase {active ? 'font-bold' : ''}">{item.label}</span>
 				</a>
 			</li>
 		{/each}

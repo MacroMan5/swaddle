@@ -250,7 +250,7 @@
      parent's `open` true — the confirm is bypassed and the sheet can't reopen. -->
 <Sheet.Root bind:open={() => open, handleOpenChange}>
 	<Sheet.Content side="bottom">
-		<Sheet.Header>
+		<Sheet.Header class="border-border border-b-2">
 			<Sheet.Title>Modifier l’entrée</Sheet.Title>
 		</Sheet.Header>
 		{#if event}
@@ -267,7 +267,7 @@
 							type="datetime-local"
 							bind:value={startedAt}
 							aria-invalid={startedAtError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {startedAtError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base {startedAtError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -283,7 +283,7 @@
 							type="datetime-local"
 							bind:value={endedAt}
 							aria-invalid={endedAtError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {endedAtError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base {endedAtError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -300,7 +300,7 @@
 									type="button"
 									aria-pressed={milkType === option.value}
 									onclick={() => (milkType = option.value)}
-									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {milkType ===
+									class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {milkType ===
 									option.value
 										? 'border-feed-500 bg-feed-100 text-feed-700'
 										: 'border-border bg-surface-raised text-ink-muted'}"
@@ -317,7 +317,7 @@
 							inputmode="decimal"
 							bind:value={volumeMl}
 							aria-invalid={volumeError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums {volumeError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -334,7 +334,7 @@
 									type="button"
 									aria-pressed={pumpSide === option.value}
 									onclick={() => (pumpSide = option.value)}
-									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pumpSide ===
+									class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {pumpSide ===
 									option.value
 										? 'border-feed-500 bg-feed-100 text-feed-700'
 										: 'border-border bg-surface-raised text-ink-muted'}"
@@ -351,7 +351,7 @@
 							inputmode="decimal"
 							bind:value={volumeMl}
 							aria-invalid={volumeError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums {volumeError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -367,7 +367,7 @@
 								type="button"
 								aria-pressed={pee}
 								onclick={() => (pee = !pee)}
-								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pee
+								class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {pee
 									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
 									: 'border-border bg-surface-raised text-ink-muted'}"
 							>
@@ -377,7 +377,7 @@
 								type="button"
 								aria-pressed={poo}
 								onclick={() => (poo = !poo)}
-								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {poo
+								class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {poo
 									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
 									: 'border-border bg-surface-raised text-ink-muted'}"
 							>
@@ -397,7 +397,7 @@
 										type="button"
 										aria-pressed={segment.side === 'left'}
 										onclick={() => setSegmentSide(i, 'left')}
-										class="min-h-12 rounded-control border px-2 py-1 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {segment.side ===
+										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {segment.side ===
 										'left'
 											? 'border-feed-500 bg-feed-100 text-feed-700'
 											: 'border-border bg-surface text-ink-muted'}"
@@ -408,7 +408,7 @@
 										type="button"
 										aria-pressed={segment.side === 'right'}
 										onclick={() => setSegmentSide(i, 'right')}
-										class="min-h-12 rounded-control border px-2 py-1 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {segment.side ===
+										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {segment.side ===
 										'right'
 											? 'border-feed-500 bg-feed-100 text-feed-700'
 											: 'border-border bg-surface text-ink-muted'}"
@@ -422,7 +422,7 @@
 										aria-label={`Début du segment ${i + 1}`}
 										aria-invalid={segment.error !== null}
 										bind:value={segment.startedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base {segment.error
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border-2 px-2 py-1 text-base {segment.error
 											? 'border-danger'
 											: ''}"
 									/>
@@ -431,7 +431,7 @@
 										aria-label={`Fin du segment ${i + 1}`}
 										aria-invalid={segment.error !== null}
 										bind:value={segment.endedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border px-2 py-1 text-base {segment.error
+										class="border-border bg-surface min-h-12 flex-1 rounded-control border-2 px-2 py-1 text-base {segment.error
 											? 'border-danger'
 											: ''}"
 									/>
@@ -449,7 +449,7 @@
 					<select
 						id="edit-caregiver"
 						bind:value={caregiverId}
-						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+						class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base"
 					>
 						<option value="">Aucun</option>
 						{#each caregivers as cg (cg.id)}
@@ -463,7 +463,7 @@
 					<input
 						id="edit-note"
 						bind:value={note}
-						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+						class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base"
 					/>
 				</div>
 
@@ -471,7 +471,7 @@
 					type="button"
 					disabled={pending}
 					onclick={submit}
-					class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+					class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
 				>
 					{#if pending}
 						<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -483,7 +483,7 @@
 					type="button"
 					disabled={deleting}
 					onclick={remove}
-					class="border-danger text-danger flex min-h-12 items-center justify-center gap-2 rounded-control border px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50 motion-reduce:active:scale-100"
+					class="border-danger text-danger flex min-h-12 items-center justify-center gap-2 rounded-control border-2 px-4 py-2 font-semibold active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50 motion-reduce:active:translate-y-0"
 				>
 					{deleting ? 'Suppression…' : 'Supprimer'}
 				</button>

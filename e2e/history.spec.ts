@@ -22,7 +22,7 @@ test('day view lists events chronologically with summary; filters work', async (
 	await page.goto('/history');
 	const rows = page.getByTestId('event-row');
 	await expect(rows.first()).toContainText('Couche');
-	await expect(page.getByTestId('day-summary')).toContainText('90');
+	await expect(rows.filter({ hasText: 'Biberon' }).first()).toContainText('90');
 
 	// Chips are independent multi-toggles, all on by default: turning off
 	// Alimentation and Couche hides this test's own bottle/diaper rows (other

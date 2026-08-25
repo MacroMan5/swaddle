@@ -20,5 +20,7 @@ export default defineConfig({
 			reuseExistingServer: false
 		}
 	],
-	use: { baseURL: 'http://localhost:3000' }
+	// reducedMotion keeps the Registre entrance/pulse animations out of e2e
+	// timing — specs assert layout and behavior, not motion.
+	use: { baseURL: 'http://localhost:3000', reducedMotion: 'reduce' }
 });

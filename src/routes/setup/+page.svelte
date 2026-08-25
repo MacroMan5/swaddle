@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { ArrowRight } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
@@ -65,78 +65,84 @@
 	}
 </script>
 
-<div class="flex min-h-dvh items-center justify-center bg-surface p-4">
-	<Card.Root class="w-full max-w-sm">
+<div class="bg-surface flex min-h-dvh flex-col p-4">
+	<div class="enter mx-auto flex w-full max-w-sm flex-1 flex-col gap-5">
+		<!-- Brand band. The repo has no symbol yet — the wordmark carries it. -->
+		<div class="border-border flex items-baseline justify-between border-b-2 pb-3">
+			<span class="text-brand text-ink uppercase">Swaddle</span>
+			<span class="text-tile-hint text-ink-muted uppercase tabular-nums">Étape {step} / 2</span>
+		</div>
+		<div class="bg-border-hair h-1" aria-hidden="true">
+			<div class="bg-primary h-1" style:width={step === 1 ? '50%' : '100%'}></div>
+		</div>
+
 		{#if step === 1}
-			<Card.Header>
-				<Card.Title class="font-serif text-2xl">Votre bébé</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<form class="flex flex-col gap-4" onsubmit={submitBaby}>
-					<div class="flex flex-col gap-2">
-						<Label for="baby-name">Prénom</Label>
-						<Input
-							id="baby-name"
-							class="min-h-12 text-base"
-							bind:value={babyName}
-							required
-							maxlength={100}
-						/>
-					</div>
-					<div class="flex flex-col gap-2">
-						<Label for="baby-birthdate">Date de naissance</Label>
-						<Input
-							id="baby-birthdate"
-							type="date"
-							class="min-h-12 text-base"
-							bind:value={birthdate}
-							required
-						/>
-					</div>
-					{#if babyError}
-						<p class="text-sm text-danger">{babyError}</p>
-					{/if}
-					<Button type="submit" class="min-h-12" disabled={babySubmitting}>Continuer</Button>
-				</form>
-			</Card.Content>
+			<h1 class="text-onboarding-title text-ink">Votre bébé</h1>
+			<p class="text-body text-ink-muted max-w-[300px] text-pretty">
+				Swaddle garde tout ici, chez vous : rien ne quitte votre réseau local.
+			</p>
+			<form class="flex flex-col gap-4" onsubmit={submitBaby}>
+				<div class="flex flex-col gap-2">
+					<Label for="baby-name" class="text-section text-ink-muted uppercase">Prénom</Label>
+					<Input
+						id="baby-name"
+						class="text-field-lg"
+						bind:value={babyName}
+						required
+						maxlength={100}
+					/>
+				</div>
+				<div class="flex flex-col gap-2">
+					<Label for="baby-birthdate" class="text-section text-ink-muted uppercase"
+						>Date de naissance</Label
+					>
+					<Input id="baby-birthdate" type="date" class="text-field-lg" bind:value={birthdate} required />
+				</div>
+				{#if babyError}
+					<p class="text-danger text-sm">{babyError}</p>
+				{/if}
+				<Button type="submit" size="lg" class="justify-between" disabled={babySubmitting}>
+					Continuer
+					<ArrowRight size={20} aria-hidden="true" />
+				</Button>
+			</form>
 		{:else}
-			<Card.Header>
-				<Card.Title class="font-serif text-2xl">Qui s'en occupe ?</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<form class="flex flex-col gap-4" onsubmit={submitCaregiver}>
-					<div class="flex flex-col gap-2">
-						<Label for="caregiver-name">Prénom</Label>
-						<Input
-							id="caregiver-name"
-							class="min-h-12 text-base"
-							bind:value={caregiverName}
-							required
-							maxlength={100}
-						/>
+			<h1 class="text-onboarding-title text-ink">Qui s'en occupe ?</h1>
+			<form class="flex flex-col gap-4" onsubmit={submitCaregiver}>
+				<div class="flex flex-col gap-2">
+					<Label for="caregiver-name" class="text-section text-ink-muted uppercase">Prénom</Label>
+					<Input
+						id="caregiver-name"
+						class="text-field-lg"
+						bind:value={caregiverName}
+						required
+						maxlength={100}
+					/>
+				</div>
+				<div class="flex flex-col gap-2">
+					<span id="caregiver-color-label" class="text-section text-ink-muted uppercase">Couleur</span>
+					<div class="flex flex-wrap gap-2" role="group" aria-labelledby="caregiver-color-label">
+						{#each CAREGIVER_COLORS as color (color)}
+							<button
+								type="button"
+								class="size-12 border-2"
+								style:background-color={color}
+								style:border-color={caregiverColor === color ? 'var(--ink)' : 'transparent'}
+								aria-label={caregiverColorName(color)}
+								aria-pressed={caregiverColor === color}
+								onclick={() => (caregiverColor = color)}
+							></button>
+						{/each}
 					</div>
-					<div class="flex flex-col gap-2">
-						<span id="caregiver-color-label" class="text-sm font-medium text-ink">Couleur</span>
-						<div class="flex flex-wrap gap-2" role="group" aria-labelledby="caregiver-color-label">
-							{#each CAREGIVER_COLORS as color (color)}
-								<button
-									type="button"
-									class="size-12 rounded-full border-2"
-									style:background-color={color}
-									style:border-color={caregiverColor === color ? 'var(--ink)' : 'transparent'}
-									aria-label={caregiverColorName(color)}
-									aria-pressed={caregiverColor === color}
-									onclick={() => (caregiverColor = color)}
-								></button>
-							{/each}
-						</div>
-					</div>
-					{#if caregiverError}
-						<p class="text-sm text-danger">{caregiverError}</p>
-					{/if}
-					<Button type="submit" class="min-h-12" disabled={caregiverSubmitting}>Terminer</Button>
-				</form>
-			</Card.Content>
+				</div>
+				{#if caregiverError}
+					<p class="text-danger text-sm">{caregiverError}</p>
+				{/if}
+				<Button type="submit" size="lg" class="justify-between" disabled={caregiverSubmitting}>
+					Terminer
+					<ArrowRight size={20} aria-hidden="true" />
+				</Button>
+			</form>
 		{/if}
-	</Card.Root>
+	</div>
 </div>

@@ -179,9 +179,11 @@ Corps : `{ babyId, action: 'pause' | 'resume' | 'switch-side', side? }`.
 
 - `pause` — ferme le segment ouvert ; l'événement reste actif.
 - `resume` — ouvre un nouveau segment sur `side`, par défaut le dernier côté utilisé.
-- `switch-side` — ferme le segment ouvert (s'il y en a un) et ouvre le côté
-  opposé. Un `side` fourni par le client est ignoré pour cette action : changer
-  de côté inverse toujours le côté, sans quoi l'action pourrait ne rien faire.
+- `switch-side` — ferme le segment ouvert (s'il y en a un) et ouvre `side` ;
+  sans `side`, le côté opposé au dernier segment. Avec un `side` explicite,
+  l'action est idempotente : si ce côté tourne déjà (un autre appareil a
+  basculé entre-temps), la session est renvoyée inchangée au lieu d'être
+  rebasculée — indispensable en multi-appareils.
 
 → `200 EventDTO` · `400 validation_failed` · `404 no_active_timer` ·
 `409 invalid_state` (pause alors que déjà en pause, reprise alors que la session

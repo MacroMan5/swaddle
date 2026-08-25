@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
@@ -231,28 +230,121 @@
 		restoreMessage = `Restauré : ${babies} bébé(s), ${caregivers} aidant(s), ${events} événement(s).`;
 		await invalidateAll();
 	}
+
+	// --- Sauvegarde ---
+	// Fetched (not a plain download link) so the freshly written snapshot can
+	// refresh « Dernière sauvegarde » via invalidateAll once the response lands.
+	let backupPending = $state(false);
+	let backupError = $state<string | null>(null);
+
+	async function downloadBackup() {
+		if (backupPending) return;
+		backupPending = true;
+		backupError = null;
+		try {
+			const res = await fetch('/api/backup');
+			if (!res.ok) {
+				backupError = 'Une erreur est survenue.';
+				return;
+			}
+			const blob = await res.blob();
+			const match = /filename="?([^";]+)/.exec(res.headers.get('content-disposition') ?? '');
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = match?.[1] ?? 'swaddle-backup.sqlite';
+			a.click();
+			URL.revokeObjectURL(url);
+			await invalidateAll();
+		} catch {
+			backupError = 'Une erreur est survenue.';
+		} finally {
+			backupPending = false;
+		}
+	}
+
+	// --- Ce serveur ---
+	const lastBackupLabel = $derived.by(() => {
+		const at = data.serverInfo.lastBackupAt;
+		if (at === null) return 'jamais';
+		return new Date(at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' });
+	});
 </script>
 
 <div class="mx-auto flex max-w-lg flex-col gap-4 p-4">
-	<h1 class="font-serif text-2xl text-ink">Réglages</h1>
+	<div class="border-border enter border-b-2 pb-3">
+		<h1 class="text-screen-title text-ink">Réglages</h1>
+	</div>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Bébé</Card.Title></Card.Header>
-		<Card.Content>
-			{#each data.babies as baby (baby.id)}
-				<p class="text-ink">{baby.name} — né(e) le {baby.birthdate}</p>
-			{:else}
-				<p class="text-ink-muted">Aucun bébé enregistré.</p>
-			{/each}
-		</Card.Content>
-	</Card.Root>
+	<!-- One surface cut by rules: 2px between groups, hairlines inside them. -->
+	<div class="bg-surface-raised border-border divide-border enter divide-y-2 border-2" style="--enter-delay: 60ms">
+		<section class="flex flex-col gap-3 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Foyer</h2>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Aidants</Card.Title></Card.Header>
-		<Card.Content class="flex flex-col gap-4">
-			<ul class="flex flex-col gap-2">
+			<div class="divide-border-hair divide-y">
+				{#each data.babies as baby (baby.id)}
+					<div class="flex items-baseline justify-between gap-4 py-2">
+						<span class="text-label text-ink-label">Bébé</span>
+						<span class="text-value text-ink tabular-nums">{baby.name} · {baby.birthdate}</span>
+					</div>
+				{:else}
+					<p class="text-ink-muted py-2">Aucun bébé enregistré.</p>
+				{/each}
+
+				<div class="flex flex-col gap-2 py-2">
+					<span class="text-label text-ink-label">Unité</span>
+					<div class="flex gap-2">
+						<Button
+							type="button"
+							class="min-h-12 flex-1"
+							disabled={volumeUnitPending}
+							variant={volumeUnit === 'ml' ? 'default' : 'outline'}
+							onclick={() => setVolumeUnit('ml')}>ml</Button
+						>
+						<Button
+							type="button"
+							class="min-h-12 flex-1"
+							disabled={volumeUnitPending}
+							variant={volumeUnit === 'oz' ? 'default' : 'outline'}
+							onclick={() => setVolumeUnit('oz')}>oz</Button
+						>
+					</div>
+					{#if volumeUnitError}<p class="text-danger text-sm">{volumeUnitError}</p>{/if}
+				</div>
+
+				<div class="flex flex-col gap-2 py-2">
+					<span class="text-label text-ink-label">Thème</span>
+					<div class="flex gap-2">
+						<Button
+							type="button"
+							class="min-h-12 flex-1"
+							variant={theme === 'light' ? 'default' : 'outline'}
+							onclick={() => setTheme('light')}>Clair</Button
+						>
+						<Button
+							type="button"
+							class="min-h-12 flex-1"
+							variant={theme === 'dark' ? 'default' : 'outline'}
+							onclick={() => setTheme('dark')}>Sombre</Button
+						>
+						<Button
+							type="button"
+							class="min-h-12 flex-1"
+							variant={theme === 'auto' ? 'default' : 'outline'}
+							onclick={() => setTheme('auto')}>Auto</Button
+						>
+					</div>
+					{#if themeError}<p class="text-danger text-sm">{themeError}</p>{/if}
+				</div>
+			</div>
+		</section>
+
+		<section class="flex flex-col gap-3 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Aidants</h2>
+
+			<ul class="divide-border-hair flex flex-col divide-y">
 				{#each data.caregivers as cg (cg.id)}
-					<li class="flex flex-col gap-2">
+					<li class="flex flex-col gap-2 py-2">
 						{#if editingCaregiverId === cg.id}
 							<form class="flex flex-col gap-2" onsubmit={(e) => saveCaregiver(e, cg.id)}>
 								<Label for={`edit-caregiver-name-${cg.id}`}>Nouveau nom pour {cg.name}</Label>
@@ -266,7 +358,7 @@
 									{#each CAREGIVER_COLORS as color (color)}
 										<button
 											type="button"
-											class="size-12 rounded-full border-2"
+											class="size-12 border-2"
 											style:background-color={color}
 											style:border-color={editCaregiverColor === color ? 'var(--ink)' : 'transparent'}
 											aria-label={caregiverColorName(color)}
@@ -286,9 +378,9 @@
 								</div>
 							</form>
 						{:else}
-							<div class="flex items-center gap-2">
-								<span class="size-4 rounded-full" style:background-color={cg.color}></span>
-								<span class="flex-1 text-ink">{cg.name}</span>
+							<div class="flex items-center gap-3">
+								<span class="size-3 shrink-0" style:background-color={cg.color}></span>
+								<span class="text-value text-ink flex-1">{cg.name}</span>
 								<Button
 									variant="outline"
 									class="min-h-12"
@@ -297,7 +389,7 @@
 								>
 								<Button
 									variant="ghost"
-									class="min-h-12 text-danger"
+									class="text-danger min-h-12"
 									aria-label={`Supprimer ${cg.name}`}
 									onclick={() => deleteCaregiver(cg.id)}>Supprimer</Button
 								>
@@ -306,14 +398,15 @@
 					</li>
 				{/each}
 			</ul>
-			<form class="flex flex-col gap-2" onsubmit={addCaregiver}>
+
+			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={addCaregiver}>
 				<Label for="new-caregiver-name">Nom de l’aidant</Label>
 				<Input id="new-caregiver-name" class="min-h-12 text-base" bind:value={newCaregiverName} required />
 				<div class="flex flex-wrap gap-2">
 					{#each CAREGIVER_COLORS as color (color)}
 						<button
 							type="button"
-							class="size-12 rounded-full border-2"
+							class="size-12 border-2"
 							style:background-color={color}
 							style:border-color={newCaregiverColor === color ? 'var(--ink)' : 'transparent'}
 							aria-label={caregiverColorName(color)}
@@ -322,89 +415,50 @@
 						></button>
 					{/each}
 				</div>
-				{#if caregiverError}<p class="text-sm text-danger">{caregiverError}</p>{/if}
+				{#if caregiverError}<p class="text-danger text-sm">{caregiverError}</p>{/if}
 				<Button type="submit" class="min-h-12">Ajouter un aidant</Button>
 			</form>
-		</Card.Content>
-	</Card.Root>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Cet appareil</Card.Title></Card.Header>
-		<Card.Content>
-			<p class="mb-2 text-ink-muted">Qui utilise cet appareil ?</p>
-			<div class="flex flex-col gap-2">
-				{#each data.caregivers as cg (cg.id)}
-					<div class="flex items-center gap-2">
-						<input
-							type="radio"
-							id={`device-${cg.id}`}
-							name="device-caregiver"
-							class="size-6"
-							checked={deviceCaregiverId === cg.id}
-							onchange={() => selectDeviceCaregiver(cg.id)}
-						/>
-						<label for={`device-${cg.id}`} class="min-h-12 py-2 text-ink">{cg.name}</label>
-					</div>
-				{/each}
+			<div class="border-border-hair flex flex-col gap-1 border-t pt-3">
+				<h3 class="text-section text-ink-muted uppercase">Cet appareil</h3>
+				<p class="text-ink-muted text-body">Qui utilise cet appareil ?</p>
+				<div class="flex flex-col">
+					{#each data.caregivers as cg (cg.id)}
+						<div class="flex items-center gap-2">
+							<input
+								type="radio"
+								id={`device-${cg.id}`}
+								name="device-caregiver"
+								class="size-6"
+								checked={deviceCaregiverId === cg.id}
+								onchange={() => selectDeviceCaregiver(cg.id)}
+							/>
+							<label for={`device-${cg.id}`} class="text-ink min-h-12 flex-1 py-3">{cg.name}</label>
+						</div>
+					{/each}
+				</div>
 			</div>
-		</Card.Content>
-	</Card.Root>
+		</section>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Unité</Card.Title></Card.Header>
-		<Card.Content class="flex flex-col gap-2">
-			<div class="flex gap-2">
-				<Button
-					type="button"
-					class="min-h-12"
-					disabled={volumeUnitPending}
-					variant={volumeUnit === 'ml' ? 'default' : 'outline'}
-					onclick={() => setVolumeUnit('ml')}>ml</Button
+		<section class="flex flex-col gap-3 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Sécurité</h2>
+
+			<div class="flex items-center justify-between gap-4">
+				<span class="text-value text-ink">Code PIN {pinEnabled ? 'activé' : 'désactivé'}</span>
+				<!-- Visual state indicator only — enabling/disabling goes through the
+				     forms below, which require the current code. -->
+				<span
+					class="border-border flex h-6 w-11 shrink-0 items-center border-2 px-0.5 {pinEnabled
+						? 'bg-primary justify-end'
+						: 'bg-surface justify-start'}"
+					aria-hidden="true"
 				>
-				<Button
-					type="button"
-					class="min-h-12"
-					disabled={volumeUnitPending}
-					variant={volumeUnit === 'oz' ? 'default' : 'outline'}
-					onclick={() => setVolumeUnit('oz')}>oz</Button
-				>
+					<span class="size-4 {pinEnabled ? 'bg-on-primary' : 'bg-ink-muted'}"></span>
+				</span>
 			</div>
-			{#if volumeUnitError}<p class="text-sm text-danger">{volumeUnitError}</p>{/if}
-		</Card.Content>
-	</Card.Root>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Thème</Card.Title></Card.Header>
-		<Card.Content class="flex flex-col gap-2">
-			<div class="flex gap-2">
-				<Button
-					type="button"
-					class="min-h-12"
-					variant={theme === 'light' ? 'default' : 'outline'}
-					onclick={() => setTheme('light')}>Clair</Button
-				>
-				<Button
-					type="button"
-					class="min-h-12"
-					variant={theme === 'dark' ? 'default' : 'outline'}
-					onclick={() => setTheme('dark')}>Sombre</Button
-				>
-				<Button
-					type="button"
-					class="min-h-12"
-					variant={theme === 'auto' ? 'default' : 'outline'}
-					onclick={() => setTheme('auto')}>Auto</Button
-				>
-			</div>
-			{#if themeError}<p class="text-sm text-danger">{themeError}</p>{/if}
-		</Card.Content>
-	</Card.Root>
-
-	<Card.Root>
-		<Card.Header><Card.Title>Code PIN</Card.Title></Card.Header>
-		<Card.Content class="flex flex-col gap-4">
 			{#if pinEnabled}
-				<form class="flex flex-col gap-2" onsubmit={enablePin}>
+				<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={enablePin}>
 					<p class="text-ink-muted">Changer le code</p>
 					<Label for="current-pin">Code actuel</Label>
 					<Input
@@ -435,7 +489,7 @@
 					/>
 					<Button type="submit" class="min-h-12">Changer le code</Button>
 				</form>
-				<form class="flex flex-col gap-2" onsubmit={disablePin}>
+				<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={disablePin}>
 					<Label for="disable-current-pin">Code actuel (pour désactiver)</Label>
 					<Input
 						id="disable-current-pin"
@@ -448,7 +502,7 @@
 					<Button type="submit" variant="destructive" class="min-h-12">Désactiver le code PIN</Button>
 				</form>
 			{:else}
-				<form class="flex flex-col gap-2" onsubmit={enablePin}>
+				<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={enablePin}>
 					<Label for="new-pin">Nouveau code (4 à 8 chiffres)</Label>
 					<Input
 						id="new-pin"
@@ -470,34 +524,65 @@
 					<Button type="submit" class="min-h-12">Activer le code PIN</Button>
 				</form>
 			{/if}
-			{#if pinError}<p class="text-sm text-danger">{pinError}</p>{/if}
-			{#if pinMessage}<p class="text-sm text-ink-muted">{pinMessage}</p>{/if}
-		</Card.Content>
-	</Card.Root>
+			{#if pinError}<p class="text-danger text-sm">{pinError}</p>{/if}
+			{#if pinMessage}<p class="text-ink-muted text-sm">{pinMessage}</p>{/if}
+		</section>
 
-	<Card.Root>
-		<Card.Header><Card.Title>Données</Card.Title></Card.Header>
-		<Card.Content class="flex flex-col gap-2">
-			<Button href="/api/export/json" download class="min-h-12">Exporter JSON</Button>
-			<Button href="/api/export/csv" download class="min-h-12">Exporter CSV</Button>
-			<Button href="/api/backup" download class="min-h-12">Télécharger une sauvegarde</Button>
-			<!-- The native file input is visually hidden (its "Choose file / No file
-			     chosen" widget is browser-chrome English): the styled button opens it. -->
-			<input
-				bind:this={restoreInput}
-				id="restore-file"
-				type="file"
-				accept=".json"
-				class="sr-only"
-				tabindex="-1"
-				aria-hidden="true"
-				onchange={restoreFile}
-			/>
-			<Button variant="outline" class="min-h-12" onclick={() => restoreInput?.click()}
-				>Restaurer depuis un fichier…</Button
-			>
-			{#if restoreError}<p class="text-sm text-danger">{restoreError}</p>{/if}
-			{#if restoreMessage}<p class="text-sm text-ink-muted">{restoreMessage}</p>{/if}
-		</Card.Content>
-	</Card.Root>
+		<section class="flex flex-col gap-3 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Vos données</h2>
+			<div class="grid grid-cols-2 gap-2.5">
+				<Button href="/api/export/json" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					>Exporter JSON</Button
+				>
+				<Button href="/api/export/csv" download variant="outline" class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					>Exporter CSV</Button
+				>
+				<Button
+					variant="outline"
+					disabled={backupPending}
+					onclick={downloadBackup}
+					class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					>Télécharger une sauvegarde</Button
+				>
+				<!-- The native file input is visually hidden (its "Choose file / No file
+				     chosen" widget is browser-chrome English): the styled button opens it. -->
+				<input
+					bind:this={restoreInput}
+					id="restore-file"
+					type="file"
+					accept=".json"
+					class="sr-only"
+					tabindex="-1"
+					aria-hidden="true"
+					onchange={restoreFile}
+				/>
+				<Button
+					variant="outline"
+					class="text-primary-text h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					onclick={() => restoreInput?.click()}>Restaurer depuis un fichier…</Button
+				>
+			</div>
+			{#if backupError}<p class="text-danger text-sm">{backupError}</p>{/if}
+			{#if restoreError}<p class="text-danger text-sm">{restoreError}</p>{/if}
+			{#if restoreMessage}<p class="text-ink-muted text-sm">{restoreMessage}</p>{/if}
+		</section>
+
+		<section class="flex flex-col gap-1 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Ce serveur</h2>
+			<dl class="divide-border-hair divide-y">
+				<div class="flex items-baseline justify-between gap-4 py-2">
+					<dt class="text-label text-ink-label">Adresse</dt>
+					<dd class="text-value text-ink truncate tabular-nums">{data.serverInfo.address}</dd>
+				</div>
+				<div class="flex items-baseline justify-between gap-4 py-2">
+					<dt class="text-label text-ink-label">Appareils connectés</dt>
+					<dd class="text-value text-ink tabular-nums">{data.serverInfo.connectedDevices}</dd>
+				</div>
+				<div class="flex items-baseline justify-between gap-4 py-2">
+					<dt class="text-label text-ink-label">Dernière sauvegarde</dt>
+					<dd class="text-value text-ink tabular-nums">{lastBackupLabel}</dd>
+				</div>
+			</dl>
+		</section>
+	</div>
 </div>

@@ -193,7 +193,7 @@
      lets bits-ui close itself even when the dirty-guard refuses. -->
 <Sheet.Root bind:open={() => open, handleOpenChange}>
 	<Sheet.Content side="bottom">
-		<Sheet.Header>
+		<Sheet.Header class="border-border border-b-2">
 			<Sheet.Title>Ajouter une entrée</Sheet.Title>
 		</Sheet.Header>
 		<div class="flex flex-col gap-4 px-4 pb-4">
@@ -207,7 +207,7 @@
 						<button
 							type="button"
 							onclick={() => (selectedType = t.value)}
-							class="border-border bg-surface-raised text-ink flex min-h-12 items-center justify-center gap-2 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100"
+							class="border-border bg-surface-raised text-ink flex min-h-12 items-center justify-center gap-2 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0"
 						>
 							<t.icon size={18} aria-hidden="true" />
 							{t.label}
@@ -222,7 +222,7 @@
 						type="datetime-local"
 						bind:value={startedAt}
 						aria-invalid={startedAtError !== null}
-						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base {startedAtError
+						class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base {startedAtError
 							? 'border-danger'
 							: ''}"
 					/>
@@ -236,7 +236,7 @@
 							id="add-ended-at"
 							type="datetime-local"
 							bind:value={endedAt}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base"
 						/>
 					</div>
 				{/if}
@@ -250,7 +250,7 @@
 									type="button"
 									aria-pressed={milkType === option.value}
 									onclick={() => (milkType = option.value)}
-									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {milkType ===
+									class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {milkType ===
 									option.value
 										? 'border-feed-500 bg-feed-100 text-feed-700'
 										: 'border-border bg-surface-raised text-ink-muted'}"
@@ -267,7 +267,7 @@
 							inputmode="decimal"
 							bind:value={volumeMl}
 							aria-invalid={volumeError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums {volumeError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -284,7 +284,7 @@
 									type="button"
 									aria-pressed={pumpSide === option.value}
 									onclick={() => (pumpSide = option.value)}
-									class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pumpSide ===
+									class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {pumpSide ===
 									option.value
 										? 'border-feed-500 bg-feed-100 text-feed-700'
 										: 'border-border bg-surface-raised text-ink-muted'}"
@@ -301,7 +301,7 @@
 							inputmode="decimal"
 							bind:value={volumeMl}
 							aria-invalid={volumeError !== null}
-							class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums {volumeError
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums {volumeError
 								? 'border-danger'
 								: ''}"
 						/>
@@ -317,7 +317,7 @@
 								type="button"
 								aria-pressed={pee}
 								onclick={() => (pee = !pee)}
-								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {pee
+								class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {pee
 									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
 									: 'border-border bg-surface-raised text-ink-muted'}"
 							>
@@ -327,7 +327,7 @@
 								type="button"
 								aria-pressed={poo}
 								onclick={() => (poo = !poo)}
-								class="min-h-12 rounded-control border px-2 py-2 font-medium active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 {poo
+								class="min-h-12 rounded-control border-2 px-2 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {poo
 									? 'border-diaper-500 bg-diaper-100 text-diaper-700'
 									: 'border-border bg-surface-raised text-ink-muted'}"
 							>
@@ -345,7 +345,7 @@
 								id="add-left-min"
 								inputmode="numeric"
 								bind:value={leftMinutes}
-								class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums"
+								class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums"
 							/>
 						</div>
 						<div class="flex flex-col gap-2">
@@ -354,7 +354,7 @@
 								id="add-right-min"
 								inputmode="numeric"
 								bind:value={rightMinutes}
-								class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base tabular-nums"
+								class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base tabular-nums"
 							/>
 						</div>
 					</div>
@@ -366,7 +366,7 @@
 					<select
 						id="add-caregiver"
 						bind:value={caregiverId}
-						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+						class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base"
 					>
 						<option value="">Aucun</option>
 						{#each caregivers as cg (cg.id)}
@@ -380,7 +380,7 @@
 					<input
 						id="add-note"
 						bind:value={note}
-						class="border-border bg-surface-raised min-h-12 rounded-control border px-3 py-2 text-base"
+						class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base"
 					/>
 				</div>
 
@@ -388,7 +388,7 @@
 					type="button"
 					disabled={pending || babyId === null}
 					onclick={submit}
-					class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+					class="bg-primary text-on-primary flex min-h-12 items-center justify-center gap-2 rounded-control px-4 py-2 font-semibold active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
 				>
 					{#if pending}
 						<LoaderCircle size={18} class="animate-spin motion-reduce:animate-none" aria-hidden="true" />

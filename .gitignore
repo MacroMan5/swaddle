@@ -26,3 +26,4 @@ vite.config.ts.timestamp-*
 .playwright-data/
 .playwright-data-empty/
 test-results/
+.playwright-mcp/

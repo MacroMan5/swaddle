@@ -48,7 +48,7 @@
 <div
 	role="status"
 	aria-live="polite"
-	class="bg-surface-raised border-border text-ink shadow-card pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-card border px-4 py-3"
+	class="bg-surface-raised border-border text-ink shadow-md pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-card border px-4 py-3"
 >
 	<div class="flex items-center justify-between gap-3">
 		<span class="text-base">{message}</span>
@@ -56,7 +56,7 @@
 			type="button"
 			disabled={pending}
 			onclick={handleAction}
-			class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 text-base font-semibold active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:scale-100"
+			class="text-primary min-h-12 min-w-12 rounded-control px-3 py-2 text-base font-semibold active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
 		>
 			{pending ? 'Annulation…' : actionLabel}
 		</button>

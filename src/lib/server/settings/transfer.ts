@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import { insertEventRow, rowToDto, type EventRow } from '$lib/server/events/eventRow';
 import { RepoError } from '$lib/server/events/repo';
 import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
 import { isTimerType, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
@@ -19,41 +20,9 @@ export type SwaddleExport = {
 	events: EventDTO[];
 };
 
-type EventRow = {
-	id: string;
-	baby_id: string;
-	caregiver_id: string | null;
-	type: string;
-	started_at: string;
-	ended_at: string | null;
-	note: string | null;
-	details: string;
-	created_at: string;
-	updated_at: string;
-	deleted_at: string | null;
-};
-
-function rowToEventDto(row: EventRow): EventDTO {
-	return {
-		id: row.id,
-		babyId: row.baby_id,
-		caregiverId: row.caregiver_id,
-		type: row.type as EventDTO['type'],
-		startedAt: row.started_at,
-		endedAt: row.ended_at,
-		note: row.note,
-		details: JSON.parse(row.details) as EventDTO['details'],
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-		deletedAt: row.deleted_at
-	};
-}
-
 function listAllEvents(db: DB): EventDTO[] {
 	// Soft-deleted rows are included so a restore is lossless.
-	return (db.prepare('SELECT * FROM event ORDER BY created_at').all() as EventRow[]).map(
-		rowToEventDto
-	);
+	return (db.prepare('SELECT * FROM event ORDER BY created_at').all() as EventRow[]).map(rowToDto);
 }
 
 function listAllBabies(db: DB): BabyDTO[] {
@@ -302,24 +271,11 @@ export function importJson(
 		);
 		for (const c of caregivers) insertCaregiver.run(c.id, c.name, c.color, new Date().toISOString());
 
-		const insertEvent = db.prepare(
-			`INSERT INTO event (id, baby_id, caregiver_id, type, started_at, ended_at, note, details, created_at, updated_at, deleted_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		);
-		for (const e of events)
-			insertEvent.run(
-				e.id,
-				e.babyId,
-				e.caregiverId,
-				e.type,
-				e.startedAt,
-				e.endedAt,
-				e.note,
-				JSON.stringify(e.details),
-				e.createdAt,
-				e.updatedAt,
-				e.deletedAt
-			);
+		// Written verbatim (ids and timestamps included) so a restore reproduces
+		// the export exactly. The schema types `details` as `unknown`; it has
+		// just been checked against its event type by `validateGraph`, so the
+		// payload really is an `EventDTO` here.
+		for (const e of events) insertEventRow(db, e as EventDTO);
 	})();
 
 	return { babies: babies.length, caregivers: caregivers.length, events: events.length };

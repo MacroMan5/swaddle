@@ -5,7 +5,6 @@ import type {
 	CreateEventInput,
 	Details,
 	EventDTO,
-	EventType,
 	Issue,
 	PatchEventInput,
 	Side,
@@ -19,6 +18,7 @@ import {
 	validateDetailsContext,
 	validateEventTimes
 } from './types';
+import { rowToDto, type EventRow } from './eventRow';
 
 type DB = Database.Database;
 
@@ -36,36 +36,6 @@ export class RepoError extends Error {
 	) {
 		super(message);
 	}
-}
-
-type EventRow = {
-	id: string;
-	baby_id: string;
-	caregiver_id: string | null;
-	type: EventType;
-	started_at: string;
-	ended_at: string | null;
-	note: string | null;
-	details: string;
-	created_at: string;
-	updated_at: string;
-	deleted_at: string | null;
-};
-
-function rowToDto(row: EventRow): EventDTO {
-	return {
-		id: row.id,
-		babyId: row.baby_id,
-		caregiverId: row.caregiver_id,
-		type: row.type,
-		startedAt: row.started_at,
-		endedAt: row.ended_at,
-		note: row.note,
-		details: JSON.parse(row.details) as Details,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-		deletedAt: row.deleted_at
-	};
 }
 
 const nowIso = () => new Date().toISOString();

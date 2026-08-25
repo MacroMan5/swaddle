@@ -1,25 +1,44 @@
 import { z } from 'zod';
+import { detailsOf, EVENT_TYPES, isTimerType } from '$lib/shared/events';
+import type { DetailsByType, Details, EventType } from '$lib/shared/events';
 
-export const EVENT_TYPES = ['nursing', 'bottle', 'pump', 'diaper', 'sleep'] as const;
-export type EventType = (typeof EVENT_TYPES)[number];
-
-// Types driven by a timer; bottle and diaper are point events (endedAt null).
-export const TIMER_TYPES = ['nursing', 'pump', 'sleep'] as const;
-export type TimerType = (typeof TIMER_TYPES)[number];
+// The event vocabulary and the shape of `details` are defined once, in
+// `$lib/shared/events`; this module only adds the runtime validation of the
+// wire payloads on top of them.
+export {
+	EVENT_TYPES,
+	TIMER_TYPES,
+	POINT_TYPES,
+	isTimerType,
+	isPointType,
+	isType,
+	detailsOf
+} from '$lib/shared/events';
+export type {
+	EventType,
+	TimerType,
+	PointType,
+	Side,
+	PumpSide,
+	MilkType,
+	NursingSegment,
+	DetailsByType,
+	Details,
+	EventDTO,
+	TypedEvent
+} from '$lib/shared/events';
 
 export const MAX_FUTURE_MS = 5 * 60 * 1000; // FR-017 / DEC-002
 
 const isoDatetime = z.iso.datetime();
 const volumeMl = z.number().min(1).max(1000); // FR-017: [1, 1000] ml
 const side = z.enum(['left', 'right']);
-export type Side = z.infer<typeof side>;
 
 const segment = z.object({
 	side,
 	startedAt: isoDatetime,
 	endedAt: isoDatetime.nullable()
 });
-export type NursingSegment = z.infer<typeof segment>;
 
 export const detailsSchemas = {
 	nursing: z.object({ segments: z.array(segment) }),
@@ -31,23 +50,18 @@ export const detailsSchemas = {
 	sleep: z.strictObject({})
 } as const;
 
-export type Details = {
-	[K in EventType]: z.infer<(typeof detailsSchemas)[K]>;
-}[EventType];
-
-export type EventDTO = {
-	id: string;
-	babyId: string;
-	caregiverId: string | null;
-	type: EventType;
-	startedAt: string;
-	endedAt: string | null;
-	note: string | null;
-	details: Details;
-	createdAt: string;
-	updatedAt: string;
-	deletedAt: string | null;
-};
+// Static concordance check: every schema above must still infer exactly the
+// hand-written type it validates, or the shared contract and the wire
+// validation have drifted apart. A mismatch is a compile error here, which is
+// the only place that can see both sides.
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _nursingMatches: Exact<z.infer<typeof detailsSchemas.nursing>, DetailsByType['nursing']> =
+	true;
+const _bottleMatches: Exact<z.infer<typeof detailsSchemas.bottle>, DetailsByType['bottle']> = true;
+const _pumpMatches: Exact<z.infer<typeof detailsSchemas.pump>, DetailsByType['pump']> = true;
+const _diaperMatches: Exact<z.infer<typeof detailsSchemas.diaper>, DetailsByType['diaper']> = true;
+const _sleepMatches: Exact<z.infer<typeof detailsSchemas.sleep>, DetailsByType['sleep']> = true;
+void [_nursingMatches, _bottleMatches, _pumpMatches, _diaperMatches, _sleepMatches];
 
 export type BabyDTO = { id: string; name: string; birthdate: string; timezone: string };
 
@@ -138,7 +152,7 @@ export function validateDetailsContext(
 	const maxTime = now.getTime() + MAX_FUTURE_MS;
 
 	if (e.type === 'nursing') {
-		const { segments } = e.details as { segments: NursingSegment[] };
+		const { segments } = detailsOf(e, 'nursing');
 		if (segments.length === 0)
 			issues.push({
 				path: 'details.segments',
@@ -212,7 +226,7 @@ export function validateDetailsContext(
 	// FR-004: the pumped volume is entered when the session ends; null is only
 	// legal while the timer is still running.
 	if (e.type === 'pump' && e.endedAt !== null) {
-		const { volumeMl } = e.details as { volumeMl: number | null };
+		const { volumeMl } = detailsOf(e, 'pump');
 		if (volumeMl === null)
 			issues.push({
 				path: 'details.volumeMl',
@@ -237,14 +251,14 @@ export function parseCreateEvent(input: unknown, now: Date): Result<CreateEventI
 	const { babyId, caregiverId, type, startedAt, endedAt, note, details } = parsed.data;
 	const issues: Issue[] = [];
 
-	const isTimerType = (TIMER_TYPES as readonly string[]).includes(type);
-	if (isTimerType && endedAt == null)
+	const timerType = isTimerType(type);
+	if (timerType && endedAt == null)
 		issues.push({
 			path: 'endedAt',
 			code: 'ended_at_required',
 			message: `a completed ${type} needs endedAt; use /api/timers for live sessions`
 		});
-	if (!isTimerType && endedAt != null)
+	if (!timerType && endedAt != null)
 		issues.push({
 			path: 'endedAt',
 			code: 'ended_at_forbidden',

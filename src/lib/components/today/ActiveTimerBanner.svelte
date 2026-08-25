@@ -8,7 +8,8 @@
 	import { nursingAction, stopTimer, ApiError } from '$lib/client/api';
 	import { formatClock, formatTimeOfDay, nursingDurationMs } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
-	import type { CaregiverDTO, EventDTO, NursingDetails } from '$lib/client/types';
+	import { detailsOf, isType } from '$lib/client/types';
+	import type { CaregiverDTO, EventDTO, Side } from '$lib/client/types';
 
 	let {
 		babyId,
@@ -36,18 +37,23 @@
 	}
 
 	function elapsedMs(event: EventDTO): number {
-		if (event.type === 'nursing')
-			return nursingDurationMs((event.details as NursingDetails).segments, store.nowMs);
+		if (isType(event, 'nursing'))
+			return nursingDurationMs(event.details.segments, store.nowMs);
 		return Math.max(0, store.nowMs - Date.parse(event.startedAt));
 	}
 
+	// Narrows instead of casting: these were reachable from any event type and
+	// only the template kept them honest.
 	function isPaused(event: EventDTO): boolean {
-		const segments = (event.details as NursingDetails).segments;
+		if (!isType(event, 'nursing')) return false;
+		const { segments } = event.details;
 		return segments.length > 0 && segments[segments.length - 1].endedAt !== null;
 	}
 
-	function currentSide(event: EventDTO): 'left' | 'right' {
-		const segments = (event.details as NursingDetails).segments;
+	// Only ever called on the nursing timer; `detailsOf` states that instead of
+	// leaving a cast to fail on an undefined field further down.
+	function currentSide(event: EventDTO): Side {
+		const { segments } = detailsOf(event, 'nursing');
 		return segments[segments.length - 1].side;
 	}
 

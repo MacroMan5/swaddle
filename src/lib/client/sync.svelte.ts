@@ -1,9 +1,8 @@
 import { getTimers, listTodayEvents } from './api';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
-import type { EventDTO, SnapshotMessage, SyncKind, SyncMessage, TimerType } from './types';
-
-const TIMER_TYPES: readonly TimerType[] = ['nursing', 'pump', 'sleep'];
+import { isTimerType } from './types';
+import type { EventDTO, SnapshotMessage, SyncKind, SyncMessage } from './types';
 
 /** A change relayed to non-today views. A `sync` message carries `event`; a
  * snapshot/reset (reconnect or data restore) has no single event to apply
@@ -15,11 +14,7 @@ const browser = typeof window !== 'undefined';
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
 
 function isActiveTimer(event: EventDTO): boolean {
-	return (
-		event.deletedAt === null &&
-		event.endedAt === null &&
-		TIMER_TYPES.includes(event.type as TimerType)
-	);
+	return event.deletedAt === null && event.endedAt === null && isTimerType(event.type);
 }
 
 /**

@@ -8,16 +8,13 @@
 	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
+	import { isType } from '$lib/client/types';
 	import type {
-		BottleDetails,
 		CaregiverDTO,
-		DiaperDetails,
 		Details,
 		EventDTO,
 		MilkType,
-		NursingDetails,
 		NursingSegment,
-		PumpDetails,
 		PumpSide,
 		Side
 	} from '$lib/client/types';
@@ -104,20 +101,20 @@
 		endedAtError = null;
 		volumeError = null;
 
-		if (event.type === 'bottle') {
-			const d = event.details as BottleDetails;
+		if (isType(event, 'bottle')) {
+			const d = event.details;
 			milkType = d.milkType;
 			volumeMl = String(d.volumeMl);
-		} else if (event.type === 'pump') {
-			const d = event.details as PumpDetails;
+		} else if (isType(event, 'pump')) {
+			const d = event.details;
 			pumpSide = d.side;
 			volumeMl = d.volumeMl === null ? '' : String(d.volumeMl);
-		} else if (event.type === 'diaper') {
-			const d = event.details as DiaperDetails;
+		} else if (isType(event, 'diaper')) {
+			const d = event.details;
 			pee = d.pee;
 			poo = d.poo;
-		} else if (event.type === 'nursing') {
-			const d = event.details as NursingDetails;
+		} else if (isType(event, 'nursing')) {
+			const d = event.details;
 			segments = d.segments.map((s) => ({
 				side: s.side,
 				startedAt: toLocalInputValue(new Date(Date.parse(s.startedAt))),

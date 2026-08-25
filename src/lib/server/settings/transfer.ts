@@ -3,8 +3,8 @@ import { dirname } from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { RepoError } from '$lib/server/events/repo';
-import type { BabyDTO, EventDTO, EventType, Issue } from '$lib/server/events/types';
-import { TIMER_TYPES, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
+import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
+import { isTimerType, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
@@ -138,10 +138,6 @@ const exportSchema = z.object({
 });
 
 type ParsedExport = z.infer<typeof exportSchema>;
-
-function isTimerType(type: EventType): boolean {
-	return (TIMER_TYPES as readonly string[]).includes(type);
-}
 
 /**
  * Everything the schema alone can't catch: ids that must be unique within

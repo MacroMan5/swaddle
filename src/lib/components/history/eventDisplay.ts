@@ -7,13 +7,8 @@
 import { Baby, Droplets, Milk, Moon, Wind } from '@lucide/svelte';
 import { localDayKey } from '$lib/client/summaries';
 import { formatElapsed, nursingDurationMs } from '$lib/client/format';
-import type {
-	BottleDetails,
-	DiaperDetails,
-	EventDTO,
-	NursingDetails,
-	PumpDetails
-} from '$lib/client/types';
+import { detailsOf, isPointType, isType } from '$lib/client/types';
+import type { DiaperDetails, EventDTO, NursingDetails } from '$lib/client/types';
 
 export const ICONS = { nursing: Baby, bottle: Milk, pump: Wind, diaper: Droplets, sleep: Moon } as const;
 
@@ -49,7 +44,7 @@ export const BLOCK_TONES = {
 
 /** Bottle and diaper happen at an instant: they never have a duration. */
 export function isPointEvent(event: EventDTO): boolean {
-	return event.type === 'bottle' || event.type === 'diaper';
+	return isPointType(event.type);
 }
 
 /** End of a durational event, bounding a still-running timer at `nowMs`. */
@@ -101,28 +96,27 @@ export function nursingSides(details: NursingDetails): string {
 
 /** Duration of a durational event; nursing excludes paused time (DEC-001). */
 export function durationMs(event: EventDTO, nowMs: number): number {
-	if (event.type === 'nursing')
-		return nursingDurationMs((event.details as NursingDetails).segments, nowMs);
+	if (isType(event, 'nursing')) return nursingDurationMs(event.details.segments, nowMs);
 	return Math.max(0, effectiveEndMs(event, nowMs) - Date.parse(event.startedAt));
 }
 
 /** One-line description, without the time — the time is rendered separately. */
 export function eventLabel(event: EventDTO, nowMs: number): string {
+	// Kept as a switch on `type`: it is the only shape TypeScript checks for
+	// exhaustiveness, so a sixth event type breaks the build here instead of
+	// silently rendering nothing. Inside a case the type is settled, which is
+	// exactly `detailsOf`'s precondition.
 	switch (event.type) {
-		case 'bottle': {
-			const d = event.details as BottleDetails;
-			return `Biberon · ${d.volumeMl} ml`;
-		}
-		case 'nursing': {
-			const d = event.details as NursingDetails;
-			return `Allaitement · ${formatElapsed(durationMs(event, nowMs))} · ${nursingSides(d)}`;
-		}
+		case 'bottle':
+			return `Biberon · ${detailsOf(event, 'bottle').volumeMl} ml`;
+		case 'nursing':
+			return `Allaitement · ${formatElapsed(durationMs(event, nowMs))} · ${nursingSides(detailsOf(event, 'nursing'))}`;
 		case 'pump': {
-			const d = event.details as PumpDetails;
-			return d.volumeMl === null ? 'Tire-lait · en cours' : `Tire-lait · ${d.volumeMl} ml`;
+			const { volumeMl } = detailsOf(event, 'pump');
+			return volumeMl === null ? 'Tire-lait · en cours' : `Tire-lait · ${volumeMl} ml`;
 		}
 		case 'diaper':
-			return `Couche · ${diaperLabel(event.details as DiaperDetails)}`;
+			return `Couche · ${diaperLabel(detailsOf(event, 'diaper'))}`;
 		case 'sleep':
 			return `Sommeil · ${formatElapsed(durationMs(event, nowMs))}`;
 	}

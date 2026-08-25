@@ -7,7 +7,7 @@
 	import { LoaderCircle } from '@lucide/svelte';
 	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
-	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
 	import type {
@@ -195,7 +195,7 @@
 					event.type === 'bottle'
 						? { milkType, volumeMl: Number(volumeMl) }
 						: event.type === 'pump'
-							? { side: pumpSide, volumeMl: volumeMl === '' ? null : Number(volumeMl) }
+							? { side: pumpSide, volumeMl: parsePumpVolumeMl(volumeMl) }
 							: event.type === 'diaper'
 								? { pee, poo }
 								: {};

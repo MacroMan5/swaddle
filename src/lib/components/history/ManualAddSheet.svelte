@@ -6,7 +6,7 @@
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
 	import { ApiError, createEvent } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
-	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
 		CaregiverDTO,
@@ -153,7 +153,9 @@
 			} else if (selectedType === 'bottle') {
 				details = { milkType, volumeMl: Number(volumeMl) };
 			} else if (selectedType === 'pump') {
-				details = { side: pumpSide, volumeMl: Number(volumeMl) };
+				// '' -> null (issue #36), not Number('') === 0: same rule as
+				// EventEditSheet, see parsePumpVolumeMl.
+				details = { side: pumpSide, volumeMl: parsePumpVolumeMl(volumeMl) };
 				end = fromLocalInputValue(endedAt);
 			} else if (selectedType === 'diaper') {
 				details = { pee, poo };

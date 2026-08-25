@@ -6,6 +6,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
 	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
+	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
@@ -13,6 +14,7 @@
 		CaregiverDTO,
 		Details,
 		EventDTO,
+		Issue,
 		MilkType,
 		NursingSegment,
 		PumpSide,
@@ -140,24 +142,26 @@
 		open = next;
 	}
 
-	function applyIssues(issues: { path: string; message: string }[]): void {
+	function applyIssues(issues: Issue[]): void {
 		for (const issue of issues) {
 			// details.segments.<i>[...] — route to that segment row (review item 7),
 			// e.g. an overlap, out-of-order, or out-of-bounds segment.
 			const segmentMatch = issue.path.match(/^details\.segments\.(\d+)/);
 			if (segmentMatch) {
 				const index = Number(segmentMatch[1]);
-				segments = segments.map((s, i) => (i === index ? { ...s, error: issue.message } : s));
+				segments = segments.map((s, i) =>
+					i === index ? { ...s, error: fieldMessage(issue) } : s
+				);
 				continue;
 			}
 			if (issue.path === 'details.segments') {
-				formError = issue.message;
+				formError = fieldMessage(issue);
 				continue;
 			}
-			if (issue.path.endsWith('startedAt')) startedAtError = issue.message;
-			else if (issue.path.endsWith('endedAt')) endedAtError = issue.message;
-			else if (issue.path.endsWith('volumeMl')) volumeError = issue.message;
-			else formError = issue.message;
+			if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue);
+			else if (issue.path.endsWith('endedAt')) endedAtError = fieldMessage(issue);
+			else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
+			else formError = fieldMessage(issue);
 		}
 	}
 

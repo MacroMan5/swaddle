@@ -6,14 +6,18 @@ export default defineConfig({
 	workers: 1,
 	webServer: [
 		{
-			command: 'npm run build && node server.js',
+			// The production build is produced by the `test:e2e` npm script
+			// before Playwright starts: both servers boot concurrently, so
+			// building here would race the second server against the adapter
+			// clearing `build/` mid-write.
+			command: 'node server.js',
 			cwd: '../..',
 			port: 3000,
 			env: { DATA_DIR: '.playwright-data' },
 			reuseExistingServer: false
 		},
 		{
-			// Reuses the build produced by the first server; starts on an empty
+			// Same prebuilt output; starts on an empty
 			// data dir so the onboarding wizard (AC-008) sees a fresh install.
 			command: 'node server.js',
 			cwd: '../..',

@@ -23,8 +23,10 @@ que l'application sert — pages, JSON, SSE, téléchargements :
 `x-frame-options: DENY`, `cross-origin-opener-policy: same-origin`,
 `cross-origin-resource-policy: same-origin`, et `cache-control: no-store`
 sauf si la réponse a déjà choisi sa politique (`/api/stream` garde
-`no-cache`). Les assets immuables `/_app/immutable/` sont servis par
-adapter-node avant le hook et conservent leur cache long.
+`no-cache`). Les fichiers statiques (`/_app/immutable/`, `static/`) sont
+servis par adapter-node avant le hook : c'est `server.js`, le point d'entrée
+de production (`node server.js`, et non `node build`), qui leur pose les mêmes
+en-têtes — leur cache long, lui, reste intact.
 
 Les pages HTML portent en plus une `content-security-policy` same-origin
 (configurée dans `vite.config.ts`) : `script-src 'self' 'nonce-…'` — le nonce

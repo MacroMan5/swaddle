@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { getDb } from '$lib/server/db';
-import { apiError, handleRepoError, readJson } from '$lib/server/api';
+import { handler } from '$lib/server/http';
 import { nursingAction } from '$lib/server/events/repo';
 import { publish } from '$lib/server/events/broadcast';
 
@@ -12,16 +11,14 @@ const actionSchema = z.object({
 	side: z.enum(['left', 'right']).optional()
 });
 
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await readJson(request);
-	if (!body.ok) return apiError(400, 'validation_failed', 'invalid action payload', body.issues);
-	const parsed = actionSchema.safeParse(body.value);
-	if (!parsed.success) return apiError(400, 'validation_failed', 'invalid action payload');
-	try {
-		const event = nursingAction(getDb(), parsed.data);
+export const POST: RequestHandler = handler({
+	schema: actionSchema,
+	invalidMessage: 'invalid action payload',
+	// TODO: unify with the standard error contract (tracked outside this refactor)
+	detail: 'message',
+	run: ({ db, body }) => {
+		const event = nursingAction(db, body);
 		publish({ kind: 'updated', event });
 		return json(event);
-	} catch (e) {
-		return handleRepoError(e);
 	}
-};
+});

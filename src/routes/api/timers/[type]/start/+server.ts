@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { getDb } from '$lib/server/db';
-import { apiError, handleRepoError, readJson } from '$lib/server/api';
+import { apiError } from '$lib/server/api';
+import { handler } from '$lib/server/http';
 import { MAX_FUTURE_MS, TIMER_TYPES, type TimerType } from '$lib/server/events/types';
 import { startTimer } from '$lib/server/events/repo';
 import { publish } from '$lib/server/events/broadcast';
@@ -14,26 +14,29 @@ const startSchema = z.object({
 	startedAt: z.iso.datetime().optional()
 });
 
-export const POST: RequestHandler = async ({ params, request }) => {
-	if (!(TIMER_TYPES as readonly string[]).includes(params.type))
-		return apiError(404, 'unknown_timer_type', `no timer type ${params.type}`);
-	const type = params.type as TimerType;
+const start = handler({
+	schema: startSchema,
+	invalidMessage: 'invalid start payload',
+	// TODO: unify with the standard error contract (tracked outside this refactor)
+	detail: 'message',
+	run: ({ db, body, params }) => {
+		const type = params.type as TimerType;
+		const { babyId, caregiverId, side, startedAt } = body;
+		if (type === 'nursing' && side === 'both')
+			return apiError(400, 'validation_failed', 'nursing side must be left or right');
+		if (startedAt && Date.parse(startedAt) > Date.now() + MAX_FUTURE_MS)
+			return apiError(400, 'validation_failed', 'startedAt is more than 5 minutes in the future');
 
-	const body = await readJson(request);
-	if (!body.ok) return apiError(400, 'validation_failed', 'invalid start payload', body.issues);
-	const parsed = startSchema.safeParse(body.value);
-	if (!parsed.success) return apiError(400, 'validation_failed', 'invalid start payload');
-	const { babyId, caregiverId, side, startedAt } = parsed.data;
-	if (type === 'nursing' && side === 'both')
-		return apiError(400, 'validation_failed', 'nursing side must be left or right');
-	if (startedAt && Date.parse(startedAt) > Date.now() + MAX_FUTURE_MS)
-		return apiError(400, 'validation_failed', 'startedAt is more than 5 minutes in the future');
-
-	try {
-		const { created, event } = startTimer(getDb(), { type, babyId, caregiverId, side, startedAt });
+		const { created, event } = startTimer(db, { type, babyId, caregiverId, side, startedAt });
 		if (created) publish({ kind: 'created', event });
 		return json({ created, event }, { status: created ? 201 : 200 });
-	} catch (e) {
-		return handleRepoError(e);
 	}
+});
+
+// The unknown-type 404 answers before the body is even read, so it wraps the
+// handler instead of living inside it.
+export const POST: RequestHandler = (event) => {
+	if (!(TIMER_TYPES as readonly string[]).includes(event.params.type))
+		return apiError(404, 'unknown_timer_type', `no timer type ${event.params.type}`);
+	return start(event);
 };

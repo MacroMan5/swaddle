@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
-import { getDb } from '$lib/server/db';
+import { handler } from '$lib/server/http';
 import { isSetupComplete } from '$lib/server/setup';
 
-export function GET() {
-	return json({ status: 'ok', setupComplete: isSetupComplete(getDb()) });
-}
+export const GET = handler({
+	run: ({ db }) => json({ status: 'ok', setupComplete: isSetupComplete(db) })
+});

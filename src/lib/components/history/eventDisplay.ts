@@ -35,11 +35,11 @@ export const BLOCK_BARS = {
 /** Calendar block fill, border and text once there is room for a label — a
  * light tint keeps that label readable (NFR-008: one token trio per category). */
 export const BLOCK_TONES = {
-	nursing: 'bg-feed-100 border-feed-500 text-feed-700',
-	bottle: 'bg-feed-100 border-feed-500 text-feed-700',
-	pump: 'bg-feed-100 border-feed-500 text-feed-700',
-	diaper: 'bg-diaper-100 border-diaper-500 text-diaper-700',
-	sleep: 'bg-sleep-100 border-sleep-500 text-sleep-700'
+	nursing: 'bg-feed-100 border-feed-500 border-l-feed-700 text-feed-700',
+	bottle: 'bg-feed-100 border-feed-500 border-l-feed-700 text-feed-700',
+	pump: 'bg-feed-100 border-feed-500 border-l-feed-700 text-feed-700',
+	diaper: 'bg-diaper-100 border-diaper-500 border-l-diaper-700 text-diaper-700',
+	sleep: 'bg-sleep-100 border-sleep-500 border-l-sleep-700 text-sleep-700'
 } as const;
 
 /** Bottle and diaper happen at an instant: they never have a duration. */

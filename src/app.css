@@ -198,9 +198,9 @@
 	/* Overlay scrim: stays a fixed dark neutral in both themes — it dims the page
 	   behind a sheet/dialog, it is not a themed surface. */
 	--scrim: #0f0f14;
-	--feed-100: #fef3c7;
-	--feed-500: #f59e0b;
-	--feed-700: #8a3f07;
+	--feed-100: #ffe8d9;
+	--feed-500: #f97316;
+	--feed-700: #9a3412;
 	--diaper-100: #ccfbf1;
 	--diaper-500: #14b8a6;
 	--diaper-700: #0b5b55;
@@ -248,9 +248,9 @@
 	--on-primary: #2b0b1b;
 	--accent: #38bdf8;
 	--danger: #f87171;
-	--feed-100: #3a2a12;
-	--feed-500: #f59e0b;
-	--feed-700: #fbbf24;
+	--feed-100: #3b2114;
+	--feed-500: #f97316;
+	--feed-700: #fb923c;
 	--diaper-100: #123230;
 	--diaper-500: #2dd4bf;
 	--diaper-700: #2dd4bf;

@@ -4,7 +4,7 @@
 export const CAREGIVER_COLORS: string[] = [
 	'#DB2777',
 	'#0284C7',
-	'#F59E0B',
+	'#F97316',
 	'#14B8A6',
 	'#6366F1',
 	'#DC2626',
@@ -17,6 +17,8 @@ export const CAREGIVER_COLORS: string[] = [
 export const CAREGIVER_COLOR_NAMES: Record<string, string> = {
 	'#DB2777': 'Rose',
 	'#0284C7': 'Bleu',
+	'#F97316': 'Orange',
+	// Legacy swatch: caregivers picked before the theme dropped amber keep a name.
 	'#F59E0B': 'Ambre',
 	'#14B8A6': 'Turquoise',
 	'#6366F1': 'Indigo',

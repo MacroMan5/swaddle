@@ -14,6 +14,7 @@
 		"test:e2e": "npm run build && playwright test --config tests/e2e/playwright.config.ts"
 	},
 	"devDependencies": {
+		"@axe-core/playwright": "^4.13.0",
 		"@internationalized/date": "^3.12.3",
 		"@playwright/test": "^1.62.1",
 		"@sveltejs/adapter-node": "^5.5.7",

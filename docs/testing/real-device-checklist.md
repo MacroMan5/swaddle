@@ -1,4 +1,4 @@
-# Checklist manuel — appareils réels (issue #53)
+# Checklist manuel — appareils réels (issues #53, #54)
 
 La CI exécute désormais les parcours critiques dans Chromium et WebKit
 desktop (`tests/e2e/playwright.config.ts`), qui approchent Chrome Android et
@@ -70,6 +70,55 @@ Points d'entrée à vérifier, pas un audit d'accessibilité complet :
       qu'elle est ouverte et le restitue à la fermeture.
 - [ ] Le toast d'annulation (suppression, 5 s) est annoncé et son bouton
       « Annuler » atteignable avant l'expiration.
+
+## Ce que la CI couvre déjà (ne pas re-tester à la main)
+
+La vérification automatisée d'accessibilité (issue #54) couvre, dans Chromium
+et WebKit, ce qui suit — inutile de le rejouer manuellement, sauf pour
+confirmer le rendu réel :
+
+- Scan sémantique axe-core (WCAG 2.1 A/AA) sur Aujourd'hui, Historique,
+  Réglages, `/setup` et `/pin`, thèmes clair et sombre
+  (`tests/e2e/a11y-scan.spec.ts`).
+- Focus : ouverture/fermeture des feuilles, restitution du focus,
+  parcours clavier complet de la récupération « Supprimés récemment »
+  (`tests/e2e/a11y-interaction.spec.ts`).
+- Obstruction (barre de navigation fixe, toast), zoom 200 %, espacement du
+  texte (WCAG 1.4.12) et largeur 320 px (même fichier).
+
+Ce qui reste ci-dessous est, par construction, hors de portée d'un moteur
+desktop : matériel tactile, lecteurs d'écran réels, zones sécurisées.
+
+## Feuille de résultats
+
+À remplir **par un humain**, sur un vrai appareil. Une ligne par appareil et
+par parcours ; `Résultat` = `OK` / `KO #<issue>` / `N/A`. Ne rien pré-remplir :
+une case vide signifie « pas encore exécuté », pas « réussi ».
+
+**Appareil / OS / navigateur testé :** _______________________
+**Version de Swaddle (`/settings` → Ce serveur) :** _____________
+**Testeur :** _______________________
+
+| # | Section | Point vérifié | Résultat | Date | Notes / ticket |
+| - | ------- | ------------- | -------- | ---- | -------------- |
+| 1 | Parcours | Premier lancement (`/setup`) | | | |
+| 2 | Parcours | Aujourd'hui (tuiles, sélecteur, feuilles, minuteurs) | | | |
+| 3 | Parcours | Historique (jour, grille, édition, annulation, ajout) | | | |
+| 4 | Parcours | Réglages (aidants, unité, thème, restauration) | | | |
+| 5 | Parcours | Code PIN (verrouillage, code incorrect, session) | | | |
+| 6 | Tactile | Précision des cibles tactiles | | | |
+| 7 | Tactile | Pas de zoom involontaire à la mise au point | | | |
+| 8 | Tactile | Pas de double-déclenchement au tap | | | |
+| 9 | Tactile | Défilement de la grille horaire | | | |
+| 10 | Tactile | Feuilles : clavier système et tap extérieur | | | |
+| 11 | Zones sûres | Bandeau minuteur + bas d'écran atteignables | | | |
+| 12 | Zones sûres | Bas des feuilles au-dessus de l'inset | | | |
+| 13 | Zones sûres | Rotation accidentelle ne casse pas la mise en page | | | |
+| 14 | Lecteur d'écran | VoiceOver : Aujourd'hui annoncé intelligiblement | | | |
+| 15 | Lecteur d'écran | TalkBack : ordre de parcours logique | | | |
+| 16 | Lecteur d'écran | « Réessayer » annoncé comme alerte | | | |
+| 17 | Lecteur d'écran | Feuille : focus piégé puis restitué | | | |
+| 18 | Lecteur d'écran | Toast d'annulation annoncé et atteignable | | | |
 
 ## Notes
 

@@ -638,9 +638,15 @@
 								</div>
 							</form>
 						{:else}
-							<div class="flex items-center gap-3">
+							<!-- flex-wrap + a shrinkable name: at the 320 px floor the row's
+							     fixed parts (colour dot, Modifier, Supprimer) need more width
+							     than the card offers, and an unshrinkable `flex-1` name pushed
+							     Supprimer ~3 px past the viewport — a horizontal scrollbar and a
+							     partly off-screen control (WCAG 1.4.10). Wider viewports keep the
+							     single-line layout unchanged. -->
+							<div class="flex flex-wrap items-center gap-3">
 								<span class="size-3 shrink-0" style:background-color={cg.color}></span>
-								<span class="text-value text-ink flex-1">{cg.name}</span>
+								<span class="text-value text-ink min-w-0 flex-1 truncate">{cg.name}</span>
 								<Button
 									variant="outline"
 									class="min-h-12"

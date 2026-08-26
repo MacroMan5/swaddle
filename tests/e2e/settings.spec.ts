@@ -10,7 +10,7 @@ test('#46: correcting the baby profile shows pending, success and error states',
 	await page.getByLabel('Prénom').fill('Testine Corrigée');
 	await page.getByLabel('Date de naissance').fill('2026-07-28');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
-	await expect(page.getByText('Profil du bébé mis à jour.')).toBeVisible();
+	await expect(page.getByRole('status')).toHaveText('Profil du bébé mis à jour.');
 	await expect(page.getByText('Testine Corrigée · 2026-07-28')).toBeVisible();
 
 	// Survives a reload.
@@ -33,7 +33,12 @@ test('#46: correcting the baby profile shows pending, success and error states',
 	await page.getByRole('button', { name: /^Modifier Testine Corrigée$/ }).click();
 	await page.getByLabel('Prénom').fill('Nom rejeté');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
-	await expect(page.getByText('Certains champs sont invalides : name')).toBeVisible();
+	const babyAlert = page.getByRole('alert');
+	await expect(babyAlert).toHaveText('Certains champs sont invalides : name');
+	await expect(page.getByLabel('Prénom')).toHaveAttribute('aria-invalid', 'true');
+	const babyAlertId = await babyAlert.getAttribute('id');
+	expect(babyAlertId).toBeTruthy();
+	await expect(page.getByLabel('Prénom')).toHaveAttribute('aria-describedby', babyAlertId!);
 	await page.getByRole('button', { name: 'Annuler' }).click();
 	await expect(page.getByText('Testine Corrigée · 2026-07-28')).toBeVisible();
 	await page.unroute('**/api/babies/*');
@@ -49,41 +54,56 @@ test('#46: correcting the baby profile shows pending, success and error states',
 test('FR-011: caregivers, device, unit, theme and data controls', async ({ page }) => {
 	await page.goto('/settings');
 
-	// Aidants — add a caregiver.
+	// Aidants — add a caregiver; the success is announced via a polite status
+	// message even though the list update is the only visible confirmation
+	// (issue #52).
 	await page.getByLabel('Nom de l’aidant').fill('Mamie');
 	await page.getByRole('button', { name: 'Bleu' }).click();
 	await page.getByRole('button', { name: 'Ajouter un aidant' }).click();
 	await expect(page.getByRole('list').getByText('Mamie')).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: 'Aidant Mamie ajouté.' })).toBeAttached();
 
-	// Aidants — rename it inline.
+	// Aidants — rename it inline; also announced.
 	await page.getByRole('button', { name: 'Modifier Mamie' }).click();
 	await page.getByLabel('Nouveau nom pour Mamie').fill('Mamie Renommée');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
 	await expect(page.getByRole('list').getByText('Mamie Renommée')).toBeVisible();
 	await expect(page.getByRole('list').getByText('Mamie', { exact: true })).toHaveCount(0);
+	await expect(
+		page.getByRole('status').filter({ hasText: 'Aidant Mamie Renommée mis à jour.' })
+	).toBeAttached();
 
 	// Cet appareil — select the renamed caregiver as the device user.
 	await page.getByRole('radio', { name: 'Mamie Renommée' }).click();
 	const stored = await page.evaluate(() => localStorage.getItem('swaddle.caregiverId'));
 	expect(stored).toBeTruthy();
 
-	// Unité — switch to oz and back, checking it persists via a fresh GET.
+	// Unité — switch to oz and back, checking it persists via a fresh GET; each
+	// change announces a status (sr-only — the pressed button styling is the
+	// visible feedback, issue #52).
 	await page.getByRole('button', { name: 'oz', exact: true }).click();
 	await expect
 		.poll(async () => (await (await page.request.get('/api/household')).json()).volumeUnit)
 		.toBe('oz');
+	await expect(page.getByRole('status').filter({ hasText: 'Unité mise à jour : oz.' })).toBeAttached();
 	await page.getByRole('button', { name: 'ml', exact: true }).click();
 	await expect
 		.poll(async () => (await (await page.request.get('/api/household')).json()).volumeUnit)
 		.toBe('ml');
+	await expect(page.getByRole('status').filter({ hasText: 'Unité mise à jour : ml.' })).toBeAttached();
 
-	// Thème — Sombre applies the .dark class, Auto removes the forced choice.
+	// Thème — Sombre applies the .dark class, Auto removes the forced choice;
+	// the change is also announced (sr-only, issue #52).
 	await page.getByRole('button', { name: 'Sombre' }).click();
 	await expect(page.locator('html')).toHaveClass(/dark/);
+	await expect(
+		page.getByRole('status').filter({ hasText: 'Thème mis à jour : Sombre.' })
+	).toBeAttached();
 	await page.getByRole('button', { name: 'Auto' }).click();
 
 	// Thème — a failed save rolls back the optimistic class/localStorage change
-	// instead of presenting an unsaved theme as persistent.
+	// instead of presenting an unsaved theme as persistent, and the failure is
+	// announced as an alert exactly once, described by the triggering buttons.
 	await page.route('**/api/household', async (route) => {
 		if (route.request().method() === 'PATCH') {
 			await route.fulfill({
@@ -96,10 +116,18 @@ test('FR-011: caregivers, device, unit, theme and data controls', async ({ page 
 		await route.continue();
 	});
 	await page.getByRole('button', { name: 'Sombre' }).click();
-	await expect(page.getByText('Une erreur est survenue.')).toBeVisible();
+	const themeAlert = page.getByRole('alert').filter({ hasText: 'Une erreur est survenue.' });
+	await expect(themeAlert).toBeVisible();
+	await expect(themeAlert).toHaveCount(1);
 	await expect(page.locator('html')).not.toHaveClass(/dark/);
 	const storedTheme = await page.evaluate(() => localStorage.getItem('swaddle.theme'));
 	expect(storedTheme).toBe('auto');
+	const themeAlertId = await themeAlert.getAttribute('id');
+	expect(themeAlertId).toBeTruthy();
+	await expect(page.getByRole('button', { name: 'Sombre' })).toHaveAttribute(
+		'aria-describedby',
+		themeAlertId!
+	);
 	await page.unroute('**/api/household');
 	const household = await (await page.request.get('/api/household')).json();
 	expect(household.theme).toBe('auto');
@@ -130,11 +158,14 @@ test('the Ce serveur block shows the address and connected device count', async 
 	await expect(section.getByText('Appareils connectés')).toBeVisible();
 	await expect(section.getByText('Dernière sauvegarde')).toBeVisible();
 
-	// Taking a backup refreshes the timestamp without a reload.
+	// Taking a backup refreshes the timestamp without a reload, and announces a
+	// (sr-only) success status — the download itself is the visible feedback
+	// (issue #52).
 	const download = page.waitForEvent('download');
 	await page.getByRole('button', { name: 'Télécharger une sauvegarde' }).click();
 	await download;
 	await expect(section).not.toContainText('jamais');
+	await expect(page.getByRole('status').filter({ hasText: 'Sauvegarde téléchargée.' })).toBeAttached();
 });
 
 test('#49: restoring a different unit/theme resyncs the visible controls without a reload, and survives one', async ({
@@ -197,8 +228,49 @@ test('#45: a file above the 10 Mo bound is refused without being read or sent', 
 		buffer: Buffer.from(`{"pad":"${'x'.repeat(11 * 1024 * 1024)}"}`)
 	});
 
-	await expect(page.getByText('Fichier trop volumineux (10 Mo maximum).')).toBeVisible();
+	const restoreAlert = page.getByRole('alert').filter({ hasText: 'Fichier trop volumineux (10 Mo maximum).' });
+	await expect(restoreAlert).toBeVisible();
+	const restoreAlertId = await restoreAlert.getAttribute('id');
+	expect(restoreAlertId).toBeTruthy();
+	await expect(page.getByRole('button', { name: 'Restaurer depuis un fichier…' })).toHaveAttribute(
+		'aria-describedby',
+		restoreAlertId!
+	);
 	expect(posted).toHaveLength(0);
 	const after = await (await page.request.get('/api/export/json')).json();
 	expect(after.events).toEqual(before.events);
+});
+
+test('#52: repeated identical outcomes re-announce and focus stays put', async ({ page }) => {
+	await page.goto('/settings');
+
+	// Force the same PIN mismatch error twice in a row: identical text, but a
+	// screen reader must be told about it both times. Keying the live region
+	// on a nonce recreates the <p role="alert"> element each time, which is
+	// what forces the re-announcement (see LiveMessage.svelte).
+	await page.getByLabel('Nouveau code (4 à 8 chiffres)').fill('1234');
+	await page.getByLabel('Confirmer le code').fill('4321');
+	const enableButton = page.getByRole('button', { name: 'Activer le code PIN' });
+	await enableButton.focus();
+	await enableButton.click();
+
+	const pinAlert = page.getByRole('alert').filter({ hasText: 'Les deux codes ne correspondent pas.' });
+	await expect(pinAlert).toBeVisible();
+	await expect(page.getByLabel('Nouveau code (4 à 8 chiffres)')).toHaveAttribute('aria-invalid', 'true');
+	const pinAlertId = await pinAlert.getAttribute('id');
+	expect(pinAlertId).toBeTruthy();
+	await expect(page.getByLabel('Nouveau code (4 à 8 chiffres)')).toHaveAttribute(
+		'aria-describedby',
+		pinAlertId!
+	);
+	// Mark the current alert node so the next assertion can tell whether a new
+	// one replaced it.
+	await page.evaluate((id) => document.getElementById(id!)?.setAttribute('data-seen', '1'), pinAlertId);
+	// Focus stays on the button that triggered the outcome — no focus jump.
+	await expect(enableButton).toBeFocused();
+
+	await enableButton.click();
+	await expect(pinAlert).toBeVisible();
+	await expect(page.locator(`#${pinAlertId}[data-seen="1"]`)).toHaveCount(0);
+	await expect(enableButton).toBeFocused();
 });

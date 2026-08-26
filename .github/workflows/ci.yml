@@ -25,7 +25,11 @@ jobs:
       - run: npm run check
       - run: npm run test:unit
       - run: npx playwright install chromium
+      # Dedicated ports: the runner shares this machine with local dev/agent
+      # e2e runs that bind the default 3000/3001 (EADDRINUSE otherwise).
       - run: npm run test:e2e
+        env:
+          E2E_PORT_BASE: "3100"
       - run: docker build -t swaddle:ci .
       # Non-root smoke test: the image must run as an unprivileged uid and
       # still create/reopen the SQLite db on a host-mounted volume across a

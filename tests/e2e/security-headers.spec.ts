@@ -1,6 +1,8 @@
 import { expect, test, type APIResponse } from '@playwright/test';
 
-const B = 'http://localhost:3001';
+import { BASE_B } from './ports';
+
+const B = BASE_B;
 
 // Issue #55: every response the app produces carries the same-origin
 // defenses, and the private ones are non-cacheable. The CSP itself only

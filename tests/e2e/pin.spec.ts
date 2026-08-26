@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-const B = 'http://localhost:3001';
+import { BASE_B } from './ports';
+
+const B = BASE_B;
 
 // Runs on server B, after onboarding.spec.ts (alphabetical order under
 // workers: 1) has completed setup there.

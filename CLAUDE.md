@@ -72,6 +72,15 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   `/api/backup`, `/api/restore`, `/api/tokens[...]` (session PIN seulement),
   `/api/server-info` (bloc « Ce serveur », `serverInfo.ts`) —
   contrat détaillé dans `docs/api/settings-api.md`.
+- `src/lib/server/quick/` — saisie rapide par intention (ADR 0004, #98) :
+  `types.ts` (union zod discriminée sur `action` — `bottle`, `diaper`,
+  `sleep`, `nursing` ; `phrase` s'y ajoutera), `perform.ts`
+  (`performQuick(db, intent, ctx)` : résolution du bébé, bascule
+  démarrer/arrêter des minuteurs dans une transaction, attribution à l'aidant
+  du token, validation FR-017 par le domaine, `publish` SSE — `QuickError`
+  pour `ambiguous_baby`), `speech.ts` (phrases françaises pures, durées
+  parlées). Route `POST /api/quick` (adaptateur mince) — contrat détaillé
+  dans `docs/api/quick-api.md`.
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
   `gateDecision`. Le hook vérifie aussi le `Authorization: Bearer`

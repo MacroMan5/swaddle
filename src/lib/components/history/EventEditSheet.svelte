@@ -6,7 +6,7 @@
 	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
-	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
 	import { displayVolumeValue, editedVolumeEntry } from '$lib/client/volume';
@@ -27,17 +27,12 @@
 		open = $bindable(false),
 		event,
 		caregivers,
-		onSaved,
 		onDeleted
 	}: {
 		open?: boolean;
 		event: EventDTO | null;
 		caregivers: CaregiverDTO[];
-		// Confirmed HTTP responses are passed back so the caller can merge them
-		// directly into its own visible list (slice-3 pattern) — the caller must
-		// not rely solely on a background refetch/relay to reflect its own writes.
-		onSaved: (event: EventDTO) => void;
-		onDeleted: (event: EventDTO, message: string, onUndo: () => Promise<EventDTO>) => void;
+		onDeleted: (id: string, message: string, onUndo: () => Promise<void>) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -207,7 +202,6 @@
 		segments = segments.map((s) => ({ ...s, error: null }));
 
 		try {
-			let updated: EventDTO;
 			if (event.type === 'nursing') {
 				const built: NursingSegment[] = segments.map((s) => ({
 					side: s.side,
@@ -215,7 +209,7 @@
 					endedAt: s.endedAt === '' ? null : fromLocalInputValue(s.endedAt)
 				}));
 				const last = built[built.length - 1];
-				updated = await patchEvent(event.id, {
+				await store.changes.patch(event.id, {
 					caregiverId: caregiverId === '' ? null : caregiverId,
 					note: note.trim() === '' ? null : note,
 					startedAt: built[0]?.startedAt,
@@ -240,7 +234,7 @@
 							: event.type === 'diaper'
 								? { pee, poo }
 								: {};
-				updated = await patchEvent(event.id, {
+				await store.changes.patch(event.id, {
 					caregiverId: caregiverId === '' ? null : caregiverId,
 					note: note.trim() === '' ? null : note,
 					startedAt: fromLocalInputValue(startedAt),
@@ -248,9 +242,7 @@
 					details
 				});
 			}
-			store.applyServerEvent(updated);
 			open = false;
-			onSaved(updated);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) applyIssues(e.issues);
 			else formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
@@ -264,15 +256,12 @@
 		deleting = true;
 		formError = null;
 		try {
-			const deletedEvent = await deleteEvent(event.id);
-			store.applyServerEvent(deletedEvent, true);
+			await store.changes.delete(event.id);
 			const id = event.id;
 			open = false;
-			onDeleted(deletedEvent, 'Entrée supprimée', async () => {
+			onDeleted(id, 'Entrée supprimée', async () => {
 				try {
-					const restored = await restoreEvent(id);
-					store.applyServerEvent(restored);
-					return restored;
+					await store.changes.restore(id);
 				} catch (e) {
 					throw e instanceof ApiError && e.code === 'timer_conflict'
 						? new Error('Un minuteur du même type est déjà en cours.')

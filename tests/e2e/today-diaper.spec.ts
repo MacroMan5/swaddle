@@ -23,10 +23,12 @@ test('AC-001: one-touch diaper is recorded and undoable for 5 s', async ({ page,
 });
 
 test('the toast disappears by itself after 5 s', async ({ page }) => {
+	await page.clock.install();
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Caca', exact: true }).click();
 	await expect(page.getByRole('status')).toBeVisible();
-	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
+	await page.clock.runFor(5000);
+	await expect(page.getByRole('status')).toBeHidden();
 });
 
 test('a failed undo keeps the toast open with an error and allows retry (FR-018)', async ({

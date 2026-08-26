@@ -99,17 +99,16 @@ test('restoring a timer event surfaces the active-timer conflict (FR-013)', asyn
 	await request.post('/api/timers/sleep/stop', { data: { babyId: 'baby-1' } });
 });
 
-test('a slow initial load does not clobber a newer one triggered by a live delete (race guard)', async ({
+test('a slow initial load replays a live delete without refetching or clobbering it', async ({
 	page,
 	request
 }) => {
 	// RecentlyDeletedSheet has no component-level test harness in this repo
 	// (no @testing-library/svelte or equivalent — the only .svelte-adjacent
 	// unit tests are plain classes like historyWindow.svelte.ts), so this
-	// race is covered end-to-end instead: an artificially delayed first
-	// GET /api/events?deleted=1 response must not overwrite the list once a
-	// second, faster-resolving load (triggered by a live SSE 'deleted'
-	// message) has already landed.
+	// race is covered end-to-end instead: an artificially delayed
+	// GET /api/events?deleted=1 response must replay a live incremental delete
+	// rather than overwrite it or issue a defensive refetch.
 	const bottleId = async (volumeMl: number) => {
 		const res = await request.post('/api/events', {
 			data: {
@@ -143,13 +142,12 @@ test('a slow initial load does not clobber a newer one triggered by a live delet
 	await page.getByRole('button', { name: 'Supprimés récemment' }).click();
 
 	// Deleted while the sheet's slow initial fetch is still in flight; the SSE
-	// 'deleted' broadcast triggers a second, unblocked reload that resolves
-	// before the delayed first one.
+	// confirmation updates the list immediately and is buffered for replay.
 	const idB = await bottleId(163);
 	await request.delete(`/api/events/${idB}`);
 
 	const rowB = page.getByTestId('recently-deleted-row').filter({ hasText: '163' });
-	// The second (fresh) load lands first and shows B almost immediately.
+	// The incremental confirmation shows B almost immediately.
 	await expect(rowB).toBeVisible({ timeout: 3000 });
 
 	// `toBeVisible` only asserts B appeared *at some point* — it does not
@@ -158,4 +156,5 @@ test('a slow initial load does not clobber a newer one triggered by a live delet
 	// still there once that delayed response has had time to resolve (~800ms).
 	await page.waitForTimeout(1000);
 	await expect(rowB).toBeVisible();
+	expect(matched).toBe(1);
 });

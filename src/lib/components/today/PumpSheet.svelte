@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
-	import { startTimer, ApiError } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { PumpSide } from '$lib/client/types';
 
@@ -31,11 +31,7 @@
 		pending = true;
 		error = null;
 		try {
-			// {created:false} adopts an already-running session started elsewhere
-			// (item 6): merge it in immediately either way, since that path emits
-			// no SSE event.
-			const result = await startTimer('pump', { babyId, caregiverId, side });
-			store.applyServerEvent(result.event);
+			await store.changes.startTimer('pump', { babyId, caregiverId, side });
 			open = false;
 		} catch (e) {
 			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';

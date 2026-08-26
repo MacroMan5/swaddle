@@ -55,7 +55,7 @@
 				</div>
 			{/if}
 			{#if summary.bottle.count > 0}
-				<div class="flex items-baseline justify-between gap-4 py-2">
+				<div data-testid="bottle-summary" class="flex items-baseline justify-between gap-4 py-2">
 					<dt class="text-label text-ink-label">Biberon</dt>
 					<dd class="text-value text-ink tabular-nums">
 						{summary.bottle.count} · {formatVolume(summary.bottle.totalMl, unit)}

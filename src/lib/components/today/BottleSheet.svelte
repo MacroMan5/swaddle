@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
-	import { createEvent, deleteEvent, ApiError } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import {
 		formatVolumeValue,
@@ -115,7 +115,7 @@
 		const volumeMl = entry.status === 'ok' ? entry.volumeMl : NaN;
 		let event;
 		try {
-			event = await createEvent({
+			event = await store.changes.create({
 				babyId,
 				caregiverId,
 				type: 'bottle',
@@ -136,14 +136,11 @@
 			return;
 		}
 		pending = false;
-		// Merge the confirmed write immediately: correct even if SSE is down (item 6).
-		store.applyServerEvent(event);
 		localStorage.setItem('swaddle.lastMilkType', milkType);
 		open = false;
 		const savedEvent = event;
 		onSaved(savedEvent.id, 'Biberon enregistré', async () => {
-			const deleted = await deleteEvent(savedEvent.id);
-			store.applyServerEvent(deleted);
+			await store.changes.delete(savedEvent.id);
 		});
 	}
 </script>

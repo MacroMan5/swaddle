@@ -9,23 +9,20 @@
 	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle, RotateCcw } from '@lucide/svelte';
-	import { ApiError, listDeletedEvents, restoreEvent } from '$lib/client/api';
+	import { ApiError, listDeletedEvents } from '$lib/client/api';
+	import { upsert } from '$lib/client/eventList';
 	import { formatTimeOfDay } from '$lib/client/format';
 	import { eventLabel, typeLabel } from './eventDisplay';
+	import type { ConfirmedActivityChange } from '$lib/client/activityChanges';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 
 	let {
 		open = $bindable(false),
-		babyId,
-		onRestored
+		babyId
 	}: {
 		open?: boolean;
 		babyId: string | null;
-		// The confirmed restore response is passed back so the caller can merge it
-		// directly into its own visible list (slice-3 pattern), same as onSaved
-		// elsewhere in History.
-		onRestored: (event: EventDTO) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -46,6 +43,20 @@
 	// newer one and either drop a just-deleted event or resurrect one already
 	// restored (P2 review item 1).
 	let loadToken = 0;
+	let activeLoadToken: number | null = null;
+	let loadBuffer: ConfirmedActivityChange[] = [];
+
+	function sortByDeletedAtDesc(list: EventDTO[]): EventDTO[] {
+		return [...list].sort(
+			(a, b) =>
+				Date.parse(b.deletedAt ?? b.updatedAt) - Date.parse(a.deletedAt ?? a.updatedAt)
+		);
+	}
+
+	function applyChange(list: EventDTO[], change: ConfirmedActivityChange): EventDTO[] {
+		const keep = change.kind === 'deleted' || change.event.deletedAt !== null;
+		return upsert(list, change.event, keep, sortByDeletedAtDesc);
+	}
 
 	function deletedAtLabel(event: EventDTO): string {
 		const ms = Date.parse(event.deletedAt ?? event.updatedAt);
@@ -58,18 +69,26 @@
 	async function load(): Promise<void> {
 		if (babyId === null) return;
 		const token = ++loadToken;
+		activeLoadToken = token;
+		loadBuffer = [];
 		loading = true;
 		error = null;
 		try {
 			const fetched = await listDeletedEvents(babyId);
 			if (token !== loadToken) return; // superseded by a newer load
-			events = fetched;
+			let merged = sortByDeletedAtDesc(fetched);
+			for (const change of loadBuffer) merged = applyChange(merged, change);
+			events = merged;
 		} catch (e) {
 			if (token !== loadToken) return;
 			error =
 				e instanceof ApiError ? e.userMessage : 'Impossible de charger les éléments supprimés.';
 		} finally {
-			if (token === loadToken) loading = false;
+			if (token === loadToken) {
+				activeLoadToken = null;
+				loadBuffer = [];
+				loading = false;
+			}
 		}
 	}
 
@@ -83,9 +102,13 @@
 	onMount(() => {
 		unsubscribe = store.subscribeChanges((change) => {
 			if (!open) return;
-			if (change.kind === 'deleted' || change.kind === 'restored' || change.kind === 'reset') {
+			if (change.kind === 'reset') {
 				void load();
+				return;
 			}
+			if (babyId !== null && change.event.babyId !== babyId) return;
+			events = applyChange(events, change);
+			if (activeLoadToken === loadToken) loadBuffer.push(change);
 		});
 	});
 	onDestroy(() => unsubscribe?.());
@@ -95,10 +118,7 @@
 		restoringId = event.id;
 		rowErrors = { ...rowErrors, [event.id]: '' };
 		try {
-			const restored = await restoreEvent(event.id);
-			store.applyServerEvent(restored);
-			events = events.filter((e) => e.id !== event.id);
-			onRestored(restored);
+			await store.changes.restore(event.id);
 		} catch (e) {
 			const message = e instanceof ApiError ? e.userMessage : 'Impossible de restaurer.';
 			rowErrors = { ...rowErrors, [event.id]: message };

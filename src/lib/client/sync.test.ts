@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApiError, listTodayEvents, getTimers } from './api';
-import { SyncStore } from './sync.svelte';
+import { SyncStore, type ActivitySyncAdapter } from './sync.svelte';
+import type { ActivityChangeTransport } from './activityChanges';
 import type { EventDTO, SyncKind } from './types';
 
 vi.mock('./api', async () => {
@@ -47,13 +48,20 @@ function sync(kind: SyncKind, event: EventDTO, serverTime = NOW.toISOString()) {
 }
 
 let store: SyncStore;
+let adapter: ActivitySyncAdapter;
+
+function syncStore(transport?: ActivityChangeTransport): SyncStore {
+	return new SyncStore(transport, (ownedAdapter) => {
+		adapter = ownedAdapter;
+	});
+}
 
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(NOW);
 	vi.mocked(listTodayEvents).mockResolvedValue([]);
 	vi.mocked(getTimers).mockResolvedValue({ serverTime: NOW.toISOString(), timers: [] });
-	store = new SyncStore();
+	store = syncStore();
 	store.babyId = 'baby-1';
 });
 
@@ -65,13 +73,13 @@ afterEach(() => {
 
 describe('applyChange', () => {
 	it('inserts an event created today', () => {
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		expect(store.events.map((e) => e.id)).toEqual(['ev-1']);
 	});
 
 	it('ignores an event outside today', () => {
 		const yesterday = new Date(NOW.getTime() - 36 * 3_600_000).toISOString();
-		store.applyChange(sync('created', makeEvent({ startedAt: yesterday })));
+		adapter.change(sync('created', makeEvent({ startedAt: yesterday })));
 		expect(store.events).toHaveLength(0);
 	});
 
@@ -80,7 +88,7 @@ describe('applyChange', () => {
 		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
 		const endedAt = new Date(localMidnight.getTime() + 30 * 60_000).toISOString();
-		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		adapter.change(sync('created', sleepTimer({ startedAt, endedAt })));
 		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
 	});
 
@@ -88,7 +96,7 @@ describe('applyChange', () => {
 		const now = new Date(NOW.getTime());
 		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		const startedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
-		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt: null })));
+		adapter.change(sync('created', sleepTimer({ startedAt, endedAt: null })));
 		expect(store.events.map((e) => e.id)).toEqual(['timer-1']);
 	});
 
@@ -97,18 +105,18 @@ describe('applyChange', () => {
 		const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 		const startedAt = new Date(localMidnight.getTime() - 90 * 60_000).toISOString();
 		const endedAt = new Date(localMidnight.getTime() - 30 * 60_000).toISOString();
-		store.applyChange(sync('created', sleepTimer({ startedAt, endedAt })));
+		adapter.change(sync('created', sleepTimer({ startedAt, endedAt })));
 		expect(store.events).toHaveLength(0);
 	});
 
 	it('ignores events of another baby', () => {
-		store.applyChange(sync('created', makeEvent({ babyId: 'baby-2' })));
+		adapter.change(sync('created', makeEvent({ babyId: 'baby-2' })));
 		expect(store.events).toHaveLength(0);
 	});
 
 	it('upserts on update instead of duplicating', () => {
-		store.applyChange(sync('created', makeEvent()));
-		store.applyChange(
+		adapter.change(sync('created', makeEvent()));
+		adapter.change(
 			sync('updated', makeEvent({ note: 'beaucoup', updatedAt: new Date(NOW.getTime() + 1).toISOString() }))
 		);
 		expect(store.events).toHaveLength(1);
@@ -116,15 +124,15 @@ describe('applyChange', () => {
 	});
 
 	it('removes on delete and puts it back on restore', () => {
-		store.applyChange(sync('created', makeEvent()));
-		store.applyChange(
+		adapter.change(sync('created', makeEvent()));
+		adapter.change(
 			sync(
 				'deleted',
 				makeEvent({ deletedAt: NOW.toISOString(), updatedAt: new Date(NOW.getTime() + 1).toISOString() })
 			)
 		);
 		expect(store.events).toHaveLength(0);
-		store.applyChange(
+		adapter.change(
 			sync('restored', makeEvent({ updatedAt: new Date(NOW.getTime() + 2).toISOString() }))
 		);
 		expect(store.events.map((e) => e.id)).toEqual(['ev-1']);
@@ -132,18 +140,18 @@ describe('applyChange', () => {
 
 	it('keeps events sorted by startedAt descending', () => {
 		const older = new Date(NOW.getTime() - 3_600_000).toISOString();
-		store.applyChange(sync('created', makeEvent({ id: 'old', startedAt: older })));
-		store.applyChange(sync('created', makeEvent({ id: 'new' })));
+		adapter.change(sync('created', makeEvent({ id: 'old', startedAt: older })));
+		adapter.change(sync('created', makeEvent({ id: 'new' })));
 		expect(store.events.map((e) => e.id)).toEqual(['new', 'old']);
 	});
 });
 
 describe('timer membership', () => {
 	it('adds an active timer and drops it once endedAt is set', () => {
-		store.applyChange(sync('created', sleepTimer()));
+		adapter.change(sync('created', sleepTimer()));
 		expect(store.timers.map((t) => t.id)).toEqual(['timer-1']);
 
-		store.applyChange(
+		adapter.change(
 			sync(
 				'updated',
 				sleepTimer({ endedAt: NOW.toISOString(), updatedAt: new Date(NOW.getTime() + 1).toISOString() })
@@ -154,8 +162,8 @@ describe('timer membership', () => {
 	});
 
 	it('drops a deleted timer from both lists', () => {
-		store.applyChange(sync('created', sleepTimer()));
-		store.applyChange(
+		adapter.change(sync('created', sleepTimer()));
+		adapter.change(
 			sync(
 				'deleted',
 				sleepTimer({ deletedAt: NOW.toISOString(), updatedAt: new Date(NOW.getTime() + 1).toISOString() })
@@ -169,14 +177,14 @@ describe('timer membership', () => {
 describe('server time is authoritative (RISK-001)', () => {
 	it('derives the offset from a snapshot 30 s ahead of the client clock', () => {
 		const serverTime = new Date(NOW.getTime() + 30_000).toISOString();
-		store.applySnapshot({ serverTime, activeTimers: [sleepTimer()] });
+		adapter.snapshot({ serverTime, activeTimers: [sleepTimer()] });
 		expect(store.serverOffsetMs).toBe(30_000);
 		expect(store.nowMs).toBe(NOW.getTime() + 30_000);
 		expect(store.timers.map((t) => t.id)).toEqual(['timer-1']);
 	});
 
 	it('keeps refreshing the offset from sync messages', () => {
-		store.applyChange(sync('created', makeEvent(), new Date(NOW.getTime() - 5_000).toISOString()));
+		adapter.change(sync('created', makeEvent(), new Date(NOW.getTime() - 5_000).toISOString()));
 		expect(store.serverOffsetMs).toBe(-5_000);
 	});
 });
@@ -184,16 +192,16 @@ describe('server time is authoritative (RISK-001)', () => {
 describe('connectionState transitions (item 4)', () => {
 	it('starts connecting, goes connected on open, disconnected on error, connected again on a fresh snapshot', () => {
 		expect(store.connectionState).toBe('connecting');
-		store.handleOpen();
+		adapter.open();
 		expect(store.connectionState).toBe('connected');
-		store.handleError();
+		adapter.error();
 		expect(store.connectionState).toBe('disconnected');
-		store.applySnapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		adapter.snapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
 		expect(store.connectionState).toBe('connected');
 	});
 
 	it('reports disconnected on an initial failure too (no more "ever connected" suppression)', () => {
-		store.handleError();
+		adapter.error();
 		expect(store.connectionState).toBe('disconnected');
 	});
 });
@@ -201,7 +209,7 @@ describe('connectionState transitions (item 4)', () => {
 describe('applyReset (slice 5 data restore)', () => {
 	it('re-derives the offset like a snapshot, harmless when the server never sends it', () => {
 		const serverTime = new Date(NOW.getTime() + 10_000).toISOString();
-		store.applyReset({ serverTime });
+		adapter.reset({ serverTime });
 		expect(store.serverOffsetMs).toBe(10_000);
 		expect(store.nowMs).toBe(NOW.getTime() + 10_000);
 	});
@@ -226,14 +234,14 @@ describe('setBaby / applyBabyUpdate (#46 correction pushed live)', () => {
 	it('applyBabyUpdate replaces the stored baby and re-derives the offset', () => {
 		store.setBaby(baby());
 		const serverTime = new Date(NOW.getTime() + 5000).toISOString();
-		store.applyBabyUpdate({ baby: baby({ name: 'Corrigée', birthdate: '2026-07-28' }), serverTime });
+		adapter.baby({ baby: baby({ name: 'Corrigée', birthdate: '2026-07-28' }), serverTime });
 		expect(store.baby).toEqual(baby({ name: 'Corrigée', birthdate: '2026-07-28' }));
 		expect(store.serverOffsetMs).toBe(5000);
 	});
 
 	it('ignores an update for a different baby than the one this store is tracking', () => {
 		store.setBaby(baby());
-		store.applyBabyUpdate({
+		adapter.baby({
 			baby: baby({ id: 'baby-2', name: 'Autre' }),
 			serverTime: NOW.toISOString()
 		});
@@ -241,45 +249,41 @@ describe('setBaby / applyBabyUpdate (#46 correction pushed live)', () => {
 	});
 });
 
-describe('applyServerEvent (HTTP-response merge, item 6)', () => {
-	it('merges a confirmed write immediately, independent of SSE', () => {
-		store.applyServerEvent(makeEvent({ id: 'from-http' }));
-		expect(store.events.map((e) => e.id)).toEqual(['from-http']);
-	});
-
-	it('adopts an existing session returned by startTimer as {created:false, event} (no SSE for that path)', () => {
-		const existingSession = sleepTimer({ id: 'adopted' });
-		store.applyServerEvent(existingSession);
-		expect(store.timers.map((t) => t.id)).toEqual(['adopted']);
-	});
-
-	it('merges a confirmed sleep start immediately, same as nursing/pump (round-2 item 4)', () => {
-		const sleepStart = sleepTimer({ id: 'sleep-started' });
-		store.applyServerEvent(sleepStart);
-		expect(store.timers.map((t) => t.id)).toEqual(['sleep-started']);
-		expect(store.events.map((e) => e.id)).toEqual(['sleep-started']);
-	});
-});
-
-describe('idempotent upserts across HTTP/SSE races (item 5)', () => {
-	it('SSE-then-HTTP: a stale HTTP response arriving after a newer SSE change does not regress state', () => {
-		const older = makeEvent({ updatedAt: NOW.toISOString(), note: 'first' });
-		const newer = makeEvent({ updatedAt: new Date(NOW.getTime() + 1000).toISOString(), note: 'second' });
-		store.applyChange(sync('updated', newer));
-		store.applyServerEvent(older);
-		expect(store.events).toHaveLength(1);
-		expect(store.events[0].note).toBe('second');
-	});
-
-	it('HTTP-then-SSE: the confirming SSE message for the same mutation does not duplicate', () => {
-		const event = makeEvent({ updatedAt: NOW.toISOString() });
-		store.applyServerEvent(event);
-		store.applyChange(sync('created', event));
-		expect(store.events).toHaveLength(1);
-	});
-});
-
 describe('refreshEvents buffers a concurrent change onto the fetched baseline (item 1, round 2)', () => {
+	it('replays an HTTP-confirmed Activity change onto a refresh already in flight', async () => {
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise<EventDTO[]>((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+		const confirmed = makeEvent({ id: 'confirmed' });
+		const writes: ActivityChangeTransport = {
+			create: vi.fn().mockResolvedValue(confirmed),
+			patch: vi.fn(),
+			delete: vi.fn(),
+			restore: vi.fn(),
+			startTimer: vi.fn(),
+			stopTimer: vi.fn(),
+			nursingAction: vi.fn()
+		};
+		store.stop();
+		store = syncStore(writes);
+		store.babyId = 'baby-1';
+
+		const refresh = store.refreshEvents();
+		await store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		resolveFetch([makeEvent({ id: 'baseline' })]);
+		await refresh;
+
+		expect(store.events.map((event) => event.id).sort()).toEqual(['baseline', 'confirmed']);
+	});
+
 	it('keeps both the baseline and a change that arrived mid-flight, instead of discarding one', async () => {
 		let resolveFetch!: (events: EventDTO[]) => void;
 		const deferred = new Promise<EventDTO[]>((resolve) => {
@@ -288,7 +292,7 @@ describe('refreshEvents buffers a concurrent change onto the fetched baseline (i
 		vi.mocked(listTodayEvents).mockReturnValueOnce(deferred);
 
 		const refreshPromise = store.refreshEvents();
-		store.applyChange(sync('created', makeEvent({ id: 'fresh' })));
+		adapter.change(sync('created', makeEvent({ id: 'fresh' })));
 		resolveFetch([makeEvent({ id: 'baseline' })]);
 		await refreshPromise;
 
@@ -308,7 +312,7 @@ describe('refreshEvents buffers a concurrent change onto the fetched baseline (i
 		const newer = makeEvent({ updatedAt: new Date(NOW.getTime() + 1000).toISOString(), note: 'fresh' });
 
 		const refreshPromise = store.refreshEvents();
-		store.applyChange(sync('created', newer));
+		adapter.change(sync('created', newer));
 		resolveFetch([older]);
 		await refreshPromise;
 
@@ -393,7 +397,7 @@ describe('bootstrap loading/error/retry state (issue #47)', () => {
 	});
 
 	it('refreshTimers swallows a failure and keeps the current timers (SSE snapshots re-deliver them)', async () => {
-		store.applyServerEvent(sleepTimer());
+		adapter.change(sync('created', sleepTimer()));
 		vi.mocked(getTimers).mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
 		await expect(store.refreshTimers()).resolves.toBeUndefined();
@@ -436,7 +440,7 @@ describe('events refresh coalescing (issue #47)', () => {
 
 		const first = store.refreshEvents();
 		const second = store.refreshEvents();
-		store.applyChange(sync('created', makeEvent({ id: 'fresh' })));
+		adapter.change(sync('created', makeEvent({ id: 'fresh' })));
 		resolveFetch([makeEvent({ id: 'baseline' })]);
 		await Promise.all([first, second]);
 
@@ -535,7 +539,7 @@ describe('tick() and day rollover (item 3)', () => {
 		store.tick(); // establishes the pre-rollover baseline
 		// serverTime must match the faked clock: applyChange re-derives nowMs/offset
 		// from it, which would otherwise clobber the baseline just established above.
-		store.applyChange(
+		adapter.change(
 			sync('created', makeEvent({ id: 'yesterday' }), beforeMidnight.toISOString())
 		);
 		expect(store.events).toHaveLength(1);
@@ -556,8 +560,8 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		const received: { kind: string; event?: EventDTO }[] = [];
 		store.subscribeChanges((change) => received.push(change));
 
-		store.applyChange(sync('created', makeEvent()));
-		store.applyChange(sync('updated', makeEvent({ note: 'x', updatedAt: new Date(NOW.getTime() + 1).toISOString() })));
+		adapter.change(sync('created', makeEvent()));
+		adapter.change(sync('updated', makeEvent({ note: 'x', updatedAt: new Date(NOW.getTime() + 1).toISOString() })));
 
 		expect(received).toHaveLength(2);
 		expect(received[0].kind).toBe('created');
@@ -569,8 +573,8 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		const received: { kind: string }[] = [];
 		store.subscribeChanges((change) => received.push(change));
 
-		store.applySnapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
-		store.applyReset({ serverTime: NOW.toISOString() });
+		adapter.snapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		adapter.reset({ serverTime: NOW.toISOString() });
 
 		expect(received.map((c) => c.kind)).toEqual(['reset', 'reset']);
 	});
@@ -578,9 +582,9 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 	it('unsubscribe stops further notifications', () => {
 		const received: unknown[] = [];
 		const unsubscribe = store.subscribeChanges((change) => received.push(change));
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		unsubscribe();
-		store.applyChange(sync('created', makeEvent({ id: 'ev-2' })));
+		adapter.change(sync('created', makeEvent({ id: 'ev-2' })));
 		expect(received).toHaveLength(1);
 	});
 
@@ -591,7 +595,7 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		});
 		store.subscribeChanges((change) => received.push(change));
 
-		expect(() => store.applyChange(sync('created', makeEvent()))).not.toThrow();
+		expect(() => adapter.change(sync('created', makeEvent()))).not.toThrow();
 		expect(received).toHaveLength(1);
 	});
 
@@ -599,7 +603,7 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		const received: unknown[] = [];
 		store.subscribeChanges((change) => received.push(change));
 		store.stop();
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		expect(received).toHaveLength(0);
 	});
 
@@ -608,10 +612,10 @@ describe('subscribeChanges (relay for non-today views, e.g. history)', () => {
 		// where #alive is false — so a caller that subscribes in onMount() before
 		// awaiting listBabies()/start() must not have that subscription wiped.
 		const received: unknown[] = [];
-		const fresh = new SyncStore();
+		const fresh = syncStore();
 		fresh.subscribeChanges((change) => received.push(change));
 		fresh.start('baby-1');
-		fresh.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		expect(received).toHaveLength(1);
 		fresh.stop();
 	});
@@ -678,7 +682,10 @@ describe('start() idempotency and cleanup (browser path, item 1)', () => {
 		const { SyncStore: BrowserStore } = await import('./sync.svelte');
 		const { listTodayEvents: mockedListEvents, getTimers: mockedGetTimers } =
 			await import('./api');
-		const s = new BrowserStore();
+		let recovery!: ActivitySyncAdapter;
+		const s = new BrowserStore(undefined, (ownedAdapter) => {
+			recovery = ownedAdapter;
+		});
 		s.babyId = 'baby-1';
 
 		let resolveEvents!: (events: EventDTO[]) => void;
@@ -694,7 +701,7 @@ describe('start() idempotency and cleanup (browser path, item 1)', () => {
 			})
 		);
 
-		s.applyReset({ serverTime: NOW.toISOString() });
+		recovery.reset({ serverTime: NOW.toISOString() });
 
 		// Timers settle first — must commit even though the events fetch is still pending.
 		resolveTimers({ serverTime: NOW.toISOString(), timers: [sleepTimer({ id: 'restored-timer' })] });
@@ -708,6 +715,85 @@ describe('start() idempotency and cleanup (browser path, item 1)', () => {
 		await Promise.resolve();
 		expect(s.events.map((e) => e.id)).toEqual(['restored-event']);
 		expect(s.timers.map((t) => t.id)).toEqual(['restored-timer']);
+
+		s.stop();
+	});
+
+	it('applyReset starts fresh reads and ignores pre-reset responses that settle last', async () => {
+		vi.resetModules();
+		const { SyncStore: BrowserStore } = await import('./sync.svelte');
+		const { listTodayEvents: mockedListEvents, getTimers: mockedGetTimers } = await import('./api');
+		let recovery!: ActivitySyncAdapter;
+		const s = new BrowserStore(undefined, (ownedAdapter) => {
+			recovery = ownedAdapter;
+		});
+		s.babyId = 'baby-1';
+
+		let resolveStaleEvents!: (events: EventDTO[]) => void;
+		let resolveFreshEvents!: (events: EventDTO[]) => void;
+		let resolveStaleTimers!: (result: { serverTime: string; timers: EventDTO[] }) => void;
+		let resolveFreshTimers!: (result: { serverTime: string; timers: EventDTO[] }) => void;
+		vi.mocked(mockedListEvents)
+			.mockReturnValueOnce(new Promise((resolve) => (resolveStaleEvents = resolve)))
+			.mockReturnValueOnce(new Promise((resolve) => (resolveFreshEvents = resolve)));
+		vi.mocked(mockedGetTimers)
+			.mockReturnValueOnce(new Promise((resolve) => (resolveStaleTimers = resolve)))
+			.mockReturnValueOnce(new Promise((resolve) => (resolveFreshTimers = resolve)));
+
+		const staleEvents = s.refreshEvents();
+		const staleTimers = s.refreshTimers();
+		recovery.reset({ serverTime: NOW.toISOString() });
+
+		resolveFreshEvents([makeEvent({ id: 'fresh-event' })]);
+		resolveFreshTimers({ serverTime: NOW.toISOString(), timers: [sleepTimer({ id: 'fresh-timer' })] });
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+		expect(s.events.map((event) => event.id)).toEqual(['fresh-event']);
+		expect(s.timers.map((event) => event.id)).toEqual(['fresh-timer']);
+
+		resolveStaleEvents([makeEvent({ id: 'stale-event' })]);
+		resolveStaleTimers({ serverTime: NOW.toISOString(), timers: [sleepTimer({ id: 'stale-timer' })] });
+		await Promise.all([staleEvents, staleTimers]);
+		expect(s.events.map((event) => event.id)).toEqual(['fresh-event']);
+		expect(s.timers.map((event) => event.id)).toEqual(['fresh-timer']);
+
+		s.stop();
+	});
+
+	it('a reconnect snapshot starts a fresh events read and cannot be overwritten by stale reads', async () => {
+		vi.resetModules();
+		const { SyncStore: BrowserStore } = await import('./sync.svelte');
+		const { listTodayEvents: mockedListEvents, getTimers: mockedGetTimers } = await import('./api');
+		let recovery!: ActivitySyncAdapter;
+		const s = new BrowserStore(undefined, (ownedAdapter) => {
+			recovery = ownedAdapter;
+		});
+		s.babyId = 'baby-1';
+
+		let resolveStaleEvents!: (events: EventDTO[]) => void;
+		let resolveFreshEvents!: (events: EventDTO[]) => void;
+		let resolveStaleTimers!: (result: { serverTime: string; timers: EventDTO[] }) => void;
+		vi.mocked(mockedListEvents)
+			.mockReturnValueOnce(new Promise((resolve) => (resolveStaleEvents = resolve)))
+			.mockReturnValueOnce(new Promise((resolve) => (resolveFreshEvents = resolve)));
+		vi.mocked(mockedGetTimers).mockReturnValueOnce(new Promise((resolve) => (resolveStaleTimers = resolve)));
+
+		const staleEvents = s.refreshEvents();
+		const staleTimers = s.refreshTimers();
+		recovery.snapshot({
+			serverTime: NOW.toISOString(),
+			activeTimers: [sleepTimer({ id: 'snapshot-timer' })]
+		});
+
+		resolveFreshEvents([makeEvent({ id: 'fresh-event' })]);
+		for (let i = 0; i < 5; i++) await Promise.resolve();
+		expect(s.events.map((event) => event.id)).toEqual(['fresh-event']);
+		expect(s.timers.map((event) => event.id)).toEqual(['snapshot-timer']);
+
+		resolveStaleEvents([makeEvent({ id: 'stale-event' })]);
+		resolveStaleTimers({ serverTime: NOW.toISOString(), timers: [sleepTimer({ id: 'stale-timer' })] });
+		await Promise.all([staleEvents, staleTimers]);
+		expect(s.events.map((event) => event.id)).toEqual(['fresh-event']);
+		expect(s.timers.map((event) => event.id)).toEqual(['snapshot-timer']);
 
 		s.stop();
 	});

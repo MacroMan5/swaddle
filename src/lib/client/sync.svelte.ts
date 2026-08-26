@@ -7,7 +7,8 @@ import {
 	type ActivityChangeDelivery,
 	type ConfirmedActivityChange
 } from './activityChanges';
-import { sortByStartedAtDesc, upsert } from './eventList';
+import { BufferedFetch } from './bufferedFetch';
+import { isDeletion, sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
 import { isTimerType } from './types';
@@ -84,35 +85,23 @@ export class SyncStore {
 	#source: EventSource | null = null;
 	#tick: ReturnType<typeof setInterval> | null = null;
 	#alive = false;
-	/**
-	 * Bumped only by start()/stop() — identifies "this run" of the store. An
-	 * in-flight refreshEvents/refreshTimers snapshots it before the async fetch
-	 * and discards the response if it no longer matches, so a stale fetch never
-	 * lands after the store has been stopped or restarted for another baby.
-	 * Concurrent SSE/HTTP changes are handled separately below (buffering), not
-	 * by this counter, so events and timers no longer invalidate each other.
-	 */
-	#generation = 0;
-
-	/** Changes applied while the matching refresh is in flight, replayed onto the
-	 * fetched baseline once it lands so neither side loses information. */
-	#eventsRefreshing = false;
-	#eventsBuffer: { event: EventDTO; deleted: boolean }[] = [];
+	/** Per-list overlapping-fetch guards (see `bufferedFetch.ts`): only the
+	 * latest run may commit — a stale fetch never lands after the store has been
+	 * stopped or restarted for another baby — and changes applied while a
+	 * refresh is in flight are replayed onto its fetched baseline so neither
+	 * side loses information. Independent per list, so events and timers never
+	 * invalidate each other. */
+	#eventsFetch = new BufferedFetch<ConfirmedActivityChange>();
+	#timersFetch = new BufferedFetch<ConfirmedActivityChange>();
 	/**
 	 * The events refresh currently in flight, with the local day it queried
 	 * (issue #47). Startup and the initial SSE snapshot both call refreshEvents()
 	 * within the same tick: the second call joins this promise instead of issuing
 	 * a second identical request. Keyed by day so a midnight rollover — the one
 	 * case where the query itself differs — still starts a real new request; that
-	 * newer request wins via #eventsRefreshSeq below.
+	 * newer request wins via #eventsFetch's supersede token.
 	 */
 	#eventsInFlight: EventsRequest | null = null;
-	/** Incremented per real events request; only the latest one commits, so a
-	 * superseded (different-day) request can never land after it. */
-	#eventsRefreshSeq = 0;
-	#timersRefreshing = false;
-	#timersBuffer: { event: EventDTO; deleted: boolean }[] = [];
-	#timersRefreshSeq = 0;
 
 	/** Listeners for non-today views (history) that need to react to changes
 	 * outside today's window, which `events`/`timers` never carry. */
@@ -161,7 +150,6 @@ export class SyncStore {
 		this.#stopTransport();
 		this.babyId = babyId;
 		this.#alive = true;
-		this.#generation++;
 		this.nowMs = Date.now() + this.serverOffsetMs;
 		if (!browser) return;
 
@@ -194,18 +182,21 @@ export class SyncStore {
 	stop(): void {
 		this.#stopTransport();
 		this.#changeListeners.clear();
+		// A write still in flight confirms after this teardown and lands in
+		// #recoverAfterSupersededWrite; with no baby its refetches become no-ops
+		// instead of two fetches against a dead store (issue #88, finding 4).
+		this.babyId = null;
 	}
 
 	#stopTransport(): void {
 		this.#activityChanges.invalidate();
 		this.#alive = false;
-		this.#generation++;
 		// A refresh from the previous run must never be joined by the next one:
-		// it is already invalidated by the generation bump and would resolve
+		// it is already superseded by the invalidations below and would resolve
 		// without committing, leaving the new run with no data at all.
 		this.#eventsInFlight = null;
-		this.#eventsRefreshing = false;
-		this.#eventsBuffer = [];
+		this.#eventsFetch.invalidate();
+		this.#timersFetch.invalidate();
 		this.#latestChanges.clear();
 		this.#pendingHttpEchoes.clear();
 		this.#seenSseChanges.clear();
@@ -285,76 +276,68 @@ export class SyncStore {
 	}
 
 	async #fetchEvents(babyId: string, now: Date, request: EventsRequest): Promise<void> {
-		const generation = this.#generation;
-		const seq = ++this.#eventsRefreshSeq;
-		this.#eventsRefreshing = true;
-		this.#eventsBuffer = [];
+		const run = this.#eventsFetch.begin();
 		if (this.eventsStatus !== 'ready') this.eventsStatus = 'loading';
 		try {
 			const fetched = await listTodayEvents(babyId, now);
-			if (generation !== this.#generation || seq !== this.#eventsRefreshSeq) return;
+			if (!run.current) return; // superseded (newer request, restart, reset)
 			let merged = sortByStartedAtDesc(fetched);
-			for (const { event, deleted } of this.#eventsBuffer) {
-				const gone = deleted || event.deletedAt !== null;
-				merged = upsert(merged, event, !gone && this.#isToday(event), sortByStartedAtDesc);
+			for (const change of run.buffered) {
+				merged = upsert(
+					merged,
+					change.event,
+					!isDeletion(change) && this.#isToday(change.event),
+					sortByStartedAtDesc
+				);
 			}
 			this.events = merged;
 			// The error clears only here, once authoritative data has landed.
 			this.eventsError = null;
 			this.eventsStatus = 'ready';
 		} catch (error) {
-			if (generation !== this.#generation || seq !== this.#eventsRefreshSeq) return;
+			if (!run.current) return;
 			// No authoritative list: say so instead of leaving an empty (or stale)
 			// list that reads as the truth about the day.
 			this.eventsError = loadErrorMessage(error);
 			this.eventsStatus = 'error';
 		} finally {
-			// Guarded: a superseded request must not clear the flags of the newer
-			// one that replaced it, nor drop its buffer.
-			if (seq === this.#eventsRefreshSeq) {
-				this.#eventsRefreshing = false;
-				this.#eventsBuffer = [];
-			}
+			// end() no-ops for a superseded request, so it never clears the state
+			// of the newer run that replaced it, nor drops its buffer.
+			run.end();
 			if (this.#eventsInFlight === request) this.#eventsInFlight = null;
 		}
 	}
 
 	async refreshTimers(): Promise<void> {
 		if (this.babyId === null) return;
-		const generation = this.#generation;
-		const seq = ++this.#timersRefreshSeq;
-		this.#timersRefreshing = true;
-		this.#timersBuffer = [];
+		const run = this.#timersFetch.begin();
 		// Active timers also arrive with every SSE snapshot, so a failed poll
 		// self-heals on the next (re)connection; keeping the current list is
 		// better than blanking the banner. Swallowed here so the `void` call
 		// sites can never raise an unhandled rejection.
 		const result = await getTimers(this.babyId).catch(() => null);
-		if (generation !== this.#generation || seq !== this.#timersRefreshSeq) return;
-		this.#timersRefreshing = false;
+		if (!run.current) return; // superseded (newer request, restart, reset)
 		if (result === null) {
-			this.#timersBuffer = [];
+			run.end();
 			return;
 		}
-		const { timers } = result;
-		let merged = timers.filter((t) => this.#isMine(t));
-		for (const { event, deleted } of this.#timersBuffer) {
-			const gone = deleted || event.deletedAt !== null;
-			merged = upsert(merged, event, !gone && isActiveTimer(event), sortByStartedAtDesc);
+		let merged = result.timers.filter((t) => this.#isMine(t));
+		for (const change of run.buffered) {
+			merged = upsert(
+				merged,
+				change.event,
+				!isDeletion(change) && isActiveTimer(change.event),
+				sortByStartedAtDesc
+			);
 		}
-		this.#timersBuffer = [];
+		run.end();
 		this.timers = merged;
 	}
 
 	#invalidateReads(): void {
-		this.#generation++;
-		this.#eventsRefreshSeq++;
+		this.#eventsFetch.invalidate();
 		this.#eventsInFlight = null;
-		this.#eventsRefreshing = false;
-		this.#eventsBuffer = [];
-		this.#timersRefreshSeq++;
-		this.#timersRefreshing = false;
-		this.#timersBuffer = [];
+		this.#timersFetch.invalidate();
 	}
 
 	#recoverAfterSupersededWrite(): void {
@@ -368,6 +351,12 @@ export class SyncStore {
 
 	#applySnapshot(message: SnapshotMessage): void {
 		this.#setServerTime(message.serverTime);
+		// Deliberate trade-off (#74, kept by issue #88 finding 6): invalidating
+		// here discards a startup fetch still in flight, so bootstrap may cost two
+		// /api/events requests instead of #47's coalesced one. The snapshot marks
+		// the moment of authoritative truth — a fetch issued before it may carry
+		// pre-snapshot data, and joining it could commit that stale baseline as
+		// the post-snapshot state.
 		this.#invalidateReads();
 		this.connectionState = 'connected';
 		this.#setTimers(message.activeTimers.filter((t) => this.#isMine(t)));
@@ -437,8 +426,6 @@ export class SyncStore {
 					)
 			)
 				return;
-			const pending = this.#pendingHttpEchoes.get(change.event.id) ?? [];
-			this.#pendingHttpEchoes.set(change.event.id, [...pending.slice(-15), echoKey]);
 		}
 		if (current !== undefined) {
 			if (updatedAt < current.updatedAt) return;
@@ -455,12 +442,20 @@ export class SyncStore {
 			)
 				return;
 		}
+		// Armed only once every staleness guard above has passed (issue #88,
+		// finding 3): a dropped HTTP confirmation expects no SSE echo — arming it
+		// anyway would swallow a later, byte-identical *genuine* change (a
+		// same-millisecond delete→restore→delete cycle) as if it were the echo.
+		if (delivery.source === 'http') {
+			const pending = this.#pendingHttpEchoes.get(change.event.id) ?? [];
+			this.#pendingHttpEchoes.set(change.event.id, [...pending.slice(-15), echoKey]);
+		}
 		this.#latestChanges.set(change.event.id, {
 			updatedAt,
 			event: change.event,
 			...(delivery.source === 'sse' ? { sseSequence: delivery.sequence } : {})
 		});
-		this.#applyEventProjection(change.event, change.kind === 'deleted');
+		this.#applyEventProjection(change);
 		this.#emitChange(change);
 	}
 
@@ -471,15 +466,16 @@ export class SyncStore {
 	 * `updatedAt`, so applying the same mutation twice — via SSE and via the HTTP
 	 * response, in either order — never duplicates or regresses state.
 	 */
-	#applyEventProjection(event: EventDTO, deleted = false): void {
+	#applyEventProjection(change: ConfirmedActivityChange): void {
+		const { event } = change;
 		if (!this.#isMine(event)) return;
-		const gone = deleted || event.deletedAt !== null;
+		const gone = isDeletion(change);
 		this.#setEvents(upsert(this.events, event, !gone && this.#isToday(event), sortByStartedAtDesc));
 		this.#setTimers(upsert(this.timers, event, !gone && isActiveTimer(event), sortByStartedAtDesc));
 		// A refresh in flight fetched its baseline before this change landed —
 		// buffer it for replay when that fetch resolves (item 1).
-		if (this.#eventsRefreshing) this.#eventsBuffer.push({ event, deleted });
-		if (this.#timersRefreshing) this.#timersBuffer.push({ event, deleted });
+		this.#eventsFetch.record(change);
+		this.#timersFetch.record(change);
 	}
 
 	#isMine(event: EventDTO): boolean {

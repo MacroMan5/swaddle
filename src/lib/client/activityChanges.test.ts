@@ -309,6 +309,38 @@ describe('activity changes', () => {
 		expect(store.events).toEqual([]);
 	});
 
+	it('a stale-dropped HTTP confirmation does not swallow a later identical genuine SSE change (issue #88 finding 3)', async () => {
+		// Same-millisecond delete → restore → delete cycle: the local delete's
+		// HTTP confirmation lands after another device's restore superseded it,
+		// so it is dropped — but it must not arm an SSE-echo expectation, or the
+		// second (byte-identical) delete from the other device would be swallowed
+		// as that echo and the event would stay wrongly visible.
+		const http = transport();
+		const at = new Date(NOW.getTime() + 1_000).toISOString();
+		const firstDelete = diaper({ updatedAt: at, deletedAt: at });
+		const restored = diaper({ updatedAt: at });
+		const secondDelete = diaper({ updatedAt: at, deletedAt: at });
+		let resolveDelete!: (event: EventDTO) => void;
+		vi.mocked(http.delete).mockReturnValue(
+			new Promise<EventDTO>((resolve) => {
+				resolveDelete = resolve;
+			})
+		);
+		const store = syncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		adapter.change({ kind: 'created', event: diaper(), serverTime: NOW.toISOString() });
+
+		const pending = store.changes.delete('diaper-1');
+		adapter.change({ kind: 'restored', event: restored, serverTime: at });
+		resolveDelete(firstDelete);
+		await pending;
+		expect(store.events).toEqual([restored]);
+
+		adapter.change({ kind: 'deleted', event: secondDelete, serverTime: at });
+		expect(store.events).toEqual([]);
+	});
+
 	it('keeps a newer SSE version when an older HTTP response arrives later', async () => {
 		const http = transport();
 		let resolveWrite!: (event: EventDTO) => void;

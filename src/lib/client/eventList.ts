@@ -16,6 +16,26 @@ export function sortByStartedAtAsc(events: EventDTO[]): EventDTO[] {
 	return [...events].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
 }
 
+/** Most recently deleted first — the reading order of the Recently-deleted
+ * sheet. `updatedAt` is the fallback for a change whose tombstone has not been
+ * materialized yet (a `deleted` kind carrying `deletedAt: null`). */
+export function sortByDeletedAtDesc(events: EventDTO[]): EventDTO[] {
+	return [...events].sort(
+		(a, b) => Date.parse(b.deletedAt ?? b.updatedAt) - Date.parse(a.deletedAt ?? a.updatedAt)
+	);
+}
+
+/**
+ * Whether a confirmed change means "this event is deleted": either the change
+ * kind itself says so, or the event carries a `deletedAt` tombstone. One
+ * module decides (US-22, #74 — issue #88 finding 1); every list then only
+ * chooses what deletion means for it (drop it from a live window, keep it in
+ * the recently-deleted sheet).
+ */
+export function isDeletion(change: { kind: string; event: EventDTO }): boolean {
+	return change.kind === 'deleted' || change.event.deletedAt !== null;
+}
+
 export type EventSort = (events: EventDTO[]) => EventDTO[];
 
 /**

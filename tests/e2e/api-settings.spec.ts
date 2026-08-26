@@ -16,6 +16,67 @@ test('household defaults, patch, caregiver CRUD', async ({ request }) => {
 	expect((await request.delete(`/api/caregivers/${id}`)).status()).toBe(204);
 });
 
+test('PATCH /api/babies/:id (#46): corrects the baby, rejects invalid input, survives reload and exports', async ({
+	request
+}) => {
+	const created = await (
+		await request.post('/api/babies', { data: { name: 'Corrigible', birthdate: '2026-08-01' } })
+	).json();
+
+	// Correction persists and is reflected on a fresh GET (reload).
+	const patched = await request.patch(`/api/babies/${created.id}`, {
+		data: { name: 'Corrigée', birthdate: '2026-07-28' }
+	});
+	expect(patched.status()).toBe(200);
+	expect(await patched.json()).toMatchObject({
+		id: created.id,
+		name: 'Corrigée',
+		birthdate: '2026-07-28',
+		timezone: created.timezone
+	});
+	const { babies } = await (await request.get('/api/babies')).json();
+	expect(babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
+
+	// Validation: blank name, future date, impossible calendar date, malformed input.
+	const blankName = await request.patch(`/api/babies/${created.id}`, { data: { name: '' } });
+	expect(blankName.status()).toBe(400);
+	expect((await blankName.json()).error.code).toBe('validation_failed');
+
+	const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+	const futureDate = await request.patch(`/api/babies/${created.id}`, { data: { birthdate: future } });
+	expect(futureDate.status()).toBe(400);
+
+	const impossibleDate = await request.patch(`/api/babies/${created.id}`, {
+		data: { birthdate: '2024-02-30' }
+	});
+	expect(impossibleDate.status()).toBe(400);
+
+	const malformed = await request.patch(`/api/babies/${created.id}`, { data: { birthdate: 'not-a-date' } });
+	expect(malformed.status()).toBe(400);
+
+	// None of the rejected patches wrote anything (no partial writes).
+	const afterFailures = await (await request.get('/api/babies')).json();
+	expect(afterFailures.babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
+
+	// Unknown baby.
+	const unknown = await request.patch('/api/babies/no-such-baby', { data: { name: 'x' } });
+	expect(unknown.status()).toBe(404);
+	expect((await unknown.json()).error.code).toBe('not_found');
+
+	// The correction round-trips through export.
+	const exported = await (await request.get('/api/export/json')).json();
+	expect(exported.babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
+});
+
 test('caregiver referenced by an event cannot be deleted', async ({ request }) => {
 	const res = await request.delete('/api/caregivers/cg-1'); // seeded, referenced by earlier api specs' events
 	// cg-1 may or may not be referenced depending on spec order — create our own referenced caregiver instead:

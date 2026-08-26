@@ -24,7 +24,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run test:unit
-      - run: npx playwright install chromium
+      # Both engines approximate the documented support matrix (Chrome
+      # Android via Chromium, Safari iOS via WebKit) — issue #53. Firefox has
+      # no matching support-matrix target, so it stays uninstalled.
+      - run: npx playwright install chromium webkit
       # Dedicated ports: the runner shares this machine with local dev/agent
       # e2e runs that bind the default 3000/3001 (EADDRINUSE otherwise).
       - run: npm run test:e2e

@@ -1,5 +1,8 @@
 # API de saisie rapide — contrat (`/api/quick`)
 
+Guide utilisateur : [Raccourcis iOS](../guides/raccourcis-ios.md) (Siri, dictée
+vocale).
+
 Complète `docs/api/events-api.md` : même enveloppe d'erreur
 `{ error: { code, message, issues? } }`, mêmes horodatages ISO 8601 UTC, même
 `EventDTO`. La surface est décidée par l'ADR 0004 et conçue pour des clients

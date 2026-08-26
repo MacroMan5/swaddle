@@ -27,6 +27,8 @@ export const GET: RequestHandler = handler({
 				});
 				unsubscribe = subscribe((change) => {
 					if (change.kind === 'reset') send('reset', { serverTime: new Date().toISOString() });
+					else if (change.kind === 'baby')
+						send('baby', { baby: change.baby, serverTime: new Date().toISOString() });
 					else send('sync', { ...change, serverTime: new Date().toISOString() });
 				});
 				ping = setInterval(() => {

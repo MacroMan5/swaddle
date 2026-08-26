@@ -4,7 +4,8 @@ import {
 	removeSeededEvents,
 	seedTodayEvents,
 	settleAnimations,
-	TEXT_SPACING_CSS
+	TEXT_SPACING_CSS,
+	withinTodayIso
 } from './a11y';
 import { BASE_B } from './ports';
 
@@ -72,20 +73,28 @@ function activeElementInfo(page: Page) {
 	});
 }
 
-/** Presses Tab until `matches` accepts the focused element, or gives up loudly. */
-async function tabUntil(
+/**
+ * Presses Tab until `target` — that exact element, compared by identity — holds
+ * focus, or gives up loudly with the tab order it walked through.
+ *
+ * Identity, not accessible name: names repeat. "Restaurer Biberon du 04:48"
+ * says nothing about *which* deleted bottle, and both browser projects share
+ * one server, so a matching-by-name walk can stop on a row another project's
+ * run left behind and restore the wrong event — which then reads as a pass
+ * (the row disappears) with the event still deleted.
+ */
+async function tabUntilFocused(
 	page: Page,
-	matches: (info: NonNullable<Awaited<ReturnType<typeof activeElementInfo>>>) => boolean,
+	target: Locator,
 	label: string,
 	maxSteps = 40
 ): Promise<void> {
 	const seen: string[] = [];
 	for (let i = 0; i < maxSteps; i++) {
 		await page.keyboard.press('Tab');
+		if (await target.evaluate((el) => document.activeElement === el)) return;
 		const info = await activeElementInfo(page);
-		if (!info) continue;
-		seen.push(`${info.tag}[${info.label ?? info.text}]`);
-		if (matches(info)) return;
+		if (info) seen.push(`${info.tag}[${info.label ?? info.text}]`);
 	}
 	throw new Error(`${label}: not reached by Tab in ${maxSteps} steps. Visited: ${seen.join(' → ')}`);
 }
@@ -110,11 +119,8 @@ test('a Today sheet takes focus on open and gives it back on close', async ({ pa
 
 	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
-	await expect
-		.poll(async () => (await activeElementInfo(page))?.label, {
-			message: 'focus returns to the tile that opened the sheet'
-		})
-		.toBe('Biberon');
+	// The tile itself, not merely "somewhere outside the dialog".
+	await expect(trigger).toBeFocused();
 });
 
 test('the History edit sheet takes focus on open and gives it back on close', async ({
@@ -127,7 +133,15 @@ test('the History edit sheet takes focus on open and gives it back on close', as
 		await page.goto('/history');
 		const row = page.getByTestId('event-row').first();
 		await expect(row).toBeVisible();
-		await row.click();
+
+		// Opened from the keyboard, like the Today case above. A `click()` would
+		// make the closing assertion meaningless under WebKit, which — following
+		// the macOS convention — does not move focus to a button that is clicked:
+		// the sheet would then have nothing but `<body>` to hand focus back to,
+		// and "focus is no longer inside the dialog" would pass even if
+		// restoration were broken entirely.
+		await row.focus();
+		await page.keyboard.press('Enter');
 
 		const dialog = page.getByRole('dialog');
 		await expect(dialog).toBeVisible();
@@ -137,7 +151,8 @@ test('the History edit sheet takes focus on open and gives it back on close', as
 		// both close paths are covered (Escape is covered on Today above).
 		await dialog.getByRole('button', { name: 'Fermer' }).click();
 		await expect(dialog).toBeHidden();
-		await expect.poll(async () => (await activeElementInfo(page))?.insideDialog).toBe(false);
+		// The row itself, not merely "somewhere outside the dialog".
+		await expect(row).toBeFocused();
 	} finally {
 		await removeSeededEvents(request, ids);
 	}
@@ -156,7 +171,11 @@ test('the untimed deletion recovery path is usable by keyboard alone', async ({ 
 			babyId: 'baby-1',
 			caregiverId: 'cg-1',
 			type: 'bottle',
-			startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+			// "Supprimés récemment" is not a window view (listDeletedEvents ignores
+			// from/to), so this row would survive a midnight boundary either way —
+			// but the whole file seeds through the same helper rather than keeping
+			// a second, subtly different notion of "recently".
+			startedAt: withinTodayIso(0.8),
 			details: { milkType: 'formula', volumeMl }
 		}
 	});
@@ -175,7 +194,7 @@ test('the untimed deletion recovery path is usable by keyboard alone', async ({ 
 	await expect(trigger).toBeEnabled();
 
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	await tabUntil(page, (i) => i.label === 'Supprimés récemment', 'the Supprimés récemment trigger');
+	await tabUntilFocused(page, trigger, 'the Supprimés récemment trigger');
 	await page.keyboard.press('Enter');
 
 	// Role + accessible name of the sheet itself (bits-ui wires the title as the
@@ -189,9 +208,8 @@ test('the untimed deletion recovery path is usable by keyboard alone', async ({ 
 	const restore = row.getByRole('button', { name: /^Restaurer / });
 	await expect(restore).toBeVisible();
 	await expect(restore).toBeEnabled();
-	const restoreLabel = await restore.getAttribute('aria-label');
 
-	await tabUntil(page, (i) => i.label === restoreLabel, 'the Restaurer button');
+	await tabUntilFocused(page, restore, 'the Restaurer button');
 	await page.keyboard.press('Enter');
 
 	await expect(row).toHaveCount(0);
@@ -201,7 +219,8 @@ test('the untimed deletion recovery path is usable by keyboard alone', async ({ 
 
 	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
-	await expect.poll(async () => (await activeElementInfo(page))?.label).toBe('Supprimés récemment');
+	// The trigger itself, not merely "somewhere outside the dialog".
+	await expect(trigger).toBeFocused();
 
 	await request.delete(`/api/events/${id}`);
 });
@@ -243,7 +262,11 @@ test('the Today bootstrap error is an alert whose Réessayer is keyboard-reachab
 	await expect(alert).toHaveAttribute('role', 'alert');
 
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	await tabUntil(page, (i) => i.text === 'Réessayer', 'the bootstrap Réessayer button');
+	await tabUntilFocused(
+		page,
+		alert.getByRole('button', { name: 'Réessayer' }),
+		'the bootstrap Réessayer button'
+	);
 	await page.keyboard.press('Enter');
 	await expect(alert).toBeHidden();
 	await page.unroute('**/api/babies');

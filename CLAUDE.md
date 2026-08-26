@@ -97,6 +97,16 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   seule source de vérité, consommé par `DaySummary`, `WeekView` et `/history` ;
   `weekTotals`/`signedDeltaLabel` pour le comparatif semaine),
   `babyAge.ts` (âge court FR depuis `birthdate`, pur),
+  `volume.ts` (unité de volume du foyer, #44 : `mlToOz`/`ozToMl`,
+  `formatVolume`, pas et préréglages par unité, bornes en oz. `parseVolumeEntry`
+  arrondit d'abord la saisie à la précision affichée (1 décimale en oz),
+  la valide contre les bornes de cette unité, puis convertit — sinon une
+  saisie hors bornes (0,04 oz) se convertirait en millilitres légaux (1 ml)
+  et reviendrait affichée « 0,0 oz ». Le stockage
+  reste en millilitres entiers — toute conversion d’affichage se redérive du
+  `volumeMl` canonique, jamais d’une valeur convertie conservée côté client ;
+  l’unité courante vient de `page.data.volumeUnit`, posé par
+  `src/routes/+layout.server.ts`),
   `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
   les événements du jour, les minuteurs actifs, l'offset serveur — RISK-001 —
   et `subscribeChanges` : relais de changements pour les vues hors

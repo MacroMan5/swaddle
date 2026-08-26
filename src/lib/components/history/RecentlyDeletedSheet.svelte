@@ -10,7 +10,8 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle, RotateCcw } from '@lucide/svelte';
 	import { ApiError, listDeletedEvents } from '$lib/client/api';
-	import { upsert } from '$lib/client/eventList';
+	import { BufferedFetch } from '$lib/client/bufferedFetch';
+	import { isDeletion, sortByDeletedAtDesc, upsert } from '$lib/client/eventList';
 	import { formatTimeOfDay } from '$lib/client/format';
 	import { eventLabel, typeLabel } from './eventDisplay';
 	import type { ConfirmedActivityChange } from '$lib/client/activityChanges';
@@ -36,26 +37,17 @@
 	let restoringId = $state<string | null>(null);
 	let rowErrors = $state<Record<string, string>>({});
 
-	// Anti-race token (same pattern as historyWindow.svelte.ts's fetch tokens):
-	// the open effect, the change-relay subscription and a re-open can all
-	// trigger overlapping loads. Only the response matching the latest call is
-	// ever committed, so a slower, earlier-issued fetch can't land after a
-	// newer one and either drop a just-deleted event or resurrect one already
-	// restored (P2 review item 1).
-	let loadToken = 0;
-	let activeLoadToken: number | null = null;
-	let loadBuffer: ConfirmedActivityChange[] = [];
+	// Overlapping-fetch guard (shared `BufferedFetch`, issue #88): the open
+	// effect, the change-relay subscription and a re-open can all trigger
+	// overlapping loads. Only the response matching the latest call is ever
+	// committed, so a slower, earlier-issued fetch can't land after a newer one
+	// and either drop a just-deleted event or resurrect one already restored
+	// (P2 review item 1).
+	const deletedFetch = new BufferedFetch<ConfirmedActivityChange>();
 
-	function sortByDeletedAtDesc(list: EventDTO[]): EventDTO[] {
-		return [...list].sort(
-			(a, b) =>
-				Date.parse(b.deletedAt ?? b.updatedAt) - Date.parse(a.deletedAt ?? a.updatedAt)
-		);
-	}
-
+	// The inverse of the live windows: this sheet keeps exactly the deletions.
 	function applyChange(list: EventDTO[], change: ConfirmedActivityChange): EventDTO[] {
-		const keep = change.kind === 'deleted' || change.event.deletedAt !== null;
-		return upsert(list, change.event, keep, sortByDeletedAtDesc);
+		return upsert(list, change.event, isDeletion(change), sortByDeletedAtDesc);
 	}
 
 	function deletedAtLabel(event: EventDTO): string {
@@ -68,27 +60,21 @@
 
 	async function load(): Promise<void> {
 		if (babyId === null) return;
-		const token = ++loadToken;
-		activeLoadToken = token;
-		loadBuffer = [];
+		const run = deletedFetch.begin();
 		loading = true;
 		error = null;
 		try {
 			const fetched = await listDeletedEvents(babyId);
-			if (token !== loadToken) return; // superseded by a newer load
+			if (!run.current) return; // superseded by a newer load
 			let merged = sortByDeletedAtDesc(fetched);
-			for (const change of loadBuffer) merged = applyChange(merged, change);
+			for (const change of run.buffered) merged = applyChange(merged, change);
 			events = merged;
 		} catch (e) {
-			if (token !== loadToken) return;
+			if (!run.current) return;
 			error =
 				e instanceof ApiError ? e.userMessage : 'Impossible de charger les éléments supprimés.';
 		} finally {
-			if (token === loadToken) {
-				activeLoadToken = null;
-				loadBuffer = [];
-				loading = false;
-			}
+			if (run.end()) loading = false;
 		}
 	}
 
@@ -108,7 +94,7 @@
 			}
 			if (babyId !== null && change.event.babyId !== babyId) return;
 			events = applyChange(events, change);
-			if (activeLoadToken === loadToken) loadBuffer.push(change);
+			deletedFetch.record(change);
 		});
 	});
 	onDestroy(() => unsubscribe?.());

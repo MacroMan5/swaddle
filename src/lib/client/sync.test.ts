@@ -759,6 +759,42 @@ describe('start() idempotency and cleanup (browser path, item 1)', () => {
 		s.stop();
 	});
 
+	it('a write confirming after stop() does not fetch against the torn-down store (issue #88 finding 4)', async () => {
+		vi.resetModules();
+		const { SyncStore: BrowserStore } = await import('./sync.svelte');
+		const { listTodayEvents: mockedListEvents, getTimers: mockedGetTimers } =
+			await import('./api');
+		vi.mocked(mockedListEvents).mockResolvedValue([]);
+		let resolveDelete!: (event: EventDTO) => void;
+		const writes: ActivityChangeTransport = {
+			create: vi.fn(),
+			patch: vi.fn(),
+			delete: vi.fn().mockReturnValue(
+				new Promise<EventDTO>((resolve) => {
+					resolveDelete = resolve;
+				})
+			),
+			restore: vi.fn(),
+			startTimer: vi.fn(),
+			stopTimer: vi.fn(),
+			nursingAction: vi.fn()
+		};
+		const s = new BrowserStore(writes);
+		s.start('baby-1');
+
+		// The write is in flight when the store is torn down (page unmount)…
+		const pending = s.changes.delete('ev-1');
+		s.stop();
+		vi.mocked(mockedListEvents).mockClear();
+		vi.mocked(mockedGetTimers).mockClear();
+
+		// …so its superseded-write recovery must not refetch for a dead store.
+		resolveDelete(makeEvent({ deletedAt: NOW.toISOString() }));
+		await pending;
+		expect(mockedListEvents).not.toHaveBeenCalled();
+		expect(mockedGetTimers).not.toHaveBeenCalled();
+	});
+
 	it('a reconnect snapshot starts a fresh events read and cannot be overwritten by stale reads', async () => {
 		vi.resetModules();
 		const { SyncStore: BrowserStore } = await import('./sync.svelte');

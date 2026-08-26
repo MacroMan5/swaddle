@@ -106,6 +106,11 @@
 
 	$effect(() => {
 		if (!open || event === null) return;
+		// untrack: the unit only decides how the stored volume is *rendered* into
+		// the field. Tracking it would make this init effect a dependency of the
+		// layout data, and re-running it mid-entry wipes what the user typed
+		// (same failure mode as the clock tick, review P1).
+		const currentUnit = untrack(() => unit);
 		caregiverId = event.caregiverId ?? '';
 		note = event.note ?? '';
 		startedAt = toLocalInputValue(new Date(Date.parse(event.startedAt)));
@@ -118,12 +123,12 @@
 		if (isType(event, 'bottle')) {
 			const d = event.details;
 			milkType = d.milkType;
-			volumeMl = displayVolumeValue(d.volumeMl, unit);
+			volumeMl = displayVolumeValue(d.volumeMl, currentUnit);
 			pristineVolume = { raw: volumeMl, ml: d.volumeMl };
 		} else if (isType(event, 'pump')) {
 			const d = event.details;
 			pumpSide = d.side;
-			volumeMl = d.volumeMl === null ? '' : displayVolumeValue(d.volumeMl, unit);
+			volumeMl = d.volumeMl === null ? '' : displayVolumeValue(d.volumeMl, currentUnit);
 			pristineVolume = { raw: volumeMl, ml: d.volumeMl };
 		} else if (isType(event, 'diaper')) {
 			const d = event.details;

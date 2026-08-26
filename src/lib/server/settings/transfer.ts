@@ -6,9 +6,13 @@ import { insertEventRow, rowToDto, type EventRow } from '$lib/server/events/even
 import { RepoError } from '$lib/server/events/repo';
 import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
 import { isTimerType, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
+import { tokenize } from '$lib/server/quick/phrase';
+import { quickWordIntentSchema } from '$lib/server/quick/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
+
+export type QuickWordDTO = { id: string; word: string; intent: unknown };
 
 export type SwaddleExport = {
 	format: 'swaddle-export';
@@ -18,7 +22,27 @@ export type SwaddleExport = {
 	babies: BabyDTO[];
 	caregivers: CaregiverDTO[];
 	events: EventDTO[];
+	/**
+	 * The voice vocabulary (#97): household configuration, so it travels with
+	 * the data. API tokens deliberately do NOT — they are per-device secrets,
+	 * useless to whoever restores the file and dangerous in a copy of it; a
+	 * restored household recreates them from /settings.
+	 *
+	 * Optional on import (`version` stays 1): an export taken before this field
+	 * existed must still restore, and leaves the vocabulary as it is.
+	 */
+	quickWords: QuickWordDTO[];
 };
+
+function listQuickWords(db: DB): QuickWordDTO[] {
+	return (
+		db.prepare('SELECT id, word, intent FROM quick_word ORDER BY word').all() as {
+			id: string;
+			word: string;
+			intent: string;
+		}[]
+	).map((r) => ({ id: r.id, word: r.word, intent: JSON.parse(r.intent) as unknown }));
+}
 
 function listAllEvents(db: DB): EventDTO[] {
 	// Soft-deleted rows are included so a restore is lossless.
@@ -40,7 +64,8 @@ export function exportJson(db: DB): SwaddleExport {
 		household: { volumeUnit: household.volumeUnit, theme: household.theme },
 		babies: listAllBabies(db),
 		caregivers: listCaregivers(db),
-		events: listAllEvents(db)
+		events: listAllEvents(db),
+		quickWords: listQuickWords(db)
 	};
 }
 
@@ -103,7 +128,12 @@ const exportSchema = z.object({
 			updatedAt: z.string(),
 			deletedAt: z.string().nullable()
 		})
-	)
+	),
+	// Optional: exports predating #97 carry no vocabulary and must still
+	// restore. Absent means "leave the current words alone", not "wipe them".
+	quickWords: z
+		.array(z.object({ id: z.string(), word: z.string().min(1), intent: z.unknown() }))
+		.optional()
 });
 
 type ParsedExport = z.infer<typeof exportSchema>;
@@ -140,6 +170,56 @@ function validateGraph(data: ParsedExport): Issue[] {
 				message: `duplicate caregiver id ${c.id}`
 			});
 		caregiverIds.add(c.id);
+	});
+
+	// quick_word holds two unique columns; a payload that duplicates either
+	// would otherwise surface as a raw SQLITE_CONSTRAINT_UNIQUE, which the
+	// route maps to `timer_conflict` — a nonsense answer for a vocabulary.
+	const wordIds = new Set<string>();
+	const words = new Set<string>();
+	(data.quickWords ?? []).forEach((w, i) => {
+		if (wordIds.has(w.id))
+			issues.push({
+				path: `quickWords.${i}.id`,
+				code: 'duplicate_id',
+				message: `duplicate quick word id ${w.id}`
+			});
+		wordIds.add(w.id);
+		// The same rule `addQuickWord` applies, through the same tokeniser: a
+		// stored word is exactly what a dictation would be cut into. A payload
+		// carrying "gros caca", "!!!" or « Néné » would restore fine and then sit
+		// in the vocabulary unable to ever match — or, once normalised, shadow the
+		// entry it collides with in the parser's lookup.
+		const tokens = tokenize(w.word);
+		const word = tokens.length === 1 ? tokens[0] : null;
+		if (word !== w.word)
+			issues.push({
+				path: `quickWords.${i}.word`,
+				code: 'invalid_value',
+				message: `quick word ${w.word} is not a single normalised word`
+			});
+		// Compared after normalisation, so two spellings of one word cannot both
+		// come in and silently collapse into one.
+		else if (words.has(word))
+			issues.push({
+				path: `quickWords.${i}.word`,
+				code: 'duplicate_word',
+				message: `duplicate quick word ${w.word}`
+			});
+		else words.add(word);
+		// The stored intent is read back — and parsed — every time the vocabulary
+		// is listed: by a dictation, by GET /api/quick/words, by the settings
+		// page. A payload carrying an unreadable one would restore fine and then
+		// break every one of those reads, including the reload the restore itself
+		// triggers. It is checked here instead, against the same schema the add
+		// route uses.
+		const intent = quickWordIntentSchema.safeParse(w.intent);
+		if (!intent.success)
+			issues.push({
+				path: `quickWords.${i}.intent`,
+				code: 'invalid_value',
+				message: `invalid intent for quick word ${w.word}`
+			});
 	});
 
 	const eventIds = new Set<string>();
@@ -245,13 +325,22 @@ export function importJson(
 	if (graphIssues.length > 0)
 		throw new RepoError('validation_failed', 'invalid export payload', graphIssues);
 
-	const { household, babies, caregivers, events } = parsed.data;
+	const { household, babies, caregivers, events, quickWords } = parsed.data;
 	// The export never carries the pin hash (see exportJson): a restore must
 	// not silently disable the household's current PIN, so it's read before
 	// the wipe and rewritten as-is.
 	const currentPinHash = getPinHash(db);
 
 	db.transaction(() => {
+		// `DELETE FROM caregiver` below trips api_token's ON DELETE SET NULL and
+		// detaches every device from its caregiver — even though the payload is
+		// about to put the very same caregiver ids back. The links are captured
+		// here and reapplied once the caregivers exist again; a link whose
+		// caregiver the payload no longer holds stays null, which is correct.
+		const tokenLinks = db
+			.prepare('SELECT id, caregiver_id FROM api_token WHERE caregiver_id IS NOT NULL')
+			.all() as { id: string; caregiver_id: string }[];
+
 		db.exec('DELETE FROM event');
 		db.exec('DELETE FROM caregiver');
 		db.exec('DELETE FROM baby');
@@ -271,11 +360,29 @@ export function importJson(
 		);
 		for (const c of caregivers) insertCaregiver.run(c.id, c.name, c.color, new Date().toISOString());
 
+		// Reattach the devices the wipe just detached. Filtered on the restored
+		// ids rather than left to the database: an UPDATE towards a caregiver the
+		// payload dropped would violate the foreign key and fail the whole
+		// restore, where null is the honest answer.
+		const restoredCaregiverIds = new Set(caregivers.map((c) => c.id));
+		const relinkToken = db.prepare('UPDATE api_token SET caregiver_id = ? WHERE id = ?');
+		for (const link of tokenLinks)
+			if (restoredCaregiverIds.has(link.caregiver_id)) relinkToken.run(link.caregiver_id, link.id);
+
 		// Written verbatim (ids and timestamps included) so a restore reproduces
 		// the export exactly. The schema types `details` as `unknown`; it has
 		// just been checked against its event type by `validateGraph`, so the
 		// payload really is an `EventDTO` here.
 		for (const e of events) insertEventRow(db, e as EventDTO);
+
+		// api_token is untouched on purpose: the payload never carries tokens, and
+		// wiping the table would silently cut off every device the household has
+		// paired — including the one that may have triggered this restore.
+		if (quickWords !== undefined) {
+			db.exec('DELETE FROM quick_word');
+			const insertWord = db.prepare('INSERT INTO quick_word (id, word, intent) VALUES (?, ?, ?)');
+			for (const w of quickWords) insertWord.run(w.id, w.word, JSON.stringify(w.intent ?? null));
+		}
 	})();
 
 	return { babies: babies.length, caregivers: caregivers.length, events: events.length };

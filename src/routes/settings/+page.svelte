@@ -346,6 +346,150 @@
 		pinEnabledOverride = null;
 	}
 
+	// --- Accès API (#97) ---
+	let newTokenName = $state('');
+	let newTokenCaregiverId = $state('');
+	// The plaintext of the token just created. Held in memory only, for this
+	// one render: the server stores a hash, so once this is cleared the token
+	// can never be shown again — hence the copy button and the warning.
+	let newTokenPlaintext = $state<string | null>(null);
+	let tokenError = $state<string | null>(null);
+	let tokenStatus = $state<string | null>(null);
+	let tokenPending = $state(false);
+	let tokenCopied = $state(false);
+	let tokenErrorNonce = $state(0);
+	let tokenStatusNonce = $state(0);
+
+	function tokenLastUsedLabel(at: string | null): string {
+		if (at === null) return 'jamais utilisé';
+		// Stored as midnight UTC at day granularity (apiTokens.ts), so it is read
+		// back in UTC too: rendered in a local zone behind Greenwich, that instant
+		// is the previous evening and the label would name the wrong day.
+		return `utilisé le ${new Date(at).toLocaleDateString('fr-CA', { dateStyle: 'medium', timeZone: 'UTC' })}`;
+	}
+
+	async function createToken(event: SubmitEvent) {
+		event.preventDefault();
+		tokenError = null;
+		tokenStatus = null;
+		newTokenPlaintext = null;
+		tokenCopied = false;
+		tokenPending = true;
+		const createdName = newTokenName;
+		const { ok, value } = await postJson('/api/tokens', 'POST', {
+			name: createdName,
+			caregiverId: newTokenCaregiverId === '' ? null : newTokenCaregiverId
+		});
+		tokenPending = false;
+		if (!ok) {
+			tokenError = errorMessage(value);
+			tokenErrorNonce++;
+			return;
+		}
+		newTokenPlaintext = value.plaintext;
+		newTokenName = '';
+		newTokenCaregiverId = '';
+		tokenStatus = `Jeton ${createdName} créé.`;
+		tokenStatusNonce++;
+		await invalidateAll();
+	}
+
+	async function copyToken() {
+		if (newTokenPlaintext === null) return;
+		try {
+			await navigator.clipboard.writeText(newTokenPlaintext);
+			tokenCopied = true;
+		} catch {
+			// Clipboard access can be refused (permissions, insecure context):
+			// the token stays selectable on screen, so this is not an error.
+			tokenCopied = false;
+		}
+	}
+
+	async function revokeToken(id: string, name: string) {
+		if (!confirm(`Révoquer le jeton « ${name} » ? L’appareil qui l’utilise perdra l’accès immédiatement.`))
+			return;
+		tokenError = null;
+		tokenStatus = null;
+		const { ok, value } = await postJson(`/api/tokens/${id}`, 'DELETE');
+		if (!ok) {
+			tokenError = errorMessage(value);
+			tokenErrorNonce++;
+			return;
+		}
+		tokenStatus = `Jeton ${name} révoqué.`;
+		tokenStatusNonce++;
+		await invalidateAll();
+	}
+
+	// --- Mots vocaux (#99) ---
+	// One entry per intent a word can stand for: the label the section groups by,
+	// and the template it posts. A word never carries a modifier — how much is in
+	// the bottle comes from the sentence that was dictated.
+	const QUICK_INTENTS = [
+		{ key: 'bottle', label: 'Biberon', intent: { action: 'bottle' } },
+		{ key: 'diaper:wet', label: 'Couche pipi', intent: { action: 'diaper', kind: 'wet' } },
+		{ key: 'diaper:dirty', label: 'Couche caca', intent: { action: 'diaper', kind: 'dirty' } },
+		{
+			key: 'diaper:both',
+			label: 'Couche pipi et caca',
+			intent: { action: 'diaper', kind: 'both' }
+		},
+		{ key: 'sleep', label: 'Dodo', intent: { action: 'sleep' } },
+		{ key: 'nursing', label: 'Tétée', intent: { action: 'nursing' } }
+	] as const;
+
+	function quickIntentKey(intent: { action: string; kind?: string }): string {
+		return intent.action === 'diaper' ? `diaper:${intent.kind}` : intent.action;
+	}
+
+	let newWord = $state('');
+	let newWordIntentKey = $state<string>(QUICK_INTENTS[0].key);
+	let wordError = $state<string | null>(null);
+	let wordStatus = $state<string | null>(null);
+	let wordPending = $state(false);
+	let wordErrorNonce = $state(0);
+	let wordStatusNonce = $state(0);
+
+	async function addQuickWord(event: SubmitEvent) {
+		event.preventDefault();
+		wordError = null;
+		wordStatus = null;
+		const chosen = QUICK_INTENTS.find((i) => i.key === newWordIntentKey);
+		if (!chosen) return;
+		wordPending = true;
+		const added = newWord;
+		const { ok, value } = await postJson('/api/quick/words', 'POST', {
+			word: added,
+			intent: chosen.intent
+		});
+		wordPending = false;
+		if (!ok) {
+			wordError = errorMessage(value);
+			wordErrorNonce++;
+			return;
+		}
+		newWord = '';
+		wordStatus = `Mot ${added} ajouté.`;
+		wordStatusNonce++;
+		await invalidateAll();
+	}
+
+	async function deleteQuickWord(id: string, word: string) {
+		if (!confirm(`Supprimer le mot « ${word} » ?`)) return;
+		wordError = null;
+		wordStatus = null;
+		const { ok, value } = await postJson(`/api/quick/words/${id}`, 'DELETE');
+		if (!ok) {
+			wordError = errorMessage(value);
+			wordErrorNonce++;
+			return;
+		}
+		wordStatus = `Mot ${word} supprimé.`;
+		wordStatusNonce++;
+		await invalidateAll();
+	}
+
 	// --- Données ---
 	let restoreMessage = $state<string | null>(null);
 	let restoreError = $state<string | null>(null);
@@ -824,6 +968,157 @@
 				nonce={pinMessageNonce}
 				class="text-ink-muted text-sm"
 			/>
+		</section>
+
+		<section class="flex flex-col gap-3 p-4">
+			<h2 class="text-section text-ink-muted uppercase">Accès API</h2>
+			<p class="text-ink-muted text-body">
+				Un jeton laisse un appareil ou un raccourci enregistrer des activités sans ouvrir
+				l’application. Il ne donne jamais accès aux écrans.
+			</p>
+
+			<ul class="divide-border-hair flex flex-col divide-y">
+				{#each data.apiTokens as tk (tk.id)}
+					{@const caregiver = data.caregivers.find((c) => c.id === tk.caregiverId)}
+					<li class="flex flex-wrap items-center gap-3 py-2">
+						<span class="min-w-0 flex-1">
+							<span class="text-value text-ink block truncate"
+								>{tk.name}{tk.revokedAt !== null ? ' · révoqué' : ''}</span
+							>
+							<span class="text-ink-muted block text-sm"
+								>{caregiver ? caregiver.name : 'Aucun aidant'} · {tokenLastUsedLabel(tk.lastUsedAt)}</span
+							>
+						</span>
+						{#if tk.revokedAt === null}
+							<Button
+								variant="ghost"
+								class="text-danger min-h-12"
+								aria-label={`Révoquer ${tk.name}`}
+								onclick={() => revokeToken(tk.id, tk.name)}>Révoquer</Button
+							>
+						{/if}
+					</li>
+				{:else}
+					<li class="text-ink-muted py-2">Aucun jeton.</li>
+				{/each}
+			</ul>
+
+			{#if newTokenPlaintext !== null}
+				<!-- Shown once and never again: only a hash is stored server-side. -->
+				<div class="border-border bg-surface flex flex-col gap-2 border-2 p-3">
+					<p class="text-ink text-body">
+						Copiez ce jeton maintenant : il ne sera plus affiché.
+					</p>
+					<code class="text-ink bg-surface-raised border-border-hair border p-2 break-all select-all"
+						>{newTokenPlaintext}</code
+					>
+					<Button type="button" variant="outline" class="min-h-12" onclick={copyToken}
+						>{tokenCopied ? 'Copié' : 'Copier le jeton'}</Button
+					>
+				</div>
+			{/if}
+
+			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={createToken}>
+				<Label for="new-token-name">Nom du jeton</Label>
+				<Input
+					id="new-token-name"
+					class="min-h-12 text-base"
+					placeholder="iPhone Émile"
+					bind:value={newTokenName}
+					required
+					maxlength={100}
+					aria-invalid={tokenError !== null}
+					aria-describedby={tokenError !== null ? 'token-error' : undefined}
+				/>
+				<Label for="new-token-caregiver">Aidant lié (facultatif)</Label>
+				<select
+					id="new-token-caregiver"
+					class="border-border bg-surface text-ink min-h-12 border-2 px-2 text-base"
+					bind:value={newTokenCaregiverId}
+				>
+					<option value="">Aucun</option>
+					{#each data.caregivers as cg (cg.id)}
+						<option value={cg.id}>{cg.name}</option>
+					{/each}
+				</select>
+				<LiveMessage
+					id="token-error"
+					text={tokenError}
+					kind="alert"
+					nonce={tokenErrorNonce}
+					class="text-danger text-sm"
+				/>
+				<LiveMessage text={tokenStatus} kind="status" nonce={tokenStatusNonce} class="sr-only" />
+				<Button type="submit" class="min-h-12" disabled={tokenPending}
+					>{tokenPending ? 'Création…' : 'Créer un jeton'}</Button
+				>
+			</form>
+		</section>
+
+		<section class="flex flex-col gap-3 p-4" data-testid="quick-words">
+			<h2 class="text-section text-ink-muted uppercase">Mots vocaux</h2>
+			<p class="text-ink-muted text-body">
+				Les mots qu’une phrase dictée peut contenir. « Biberon 120 », « néné droite », « caca » :
+				le premier mot reconnu décide de l’activité. Un mot ajouté ici marche à la dictée
+				suivante, sans rien changer sur le téléphone.
+			</p>
+
+			{#each QUICK_INTENTS as option (option.key)}
+				{@const words = data.quickWords.filter((w) => quickIntentKey(w.intent) === option.key)}
+				<div class="border-border-hair flex flex-col gap-1 border-t pt-3">
+					<h3 class="text-section text-ink-muted uppercase">{option.label}</h3>
+					<ul class="divide-border-hair flex flex-col divide-y">
+						{#each words as w (w.id)}
+							<li class="flex flex-wrap items-center gap-3 py-2">
+								<span class="text-value text-ink min-w-0 flex-1 truncate">{w.word}</span>
+								<Button
+									variant="ghost"
+									class="text-danger min-h-12"
+									aria-label={`Supprimer le mot ${w.word}`}
+									onclick={() => deleteQuickWord(w.id, w.word)}>Supprimer</Button
+								>
+							</li>
+						{:else}
+							<li class="text-ink-muted py-2">Aucun mot.</li>
+						{/each}
+					</ul>
+				</div>
+			{/each}
+
+			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={addQuickWord}>
+				<Label for="new-quick-word">Nouveau mot</Label>
+				<Input
+					id="new-quick-word"
+					class="min-h-12 text-base"
+					placeholder="nini"
+					bind:value={newWord}
+					required
+					maxlength={50}
+					aria-invalid={wordError !== null}
+					aria-describedby={wordError !== null ? 'quick-word-error' : undefined}
+				/>
+				<Label for="new-quick-word-intent">Activité</Label>
+				<select
+					id="new-quick-word-intent"
+					class="border-border bg-surface text-ink min-h-12 border-2 px-2 text-base"
+					bind:value={newWordIntentKey}
+				>
+					{#each QUICK_INTENTS as option (option.key)}
+						<option value={option.key}>{option.label}</option>
+					{/each}
+				</select>
+				<LiveMessage
+					id="quick-word-error"
+					text={wordError}
+					kind="alert"
+					nonce={wordErrorNonce}
+					class="text-danger text-sm"
+				/>
+				<LiveMessage text={wordStatus} kind="status" nonce={wordStatusNonce} class="sr-only" />
+				<Button type="submit" class="min-h-12" disabled={wordPending}
+					>{wordPending ? 'Ajout…' : 'Ajouter un mot'}</Button
+				>
+			</form>
 		</section>
 
 		<section class="flex flex-col gap-3 p-4">

@@ -80,6 +80,46 @@ export const migrations: string[] = [
 	CREATE UNIQUE INDEX idx_event_active_timer ON event (baby_id, type)
 		WHERE ended_at IS NULL AND deleted_at IS NULL
 			AND type IN ('nursing', 'pump', 'sleep');
+	`,
+	// v3 — the integration surface (ADR 0004). Both tables land in one schema
+	// version even though `quick_word` is only read by the later "phrase intent"
+	// slice: the version is cheaper to lay down once than twice.
+	//
+	// `token_hash` is a SHA-256 hex digest, never the plaintext: a leaked
+	// database must not hand out working tokens. `caregiver_id` is ON DELETE SET
+	// NULL rather than RESTRICT — removing a caregiver is a household decision
+	// that should not be blocked by, nor silently revoke, a device's token; the
+	// token simply stops attributing its writes to anyone.
+	`
+	CREATE TABLE api_token (
+		id            TEXT PRIMARY KEY,
+		name          TEXT NOT NULL,
+		token_hash    TEXT NOT NULL UNIQUE,
+		caregiver_id  TEXT REFERENCES caregiver (id) ON DELETE SET NULL,
+		created_at    TEXT NOT NULL,
+		last_used_at  TEXT,
+		revoked_at    TEXT
+	);
+
+	-- The word column is stored normalised (lowercase, accents stripped) so
+	-- lookups are a plain equality on the unique index; intent is the JSON
+	-- intent template, without the modifiers a phrase supplies (volume, side).
+	CREATE TABLE quick_word (
+		id      TEXT PRIMARY KEY,
+		word    TEXT NOT NULL UNIQUE,
+		intent  TEXT NOT NULL
+	);
+
+	INSERT INTO quick_word (id, word, intent) VALUES
+		('qw-biberon', 'biberon', '{"action":"bottle"}'),
+		('qw-pipi',    'pipi',    '{"action":"diaper","kind":"wet"}'),
+		('qw-caca',    'caca',    '{"action":"diaper","kind":"dirty"}'),
+		('qw-couche',  'couche',  '{"action":"diaper","kind":"both"}'),
+		('qw-dodo',    'dodo',    '{"action":"sleep"}'),
+		('qw-sieste',  'sieste',  '{"action":"sleep"}'),
+		('qw-tetee',   'tetee',   '{"action":"nursing"}'),
+		('qw-teton',   'teton',   '{"action":"nursing"}'),
+		('qw-nene',    'nene',    '{"action":"nursing"}');
 	`
 ];
 

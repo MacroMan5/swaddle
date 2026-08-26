@@ -12,7 +12,8 @@ export {
 	isTimerType,
 	isPointType,
 	isType,
-	detailsOf
+	detailsOf,
+	nursingDurationMs
 } from '$lib/shared/events';
 export type {
 	EventType,

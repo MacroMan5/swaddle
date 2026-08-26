@@ -50,9 +50,11 @@ Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 # continuer dans le répertoire courant), et un `.env` déjà présent est conservé.
 mkdir -p swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
-# Premier lancement : déclarez l'URL exacte que vos navigateurs utiliseront
-# pour joindre l'app (nom de domaine local ou IP du serveur).
-[ -f .env ] || echo "SWADDLE_ORIGIN=http://<ip-du-serveur>:3010" > .env
+# Premier lancement : SWADDLE_ORIGIN doit être l'URL exacte que vos
+# navigateurs utiliseront pour joindre l'app. La ligne ci-dessous prend la
+# première IP LAN du serveur (Linux) ; si vous servez plutôt un nom de
+# domaine local (reverse proxy), écrivez-le à la place dans `.env`.
+[ -f .env ] || echo "SWADDLE_ORIGIN=http://$(hostname -I | awk '{print $1}'):3010" > .env
 mkdir -p data && sudo chown -R 1000:1000 data
 docker compose pull && docker compose up -d
 ```

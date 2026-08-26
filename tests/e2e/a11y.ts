@@ -117,26 +117,59 @@ export const TEXT_SPACING_CSS = `
 `;
 
 /**
+ * A moment inside the *current local day*: `fraction` of the way from local
+ * midnight to now (0 = midnight, 1 = now).
+ *
+ * Seeding "N minutes ago" is a midnight landmine, the same one
+ * history-calendar.spec.ts's `yesterdayAt` was introduced to dodge (#81): run
+ * the suite at 00:10 and a `now - 90 min` event lands on *yesterday*, so
+ * "Aujourd'hui" and the History day view — both of which show the current
+ * local day — come up empty and every assertion that needs a row fails.
+ * `yesterdayAt` is the right answer for specs that navigate the day selector
+ * back a day; these ones assert on the default (today) view of both screens,
+ * so they need the mirror-image guarantee instead: always inside today, always
+ * in the past, at any hour, with no branching. Anchoring to the elapsed part
+ * of today gives exactly that. Right at midnight the window collapses and the
+ * events pile up on the same instant — still today, still listed, which is all
+ * these specs ask of them; verified by pinning `elapsed` to 30 s and running
+ * both a11y spec files green in either engine.
+ */
+export function withinTodayIso(fraction: number): string {
+	const midnight = new Date();
+	midnight.setHours(0, 0, 0, 0);
+	const elapsed = Date.now() - midnight.getTime();
+	return new Date(midnight.getTime() + elapsed * fraction).toISOString();
+}
+
+/**
  * Gives server A a few of today's events so Today and the History day view are
  * exercised populated rather than empty.
  *
  * The returned ids MUST be handed back to `removeSeededEvents` once the test
- * is done: these events sit hours earlier than the ones later specs create,
- * and history.spec.ts asserts on the *first* (oldest) row of the day — leaving
- * them behind would silently take that row over.
+ * is done: these events sit earlier in the day than the ones later specs
+ * create, and history.spec.ts asserts on the *first* (oldest) row of the day —
+ * leaving them behind would silently take that row over.
  */
 export async function seedTodayEvents(request: APIRequestContext): Promise<string[]> {
-	const now = Date.now();
-	const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
 	const events = [
 		{
 			type: 'bottle',
-			startedAt: iso(90),
+			startedAt: withinTodayIso(0.2),
 			endedAt: null,
 			details: { milkType: 'formula', volumeMl: 120 }
 		},
-		{ type: 'diaper', startedAt: iso(60), endedAt: null, details: { pee: true, poo: false } },
-		{ type: 'sleep', startedAt: iso(45), endedAt: iso(15), details: {} }
+		{
+			type: 'diaper',
+			startedAt: withinTodayIso(0.5),
+			endedAt: null,
+			details: { pee: true, poo: false }
+		},
+		{
+			type: 'sleep',
+			startedAt: withinTodayIso(0.7),
+			endedAt: withinTodayIso(0.9),
+			details: {}
+		}
 	];
 	const ids: string[] = [];
 	for (const event of events) {

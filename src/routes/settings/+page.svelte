@@ -141,31 +141,46 @@
 	}
 
 	// --- Unité ---
-	let volumeUnit = $state(data.household.volumeUnit);
+	// Sourced from data.household (authoritative, refreshed by invalidateAll —
+	// including after a restore) with a local override applied only while a
+	// save of our own is in flight; deriving instead of copying data.household
+	// into a separately-initialized $state avoids the
+	// `state_referenced_locally` trap where that copy would never notice a
+	// later authoritative change (issue #49).
+	let volumeUnitOverride = $state<'ml' | 'oz' | null>(null);
+	let volumeUnit = $derived(volumeUnitOverride ?? data.household.volumeUnit);
 	let volumeUnitError = $state<string | null>(null);
 	let volumeUnitPending = $state(false);
 
 	async function setVolumeUnit(unit: 'ml' | 'oz') {
 		volumeUnitError = null;
-		const previousUnit = volumeUnit;
 		// Applied immediately for instant feedback (design-system.md § Mouvement);
-		// rolled back below if the save turns out to have failed, instead of
-		// presenting an unsaved change as persistent. Both buttons are disabled
-		// meanwhile so a second click can't start a concurrent save whose
-		// rollback would race this one's.
-		volumeUnit = unit;
+		// dropped below if the save turns out to have failed, instead of
+		// presenting an unsaved change as persistent — the control then reverts
+		// to the untouched authoritative value. On success it is kept until
+		// invalidateAll has refreshed data.household to match, so it never
+		// flickers back to the pre-save value in between. Both buttons are
+		// disabled meanwhile so a second click can't start a concurrent save
+		// whose rollback would race this one's.
+		volumeUnitOverride = unit;
 		volumeUnitPending = true;
 
 		const { ok, value } = await postJson('/api/household', 'PATCH', { volumeUnit: unit });
-		volumeUnitPending = false;
 		if (!ok) {
-			volumeUnit = previousUnit;
+			volumeUnitOverride = null;
+			volumeUnitPending = false;
 			volumeUnitError = errorMessage(value);
+			return;
 		}
+		await invalidateAll();
+		volumeUnitOverride = null;
+		volumeUnitPending = false;
 	}
 
 	// --- Thème ---
-	let theme = $state(data.household.theme);
+	// Same override-over-authoritative-derivation pattern as volumeUnit above.
+	let themeOverride = $state<'light' | 'dark' | 'auto' | null>(null);
+	let theme = $derived(themeOverride ?? data.household.theme);
 	let themeError = $state<string | null>(null);
 
 	function applyTheme(t: 'light' | 'dark' | 'auto') {
@@ -184,20 +199,27 @@
 		// presenting an unsaved change as persistent.
 		applyTheme(t);
 		localStorage.setItem('swaddle.theme', t);
+		themeOverride = t;
 
 		const { ok, value } = await postJson('/api/household', 'PATCH', { theme: t });
 		if (!ok) {
+			themeOverride = null;
 			applyTheme(previousTheme);
 			if (previousStoredTheme === null) localStorage.removeItem('swaddle.theme');
 			else localStorage.setItem('swaddle.theme', previousStoredTheme);
 			themeError = errorMessage(value);
 			return;
 		}
-		theme = t;
+		// Kept until invalidateAll refreshes data.household.theme to match, for
+		// the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		themeOverride = null;
 	}
 
 	// --- Code PIN ---
-	let pinEnabled = $state(data.household.pinEnabled);
+	// Same override-over-authoritative-derivation pattern as volumeUnit above.
+	let pinEnabledOverride = $state<boolean | null>(null);
+	let pinEnabled = $derived(pinEnabledOverride ?? data.household.pinEnabled);
 	let newPin = $state('');
 	let newPinConfirm = $state('');
 	let currentPin = $state('');
@@ -220,11 +242,15 @@
 			pinError = errorMessage(value);
 			return;
 		}
-		pinEnabled = true;
+		pinEnabledOverride = true;
 		newPin = '';
 		newPinConfirm = '';
 		currentPin = '';
 		pinMessage = 'Code PIN mis à jour.';
+		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
+		// for the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		pinEnabledOverride = null;
 	}
 
 	async function disablePin(event: SubmitEvent) {
@@ -236,9 +262,13 @@
 			pinError = errorMessage(value);
 			return;
 		}
-		pinEnabled = false;
+		pinEnabledOverride = false;
 		currentPin = '';
 		pinMessage = 'Code PIN désactivé.';
+		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
+		// for the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		pinEnabledOverride = null;
 	}
 
 	// --- Données ---
@@ -274,6 +304,13 @@
 		const { babies, caregivers, events } = value.restored;
 		restoreMessage = `Restauré : ${babies} bébé(s), ${caregivers} aidant(s), ${events} événement(s).`;
 		await invalidateAll();
+		// Unité and PIN above derive straight from data.household, refreshed by
+		// invalidateAll — the theme also needs applying to the document (dark
+		// class, forced theme-color meta) and to the persisted FOUC-avoidance
+		// choice read by app.html, which a data refresh alone doesn't do (#49,
+		// same applyTheme path as a manual theme change uses).
+		applyTheme(data.household.theme);
+		localStorage.setItem('swaddle.theme', data.household.theme);
 	}
 
 	// --- Sauvegarde ---

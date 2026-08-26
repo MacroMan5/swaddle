@@ -275,14 +275,25 @@ test('#52: the live region is mounted before any outcome and repeated identical 
 	// Mark the node so the next assertion can confirm it is the very same
 	// element after a second identical outcome, not a freshly inserted one.
 	await pinErrorRegion.evaluate((el) => el.setAttribute('data-marker', '1'));
-	// Focus stays on the button that triggered the outcome — no focus jump.
-	await expect(enableButton).toBeFocused();
+	// The outcome must not move focus. WebKit does not focus a clicked button
+	// (macOS behavior — mousedown even blurs an explicitly focused one), so
+	// asserting focus on the button itself is engine-specific; what the AC
+	// requires is that the *outcome* causes no focus jump: the active element
+	// is never the live region and stays put across a repeated outcome.
+	const activeAfterFirst = await page.evaluate(
+		() => document.activeElement?.id || document.activeElement?.tagName || ''
+	);
+	expect(activeAfterFirst).not.toBe('pin-error');
 
 	await enableButton.click();
 	await expect(page.locator('#pin-error[data-marker="1"]')).toHaveText(
 		'Les deux codes ne correspondent pas.'
 	);
-	await expect(enableButton).toBeFocused();
+	const activeAfterSecond = await page.evaluate(
+		() => document.activeElement?.id || document.activeElement?.tagName || ''
+	);
+	expect(activeAfterSecond).toBe(activeAfterFirst);
+	expect(activeAfterSecond).not.toBe('pin-error');
 });
 
 test('#52: caregiver create/edit/delete failures only mark their own input invalid', async ({ page }) => {

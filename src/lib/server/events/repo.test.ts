@@ -5,6 +5,7 @@ import {
 	createEvent,
 	getEvent,
 	listEvents,
+	listDeletedEvents,
 	updateEvent,
 	softDeleteEvent,
 	restoreEvent,
@@ -82,6 +83,21 @@ describe('event CRUD', () => {
 		const restored = restoreEvent(db, created.id);
 		expect(restored.deletedAt).toBeNull();
 		expect(listEvents(db, { babyId: 'baby-1' })).toHaveLength(1);
+	});
+
+	it('listDeletedEvents lists only soft-deleted events for a baby, deletedAt DESC (issue #50)', () => {
+		const kept = createEvent(db, bottle({ startedAt: '2026-08-23T08:00:00.000Z' }));
+		const first = createEvent(db, bottle({ startedAt: '2026-08-23T09:00:00.000Z' }));
+		const second = createEvent(db, bottle({ startedAt: '2026-08-23T10:00:00.000Z' }));
+		expect(listDeletedEvents(db, 'baby-1')).toHaveLength(0);
+
+		softDeleteEvent(db, first.id);
+		softDeleteEvent(db, second.id);
+
+		const deleted = listDeletedEvents(db, 'baby-1');
+		expect(deleted.map((e) => e.id)).toEqual([second.id, first.id]); // most recently deleted first
+		expect(deleted.every((e) => e.deletedAt !== null)).toBe(true);
+		expect(listDeletedEvents(db, 'baby-1').map((e) => e.id)).not.toContain(kept.id);
 	});
 
 	it('throws RepoError not_found on unknown ids', () => {

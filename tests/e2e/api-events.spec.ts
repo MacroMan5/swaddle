@@ -63,6 +63,25 @@ test('soft delete hides from list, restore brings back (FR-007)', async ({ reque
 	expect((await restored.json()).deletedAt).toBeNull();
 });
 
+test('deleted=1 lists only soft-deleted events, most recently deleted first (issue #50)', async ({
+	request
+}) => {
+	const created = await createDiaper(request);
+	const before = await (await request.get('/api/events?babyId=baby-1&deleted=1')).json();
+	expect(before.events.map((e: { id: string }) => e.id)).not.toContain(created.id);
+
+	const del = await request.delete(`/api/events/${created.id}`);
+	expect(del.status()).toBe(200);
+
+	const after = await (await request.get('/api/events?babyId=baby-1&deleted=1')).json();
+	expect(after.events[0].id).toBe(created.id);
+	expect(after.events[0].deletedAt).not.toBeNull();
+
+	// Still hidden from the ordinary (non-deleted) list.
+	const list = await (await request.get('/api/events?babyId=baby-1')).json();
+	expect(list.events.map((e: { id: string }) => e.id)).not.toContain(created.id);
+});
+
 test('unknown event id yields 404 with error envelope', async ({ request }) => {
 	const res = await request.get('/api/events/nope');
 	expect(res.status()).toBe(404);

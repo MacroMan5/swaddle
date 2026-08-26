@@ -139,7 +139,11 @@ virgule, un guillemet, ou un retour chariot/saut de ligne (`\r` seul inclus),
 
 Télécharge un instantané SQLite cohérent, produit par `VACUUM INTO` (jamais
 une copie à chaud du fichier — RISK-002) dans
-`DATA_DIR/backups/backup-<date ISO, ':' remplacés par '-'>.sqlite`.
+`DATA_DIR/backups/backup-<date ISO, ':' remplacés par '-'>.sqlite`. Une fois
+l'instantané écrit, seuls les 10 fichiers `backup-*.sqlite` les plus récents
+sont conservés — les plus anciens sont supprimés (#57). L'échec de cet élagage
+n'affecte jamais la sauvegarde qui vient d'être créée ni ne supprime les
+instantanés déjà conservés.
 
 → `200 application/octet-stream`, `content-disposition: attachment`.
 
@@ -151,9 +155,12 @@ point d'entrée web — cela garde l'échange de fichier de base de données hor
 de la surface exposée). Un instantané automatique de l'état courant est
 toujours pris en premier (`VACUUM INTO`,
 `DATA_DIR/backups/pre-restore-<date ISO>.sqlite`), avant de vider et
-réimporter les données en une seule transaction. En cas de payload invalide,
-rien n'est écrit (ni l'instantané préalable n'est perdu : il reste sur disque
-même si la restauration échoue ensuite).
+réimporter les données en une seule transaction. Comme pour `/api/backup`,
+seuls les 10 fichiers `pre-restore-*.sqlite` les plus récents sont conservés
+juste après cet instantané, avant que le remplacement des données ne se
+poursuive (#57). En cas de payload invalide, rien n'est écrit (ni l'instantané
+préalable n'est perdu : il reste sur disque même si la restauration échoue
+ensuite).
 
 → `200 { restored: { babies: number; caregivers: number; events: number };
 snapshot: string }` · `400 validation_failed`.

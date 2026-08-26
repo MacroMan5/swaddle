@@ -5,7 +5,7 @@ import { BASE_A, BASE_B, PORT_A, PORT_B } from './ports';
 // running them once, in a browser-less "api" project, gives full coverage
 // without paying for it twice under Chromium and under WebKit (issue #53).
 const API_ONLY = /[\\/]api-.*\.spec\.ts$/;
-const RESET_SERVER_B = /[\\/]reset-server-b\.setup\.ts$/;
+const RESET_SERVERS = /[\\/]reset-servers\.setup\.ts$/;
 
 export default defineConfig({
 	testDir: '.',
@@ -54,16 +54,17 @@ export default defineConfig({
 	// `chromium` and `webkit` both run the full browser-driven suite in
 	// alphabetical file order, exactly as the single implicit project used
 	// to — including the onboarding → pin ordering on server B that
-	// pin.spec.ts's comment already calls out. Server B is one shared
-	// process for the whole run (the webServer list above starts it once),
-	// so a second project replaying onboarding.spec.ts against an
-	// already-set-up B would fail AC-008's "empty db" assumption. Rather
-	// than rely on run-order guarantees across independent Playwright
-	// projects (undocumented and not worth depending on), `dependencies`
-	// forces a strict chain — api → chromium → reset-b → webkit — so
-	// `reset-server-b.setup.ts` always runs once, after chromium's specs
-	// have finished with B and before webkit's start, putting B back to the
-	// pristine state global-setup.ts left it in.
+	// pin.spec.ts's comment already calls out. Both servers are one shared
+	// process for the whole run (the webServer list above starts them once),
+	// so a second project replaying the same specs against already-mutated
+	// servers would fail assumptions like AC-008's "empty db" on B, or
+	// collide with literal test data chromium's run left on A (see
+	// reset-servers.setup.ts). Rather than rely on run-order guarantees
+	// across independent Playwright projects (undocumented and not worth
+	// depending on), `dependencies` forces a strict chain — api → chromium →
+	// reset-servers → webkit — so `reset-servers.setup.ts` always runs once,
+	// after chromium's specs have finished and before webkit's start,
+	// putting both servers back to the state global-setup.ts left them in.
 	projects: [
 		{
 			name: 'api',
@@ -72,19 +73,19 @@ export default defineConfig({
 		},
 		{
 			name: 'chromium',
-			testIgnore: [API_ONLY, RESET_SERVER_B],
+			testIgnore: [API_ONLY, RESET_SERVERS],
 			dependencies: ['api'],
 			use: { ...devices['Desktop Chrome'] }
 		},
 		{
-			name: 'reset-b',
-			testMatch: RESET_SERVER_B,
+			name: 'reset-servers',
+			testMatch: RESET_SERVERS,
 			dependencies: ['chromium']
 		},
 		{
 			name: 'webkit',
-			testIgnore: [API_ONLY, RESET_SERVER_B],
-			dependencies: ['reset-b'],
+			testIgnore: [API_ONLY, RESET_SERVERS],
+			dependencies: ['reset-servers'],
 			use: { ...devices['Desktop Safari'] }
 		}
 	]

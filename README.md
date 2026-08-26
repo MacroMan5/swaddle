@@ -43,7 +43,8 @@ Les décisions structurantes sont consignées dans `docs/adr/`.
 
 ## Installation
 
-Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
+Sur un serveur Linux avec Docker (Raspberry Pi 4+ inclus — la cible de
+référence, ADR 0002) :
 
 ```sh
 # Bloc rejouable : `-p` fait entrer un re-run dans swaddle/ (au lieu de

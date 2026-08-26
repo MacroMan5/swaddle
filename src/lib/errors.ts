@@ -1,3 +1,5 @@
+import { MAX_BODY_LABEL } from '$lib/limits';
+
 export type ApiErrorBody = {
 	error?: { code?: string; message?: string; issues?: { path: string; message: string }[] };
 } | null;
@@ -17,7 +19,8 @@ export type ApiErrorCode =
 	| 'in_use'
 	| 'forbidden'
 	| 'too_many_attempts'
-	| 'pin_required';
+	| 'pin_required'
+	| 'payload_too_large';
 
 /**
  * The stable API contract is error.code (docs/api/settings-api.md), never
@@ -48,6 +51,8 @@ export function userMessage(code: string | undefined, issues?: { path: string }[
 			return 'Type de minuteur inconnu.';
 		case 'pin_required':
 			return 'Session expirée. Entrez le code.';
+		case 'payload_too_large':
+			return `Fichier trop volumineux (${MAX_BODY_LABEL} maximum).`;
 		default:
 			return 'Une erreur est survenue.';
 	}

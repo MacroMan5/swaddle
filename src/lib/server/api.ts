@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { MAX_BODY_BYTES } from '$lib/limits';
 import { RepoError } from './events/repo';
 import type { Issue, Result } from './events/types';
 
@@ -6,11 +7,31 @@ export function apiError(status: number, code: string, message: string, issues?:
 	return json({ error: { code, message, ...(issues ? { issues } : {}) } }, { status });
 }
 
-/** Reads a JSON body, turning a malformed one into a validation issue. */
+/** The 413 envelope: its own code, so the UI can say « fichier trop volumineux ». */
+export function payloadTooLarge(): Response {
+	return apiError(413, 'payload_too_large', `request body exceeds ${MAX_BODY_BYTES} bytes`);
+}
+
+/**
+ * adapter-node aborts the body stream with a 413 `SvelteKitError` as soon as a
+ * request passes `BODY_SIZE_LIMIT`. That rejection surfaces on the first read
+ * of the body — `request.json()` — which is indistinguishable from malformed
+ * JSON unless the status is looked at (issue #45).
+ */
+export function isPayloadTooLarge(e: unknown): boolean {
+	return typeof e === 'object' && e !== null && (e as { status?: unknown }).status === 413;
+}
+
+/**
+ * Reads a JSON body, turning a malformed one into a validation issue. An
+ * oversized body is *not* malformed: that rejection is rethrown so the caller
+ * answers with the 413 envelope instead of `validation_failed`.
+ */
 export async function readJson(request: Request): Promise<Result<unknown>> {
 	try {
 		return { ok: true, value: await request.json() };
-	} catch {
+	} catch (e) {
+		if (isPayloadTooLarge(e)) throw e;
 		return {
 			ok: false,
 			issues: [{ path: '', code: 'invalid_json', message: 'request body is not valid JSON' }]

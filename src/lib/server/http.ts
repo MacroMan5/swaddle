@@ -1,8 +1,9 @@
 import type { z } from 'zod';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import type Database from 'better-sqlite3';
+import { MAX_BODY_BYTES } from '$lib/limits';
 import { getDb } from './db';
-import { apiError, handleRepoError, readJson } from './api';
+import { apiError, handleRepoError, isPayloadTooLarge, payloadTooLarge, readJson } from './api';
 import { zodIssues, type Result } from './events/types';
 
 /**
@@ -59,7 +60,22 @@ export function handler<B = Record<string, never>>(
 	return async (event) => {
 		let body = {} as B;
 		if (schema) {
-			const raw = await readJson(event.request);
+			// The application's own bound (issue #45), checked before a byte is
+			// read and independently of how `BODY_SIZE_LIMIT` is configured — the
+			// adapter enforces the same number, but only when the env says so
+			// (and never under `vite dev`).
+			const declared = Number(event.request.headers.get('content-length'));
+			if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return payloadTooLarge();
+
+			let raw: Result<unknown>;
+			try {
+				raw = await readJson(event.request);
+			} catch (e) {
+				// A body with no usable content-length (chunked, or a lying header)
+				// is only caught mid-stream, by the adapter.
+				if (isPayloadTooLarge(e)) return payloadTooLarge();
+				throw e;
+			}
 			if (!raw.ok) return apiError(400, 'validation_failed', invalidMessage, raw.issues);
 
 			const parsed = parseBody(schema, raw.value);

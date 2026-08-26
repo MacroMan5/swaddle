@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
+	import { pageTitle } from '$lib/meta';
 
 	let pin = $state('');
 	let error = $state<string | null>(null);
@@ -32,6 +33,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>{pageTitle('Code PIN')}</title>
+</svelte:head>
 
 <div class="bg-surface flex min-h-dvh flex-col p-4">
 	<div class="enter mx-auto flex w-full max-w-sm flex-1 flex-col gap-5">

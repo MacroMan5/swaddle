@@ -4,6 +4,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
+	import { pageTitle } from '$lib/meta';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
@@ -270,6 +271,10 @@
 		return new Date(at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' });
 	});
 </script>
+
+<svelte:head>
+	<title>{pageTitle('Réglages')}</title>
+</svelte:head>
 
 <div class="mx-auto flex max-w-lg flex-col gap-4 p-4">
 	<div class="border-border enter border-b-2 pb-3">

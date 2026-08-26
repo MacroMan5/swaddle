@@ -4,7 +4,7 @@
 	// same API calls, same optimistic merge, same undo wiring.
 	import { getContext } from 'svelte';
 	import { Droplets, Heart, Milk, Moon, Wind } from '@lucide/svelte';
-	import { startTimer, ApiError } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 	import { lastBottleVolumeMl } from './todayDerivations';
@@ -95,10 +95,7 @@
 		sleepPending = true;
 		error = null;
 		try {
-			// {created:false} adopts an already-running session started elsewhere:
-			// merge it in immediately either way, since that path emits no SSE event.
-			const result = await startTimer('sleep', { babyId, caregiverId });
-			store.applyServerEvent(result.event);
+			await store.changes.startTimer('sleep', { babyId, caregiverId });
 		} catch (e) {
 			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {

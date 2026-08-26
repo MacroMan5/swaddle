@@ -3,18 +3,19 @@ import {
 	ActivityChanges,
 	httpActivityChangeTransport,
 	type ActivityChangeTransport,
+	type ActivityChangeDelivery,
 	type ConfirmedActivityChange
 } from './activityChanges';
 import { sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
 import { isTimerType } from './types';
-import type { BabyDTO, BabyUpdateMessage, EventDTO, SnapshotMessage, SyncKind, SyncMessage } from './types';
+import type { BabyDTO, BabyUpdateMessage, EventDTO, SnapshotMessage, SyncMessage } from './types';
 
 /** A change relayed to non-today views. A `sync` message carries `event`; a
  * snapshot/reset (reconnect or data restore) has no single event to apply
  * incrementally and signals "refetch your window" instead. */
-export type RelayChange = { kind: SyncKind; event: EventDTO } | { kind: 'reset' };
+export type RelayChange = ConfirmedActivityChange | { kind: 'reset' };
 
 const browser = typeof window !== 'undefined';
 
@@ -102,9 +103,23 @@ export class SyncStore {
 	/** Listeners for non-today views (history) that need to react to changes
 	 * outside today's window, which `events`/`timers` never carry. */
 	#changeListeners = new Set<(change: RelayChange) => void>();
+	#latestChanges = new Map<
+		string,
+		{ updatedAt: number; event: EventDTO }
+	>();
+	/** Exact HTTP confirmations that may still be echoed by SSE. Correlating
+	 * payloads avoids inventing a global order for cyclical kinds such as
+	 * deleted/restored when the server timestamps two writes in one millisecond. */
+	#pendingHttpEchoes = new Map<string, string[]>();
+	/** Bounded fingerprints already delivered by SSE. A delayed HTTP response
+	 * may match an older SSE version rather than the current one when another
+	 * publication landed in between. */
+	#seenSseChanges = new Map<string, { key: string; sequence: number }[]>();
 
 	constructor(transport: ActivityChangeTransport = httpActivityChangeTransport) {
-		this.changes = new ActivityChanges(transport, (change) => this.#applyConfirmedChange(change));
+		this.changes = new ActivityChanges(transport, (change, delivery) =>
+			this.#applyConfirmedChange(change, delivery)
+		);
 	}
 
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
@@ -162,6 +177,9 @@ export class SyncStore {
 		this.#eventsInFlight = null;
 		this.#eventsRefreshing = false;
 		this.#eventsBuffer = [];
+		this.#latestChanges.clear();
+		this.#pendingHttpEchoes.clear();
+		this.#seenSseChanges.clear();
 		this.eventsStatus = 'idle';
 		this.eventsError = null;
 		if (this.#tick !== null) clearInterval(this.#tick);
@@ -312,6 +330,9 @@ export class SyncStore {
 	/** A restore invalidates every id, so treat it like a fresh snapshot (FR-012). */
 	applyReset(message: { serverTime: string }): void {
 		this.#setServerTime(message.serverTime);
+		this.#latestChanges.clear();
+		this.#pendingHttpEchoes.clear();
+		this.#seenSseChanges.clear();
 		if (browser) {
 			void this.refreshEvents();
 			void this.refreshTimers();
@@ -338,7 +359,49 @@ export class SyncStore {
 		this.changes.receive({ kind: message.kind, event: message.event });
 	}
 
-	#applyConfirmedChange(change: ConfirmedActivityChange): void {
+	#applyConfirmedChange(change: ConfirmedActivityChange, delivery: ActivityChangeDelivery): void {
+		const updatedAt = Date.parse(change.event.updatedAt);
+		const serialized = JSON.stringify(change.event);
+		const echoKey = `${change.kind}:${serialized}`;
+		const current = this.#latestChanges.get(change.event.id);
+		if (delivery.source === 'sse') {
+			const seen = this.#seenSseChanges.get(change.event.id) ?? [];
+			this.#seenSseChanges.set(change.event.id, [
+				...seen.slice(-15),
+				{ key: echoKey, sequence: delivery.sequence }
+			]);
+			const pending = this.#pendingHttpEchoes.get(change.event.id);
+			const echoIndex = pending?.indexOf(echoKey) ?? -1;
+			if (pending !== undefined && echoIndex >= 0) {
+				pending.splice(echoIndex, 1);
+				if (pending.length === 0) this.#pendingHttpEchoes.delete(change.event.id);
+				return;
+			}
+		} else {
+			if (
+				this.#seenSseChanges
+					.get(change.event.id)
+					?.some(
+						(seen) =>
+							seen.key === echoKey && seen.sequence > delivery.sseSequenceAtStart
+					)
+			)
+				return;
+			const pending = this.#pendingHttpEchoes.get(change.event.id) ?? [];
+			this.#pendingHttpEchoes.set(change.event.id, [...pending.slice(-15), echoKey]);
+		}
+		if (current !== undefined) {
+			if (updatedAt < current.updatedAt) return;
+			if (
+				updatedAt === current.updatedAt &&
+				serialized === JSON.stringify(current.event)
+			)
+				return;
+		}
+		this.#latestChanges.set(change.event.id, {
+			updatedAt,
+			event: change.event
+		});
 		this.applyServerEvent(change.event, change.kind === 'deleted');
 		this.#emitChange(change);
 	}

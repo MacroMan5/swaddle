@@ -25,7 +25,10 @@ function diaper(overrides: Partial<EventDTO> = {}): EventDTO {
 function transport(): ActivityChangeTransport {
 	return {
 		create: vi.fn(),
-		delete: vi.fn()
+		delete: vi.fn(),
+		startTimer: vi.fn(),
+		stopTimer: vi.fn(),
+		nursingAction: vi.fn()
 	};
 }
 
@@ -114,6 +117,103 @@ describe('activity changes', () => {
 		expect(store.events).toEqual([confirmed]);
 	});
 
+	it('does not resurrect a deleted activity when its delayed create has the same timestamp', async () => {
+		const http = transport();
+		const confirmed = diaper();
+		const deleted = diaper({ deletedAt: NOW.toISOString() });
+		vi.mocked(http.create).mockResolvedValue(confirmed);
+		vi.mocked(http.delete).mockResolvedValue(deleted);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		await store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		await store.changes.delete(confirmed.id);
+		store.applyChange({ kind: 'created', event: confirmed, serverTime: NOW.toISOString() });
+
+		expect(store.events).toEqual([]);
+	});
+
+	it('accepts a distinguishable same-timestamp SSE completion after an HTTP start', async () => {
+		const http = transport();
+		const running = diaper({ id: 'sleep-1', type: 'sleep', details: {}, endedAt: null });
+		const completed = diaper({
+			id: running.id,
+			type: 'sleep',
+			details: {},
+			endedAt: NOW.toISOString()
+		});
+		vi.mocked(http.startTimer).mockResolvedValue({ created: true, event: running });
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		await store.changes.startTimer('sleep', { babyId: 'baby-1' });
+		store.applyChange({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
+
+		expect(store.timers).toEqual([]);
+		expect(store.events).toEqual([completed]);
+	});
+
+	it('accepts a same-timestamp SSE restore after an HTTP delete', async () => {
+		const http = transport();
+		const confirmed = diaper();
+		const deleted = diaper({ deletedAt: NOW.toISOString() });
+		vi.mocked(http.create).mockResolvedValue(confirmed);
+		vi.mocked(http.delete).mockResolvedValue(deleted);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		await store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		await store.changes.delete(confirmed.id);
+		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+
+		expect(store.events).toEqual([confirmed]);
+	});
+
+	it('accepts a same-timestamp HTTP delete after an SSE restore', async () => {
+		const http = transport();
+		const confirmed = diaper();
+		const deleted = diaper({ deletedAt: NOW.toISOString() });
+		vi.mocked(http.delete).mockResolvedValue(deleted);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		await store.changes.delete(confirmed.id);
+		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+		await store.changes.delete(confirmed.id);
+
+		expect(store.events).toEqual([]);
+	});
+
+	it('does not mistake an earlier identical SSE delete for a later HTTP delete echo', async () => {
+		const http = transport();
+		const confirmed = diaper();
+		const deleted = diaper({ deletedAt: NOW.toISOString() });
+		vi.mocked(http.delete).mockResolvedValue(deleted);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		store.applyChange({ kind: 'deleted', event: deleted, serverTime: NOW.toISOString() });
+		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+		await store.changes.delete(confirmed.id);
+
+		expect(store.events).toEqual([]);
+	});
+
 	it('keeps a newer SSE version when an older HTTP response arrives later', async () => {
 		const http = transport();
 		let resolveWrite!: (event: EventDTO) => void;
@@ -142,5 +242,112 @@ describe('activity changes', () => {
 		await write;
 
 		expect(store.events).toEqual([newer]);
+	});
+
+	it('keeps a same-timestamp SSE completion when its HTTP start response arrives last', async () => {
+		const http = transport();
+		let resolveStart!: (result: { created: boolean; event: EventDTO }) => void;
+		vi.mocked(http.startTimer).mockReturnValue(
+			new Promise((resolve) => {
+				resolveStart = resolve;
+			})
+		);
+		const running = diaper({ id: 'sleep-1', type: 'sleep', details: {}, endedAt: null });
+		const completed = diaper({
+			id: running.id,
+			type: 'sleep',
+			details: {},
+			endedAt: NOW.toISOString()
+		});
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		const start = store.changes.startTimer('sleep', { babyId: 'baby-1' });
+		store.applyChange({ kind: 'created', event: running, serverTime: NOW.toISOString() });
+		store.applyChange({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
+		resolveStart({ created: true, event: running });
+		await start;
+
+		expect(store.timers).toEqual([]);
+		expect(store.events).toEqual([completed]);
+	});
+
+	it('adopts an existing concurrent timer without fabricating a created publication', async () => {
+		const http = transport();
+		const existing = diaper({
+			id: 'sleep-1',
+			type: 'sleep',
+			details: {},
+			endedAt: null
+		});
+		vi.mocked(http.startTimer).mockResolvedValue({ created: false, event: existing });
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		const changes: unknown[] = [];
+		store.subscribeChanges((change) => changes.push(change));
+
+		const result = await store.changes.startTimer('sleep', {
+			babyId: 'baby-1',
+			caregiverId: 'caregiver-1'
+		});
+
+		expect(result).toEqual(existing);
+		expect(store.timers).toEqual([existing]);
+		expect(changes).toEqual([{ kind: 'adopted', event: existing }]);
+	});
+
+	it('reconciles a stopped timer into completed activity state', async () => {
+		const http = transport();
+		const running = diaper({ id: 'sleep-1', type: 'sleep', details: {}, endedAt: null });
+		const completed = diaper({
+			id: running.id,
+			type: 'sleep',
+			details: {},
+			endedAt: new Date(NOW.getTime() + 60_000).toISOString(),
+			updatedAt: new Date(NOW.getTime() + 60_000).toISOString()
+		});
+		vi.mocked(http.stopTimer).mockResolvedValue(completed);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		store.applyServerEvent(running);
+
+		const result = await store.changes.stopTimer('sleep', { babyId: 'baby-1' });
+
+		expect(result).toEqual(completed);
+		expect(store.timers).toEqual([]);
+		expect(store.events).toEqual([completed]);
+	});
+
+	it('reconciles nursing transitions and leaves state unchanged on failure', async () => {
+		const http = transport();
+		const updated = diaper({
+			id: 'nursing-1',
+			type: 'nursing',
+			details: {
+				segments: [
+					{
+						side: 'left',
+						startedAt: NOW.toISOString(),
+						endedAt: new Date(NOW.getTime() + 1_000).toISOString()
+					}
+				]
+			},
+			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+		});
+		vi.mocked(http.nursingAction).mockResolvedValueOnce(updated).mockRejectedValueOnce(new Error('offline'));
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+
+		await store.changes.nursingAction({ babyId: 'baby-1', action: 'pause' });
+		expect(store.events).toEqual([updated]);
+
+		await expect(
+			store.changes.nursingAction({ babyId: 'baby-1', action: 'resume', side: 'left' })
+		).rejects.toThrow('offline');
+		expect(store.events).toEqual([updated]);
 	});
 });

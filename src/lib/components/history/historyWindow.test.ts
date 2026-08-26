@@ -96,13 +96,14 @@ describe('initial window', () => {
 		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
 	});
 
-	it('subscribes to the change relay before starting the sync store, so the subscription survives its reset', async () => {
+	it('subscribes before starting the sync store and reconciles a confirmed change without refetching', async () => {
 		view.start();
 		await flush();
 		vi.mocked(listEvents).mockClear();
 
 		store.applyChange(sync('created', makeEvent()));
-		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
 	it('stop() unsubscribes: a later change no longer refetches', async () => {
@@ -203,6 +204,45 @@ describe('out-of-order day responses (the CI race behind #19)', () => {
 		await first;
 
 		expect(view.prevWeekEvents?.map((e) => e.id)).toEqual(['newer']);
+	});
+
+	it('replays a confirmed change that arrives while the day baseline is in flight', async () => {
+		const baseline = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(baseline.promise);
+		view.start();
+		await flush();
+
+		store.applyChange(sync('created', makeEvent({ id: 'confirmed' })));
+		baseline.resolve([makeEvent({ id: 'baseline' })]);
+		await flush();
+
+		expect(view.dayEvents.map((event) => event.id).sort()).toEqual(['baseline', 'confirmed']);
+	});
+
+	it('replays confirmed changes onto current and previous week baselines in flight', async () => {
+		view.start();
+		await flush();
+		const weekBaseline = deferred<EventDTO[]>();
+		const previousBaseline = deferred<EventDTO[]>();
+		vi.mocked(listEvents)
+			.mockReturnValueOnce(weekBaseline.promise)
+			.mockReturnValueOnce(previousBaseline.promise);
+
+		view.setViewMode('week');
+		store.applyChange(sync('created', makeEvent({ id: 'current' })));
+		store.applyChange(
+			sync(
+				'created',
+				makeEvent({ id: 'previous', startedAt: new Date(2026, 7, 18, 9).toISOString() })
+			)
+		);
+		expect(view.prevWeekEvents).toBeNull();
+		weekBaseline.resolve([]);
+		previousBaseline.resolve([]);
+		await flush();
+
+		expect(view.weekEvents.map((event) => event.id)).toEqual(['current']);
+		expect(view.prevWeekEvents?.map((event) => event.id)).toEqual(['previous']);
 	});
 });
 
@@ -389,9 +429,27 @@ describe('relayed changes (SSE and data restore)', () => {
 		vi.mocked(listEvents).mockClear();
 	});
 
-	it('a sync message refetches the day window', () => {
+	it('a sync message reconciles the day window without a refetch', () => {
 		store.applyChange(sync('updated', makeEvent()));
-		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
+		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('applies delete and restore confirmations incrementally', () => {
+		const created = makeEvent();
+		const deleted = makeEvent({
+			deletedAt: new Date(NOW.getTime() + 1_000).toISOString(),
+			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+		});
+		const restored = makeEvent({ updatedAt: new Date(NOW.getTime() + 2_000).toISOString() });
+
+		store.applyChange(sync('created', created));
+		store.applyChange(sync('deleted', deleted));
+		expect(view.dayEvents).toEqual([]);
+		store.applyChange(sync('restored', restored));
+
+		expect(view.dayEvents).toEqual([restored]);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
 	it('a reset (reconnect or restore) refetches too', () => {
@@ -399,12 +457,43 @@ describe('relayed changes (SSE and data restore)', () => {
 		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
 	});
 
-	it('refetches all three windows while the week view is open', async () => {
+	it('reconciles current and previous week membership without refetching', async () => {
 		view.setViewMode('week');
 		await flush();
 		vi.mocked(listEvents).mockClear();
 		store.applyChange(sync('created', makeEvent()));
-		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(3);
+		const previousWeek = makeEvent({
+			id: 'previous',
+			startedAt: new Date(2026, 7, 18, 9).toISOString()
+		});
+		store.applyChange(sync('created', previousWeek));
+
+		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
+		expect(view.weekEvents.map((event) => event.id)).toEqual(['ev-1']);
+		expect(view.prevWeekEvents?.map((event) => event.id)).toEqual(['previous']);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('removes an edited activity that moved outside every loaded window', async () => {
+		view.setViewMode('week');
+		await flush();
+		store.applyChange(sync('created', makeEvent()));
+		vi.mocked(listEvents).mockClear();
+
+		store.applyChange(
+			sync(
+				'updated',
+				makeEvent({
+					startedAt: new Date(2026, 7, 10, 9).toISOString(),
+					updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+				})
+			)
+		);
+
+		expect(view.dayEvents).toEqual([]);
+		expect(view.weekEvents).toEqual([]);
+		expect(view.prevWeekEvents).toEqual([]);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 });
 

@@ -4,14 +4,13 @@
 	import { getContext, untrack } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
-	import { ApiError, createEvent } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
 		CaregiverDTO,
 		Details,
-		EventDTO,
 		EventType,
 		MilkType,
 		NursingSegment,
@@ -22,17 +21,13 @@
 		open = $bindable(false),
 		babyId,
 		defaultAt,
-		caregivers,
-		onSaved
+		caregivers
 	}: {
 		open?: boolean;
 		babyId: string | null;
 		/** Local `datetime-local` default (e.g. noon of the day being viewed). */
 		defaultAt: Date;
 		caregivers: CaregiverDTO[];
-		// The confirmed create response is passed back so the caller can merge it
-		// directly into its own visible list (slice-3 pattern).
-		onSaved: (event: EventDTO) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
@@ -164,7 +159,7 @@
 				end = fromLocalInputValue(endedAt);
 			}
 
-			const created = await createEvent({
+			await store.changes.create({
 				babyId,
 				caregiverId: caregiverId === '' ? null : caregiverId,
 				type: selectedType,
@@ -173,9 +168,7 @@
 				note: note.trim() === '' ? null : note,
 				details
 			});
-			store.applyServerEvent(created);
 			open = false;
-			onSaved(created);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {

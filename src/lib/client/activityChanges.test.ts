@@ -25,7 +25,9 @@ function diaper(overrides: Partial<EventDTO> = {}): EventDTO {
 function transport(): ActivityChangeTransport {
 	return {
 		create: vi.fn(),
+		patch: vi.fn(),
 		delete: vi.fn(),
+		restore: vi.fn(),
 		startTimer: vi.fn(),
 		stopTimer: vi.fn(),
 		nursingAction: vi.fn()
@@ -74,6 +76,33 @@ describe('activity changes', () => {
 		expect(result).toEqual(deleted);
 		expect(store.events).toEqual([]);
 		expect(changes).toEqual([{ kind: 'deleted', event: deleted }]);
+	});
+
+	it('reconciles confirmed patch and restore intents', async () => {
+		const http = transport();
+		const existing = diaper();
+		const edited = diaper({
+			note: 'edited',
+			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+		});
+		const restored = diaper({ updatedAt: new Date(NOW.getTime() + 2_000).toISOString() });
+		vi.mocked(http.patch).mockResolvedValue(edited);
+		vi.mocked(http.restore).mockResolvedValue(restored);
+		const store = new SyncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		store.applyServerEvent(existing);
+		const changes: unknown[] = [];
+		store.subscribeChanges((change) => changes.push(change));
+
+		await store.changes.patch(existing.id, { note: 'edited' });
+		await store.changes.restore(existing.id);
+
+		expect(store.events).toEqual([restored]);
+		expect(changes).toEqual([
+			{ kind: 'updated', event: edited },
+			{ kind: 'restored', event: restored }
+		]);
 	});
 
 	it('does not change or announce local state when the write fails', async () => {

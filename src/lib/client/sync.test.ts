@@ -291,7 +291,9 @@ describe('refreshEvents buffers a concurrent change onto the fetched baseline (i
 		const confirmed = makeEvent({ id: 'confirmed' });
 		const writes: ActivityChangeTransport = {
 			create: vi.fn().mockResolvedValue(confirmed),
+			patch: vi.fn(),
 			delete: vi.fn(),
+			restore: vi.fn(),
 			startTimer: vi.fn(),
 			stopTimer: vi.fn(),
 			nursingAction: vi.fn()

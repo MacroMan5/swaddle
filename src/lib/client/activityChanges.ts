@@ -1,8 +1,17 @@
-import { createEvent, deleteEvent, nursingAction, startTimer, stopTimer } from './api';
+import {
+	createEvent,
+	deleteEvent,
+	nursingAction,
+	patchEvent,
+	restoreEvent,
+	startTimer,
+	stopTimer
+} from './api';
 import type {
 	CreateEventInput,
 	EventDTO,
 	NursingActionBody,
+	PatchEventInput,
 	StartTimerBody,
 	StopTimerBody,
 	SyncKind,
@@ -17,7 +26,9 @@ export type ActivityChangeDelivery =
 
 export type ActivityChangeTransport = {
 	create(input: CreateEventInput): Promise<EventDTO>;
+	patch(id: string, input: PatchEventInput): Promise<EventDTO>;
 	delete(id: string): Promise<EventDTO>;
+	restore(id: string): Promise<EventDTO>;
 	startTimer(
 		type: TimerType,
 		body: StartTimerBody
@@ -28,7 +39,9 @@ export type ActivityChangeTransport = {
 
 export const httpActivityChangeTransport: ActivityChangeTransport = {
 	create: (input) => createEvent(input),
+	patch: (id, input) => patchEvent(id, input),
 	delete: (id) => deleteEvent(id),
+	restore: (id) => restoreEvent(id),
 	startTimer: (type, body) => startTimer(type, body),
 	stopTimer: (type, body) => stopTimer(type, body),
 	nursingAction: (body) => nursingAction(body)
@@ -61,6 +74,20 @@ export class ActivityChanges {
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.delete(id);
 		this.confirm({ kind: 'deleted', event }, { source: 'http', sseSequenceAtStart });
+		return event;
+	}
+
+	async patch(id: string, input: PatchEventInput): Promise<EventDTO> {
+		const sseSequenceAtStart = this.#sseSequence;
+		const event = await this.transport.patch(id, input);
+		this.confirm({ kind: 'updated', event }, { source: 'http', sseSequenceAtStart });
+		return event;
+	}
+
+	async restore(id: string): Promise<EventDTO> {
+		const sseSequenceAtStart = this.#sseSequence;
+		const event = await this.transport.restore(id);
+		this.confirm({ kind: 'restored', event }, { source: 'http', sseSequenceAtStart });
 		return event;
 	}
 

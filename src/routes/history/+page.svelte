@@ -54,29 +54,13 @@
 		editOpen = true;
 	}
 
-	function handleSaved(event: EventDTO): void {
-		view.mergeEvent(event);
-		view.refetchCurrentView();
-	}
-
-	function handleRestored(event: EventDTO): void {
-		view.mergeEvent(event);
-		view.refetchCurrentView();
-	}
-
-	function handleDeleted(event: EventDTO, message: string, onUndo: () => Promise<EventDTO>): void {
-		view.removeEvent(event);
-		view.refetchCurrentView();
+	function handleDeleted(id: string, message: string, onUndo: () => Promise<void>): void {
 		toasts = [
-			...toasts.filter((t) => t.id !== event.id),
+			...toasts.filter((t) => t.id !== id),
 			{
-				id: event.id,
+				id,
 				message,
-				onUndo: () =>
-					onUndo().then((restored) => {
-						view.mergeEvent(restored);
-						view.refetchCurrentView();
-					})
+				onUndo
 			}
 		];
 	}
@@ -222,7 +206,6 @@
 	bind:open={editOpen}
 	event={editEvent}
 	caregivers={view.caregivers}
-	onSaved={handleSaved}
 	onDeleted={handleDeleted}
 />
 <ManualAddSheet
@@ -230,12 +213,10 @@
 	babyId={view.babyId}
 	defaultAt={manualAddDefault}
 	caregivers={view.caregivers}
-	onSaved={handleSaved}
 />
 <RecentlyDeletedSheet
 	bind:open={recentlyDeletedOpen}
 	babyId={view.babyId}
-	onRestored={handleRestored}
 />
 
 {#if toasts.length > 0}

@@ -7,7 +7,8 @@
 import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
 import { sortByStartedAtAsc, upsert } from '$lib/client/eventList';
 import { dayRangeIso, eventOverlapsDay, localDayKey } from '$lib/client/summaries';
-import type { SyncStore } from '$lib/client/sync.svelte';
+import type { RelayChange, SyncStore } from '$lib/client/sync.svelte';
+import type { ConfirmedActivityChange } from '$lib/client/activityChanges';
 import type { CaregiverDTO, EventDTO } from '$lib/client/types';
 
 const LOAD_ERROR = 'Impossible de charger l’historique.';
@@ -66,6 +67,14 @@ export class HistoryWindow {
 	#dayFetchToken = 0;
 	#weekFetchToken = 0;
 	#prevWeekFetchToken = 0;
+	#dayFetchActive: number | null = null;
+	#weekFetchActive: number | null = null;
+	#prevWeekFetchActive: number | null = null;
+	#dayBuffer: ConfirmedActivityChange[] = [];
+	#weekBuffer: ConfirmedActivityChange[] = [];
+	#prevWeekBuffer: ConfirmedActivityChange[] = [];
+	#weekLoaded = false;
+	#prevWeekLoaded = false;
 
 	constructor(sync: SyncStore) {
 		this.#sync = sync;
@@ -112,7 +121,7 @@ export class HistoryWindow {
 	 * registered before the baby id resolves survive that reset.
 	 */
 	start(): void {
-		this.#unsubscribe = this.#sync.subscribeChanges(() => this.refetchCurrentView());
+		this.#unsubscribe = this.#sync.subscribeChanges((change) => this.#receive(change));
 		void this.#loadContext();
 	}
 
@@ -172,6 +181,8 @@ export class HistoryWindow {
 	async loadDay(): Promise<void> {
 		if (this.babyId === null) return;
 		const token = ++this.#dayFetchToken;
+		this.#dayFetchActive = token;
+		this.#dayBuffer = [];
 		this.loading = true;
 		this.loadError = null;
 		// A per-call timer (not a shared instance field): with two loadDay() calls
@@ -188,13 +199,17 @@ export class HistoryWindow {
 			const { from, to } = dayRangeIso(this.dayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
 			if (token !== this.#dayFetchToken) return; // superseded by a newer load
-			this.dayEvents = fetched;
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of this.#dayBuffer) merged = this.#applyToDay(merged, change);
+			this.dayEvents = merged;
 		} catch (e) {
 			if (token !== this.#dayFetchToken) return;
 			this.loadError = messageOf(e);
 		} finally {
 			clearTimeout(skeletonTimer);
 			if (token === this.#dayFetchToken) {
+				this.#dayFetchActive = null;
+				this.#dayBuffer = [];
 				this.loading = false;
 				this.showSkeleton = false;
 			}
@@ -204,14 +219,24 @@ export class HistoryWindow {
 	async loadWeek(): Promise<void> {
 		if (this.babyId === null) return;
 		const token = ++this.#weekFetchToken;
+		this.#weekFetchActive = token;
+		this.#weekBuffer = [];
 		try {
 			const { from, to } = weekRangeIso(this.mondayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
 			if (token !== this.#weekFetchToken) return; // superseded by a newer load
-			this.weekEvents = fetched;
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of this.#weekBuffer) merged = this.#applyToWeek(merged, change, this.mondayKey);
+			this.weekEvents = merged;
+			this.#weekLoaded = true;
 		} catch (e) {
 			if (token !== this.#weekFetchToken) return;
 			this.loadError = messageOf(e);
+		} finally {
+			if (token === this.#weekFetchToken) {
+				this.#weekFetchActive = null;
+				this.#weekBuffer = [];
+			}
 		}
 	}
 
@@ -220,6 +245,9 @@ export class HistoryWindow {
 	async loadPrevWeek(): Promise<void> {
 		if (this.babyId === null) return;
 		const token = ++this.#prevWeekFetchToken;
+		this.#prevWeekFetchActive = token;
+		this.#prevWeekBuffer = [];
+		this.#prevWeekLoaded = false;
 		// Hide the comparison while the new window loads: keeping the old week's
 		// events would summarize them against the new date range (stale deltas).
 		this.prevWeekEvents = null;
@@ -227,11 +255,81 @@ export class HistoryWindow {
 			const { from, to } = weekRangeIso(this.prevMondayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
 			if (token !== this.#prevWeekFetchToken) return; // superseded by a newer load
-			this.prevWeekEvents = fetched;
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of this.#prevWeekBuffer)
+				merged = this.#applyToWeek(merged, change, this.prevMondayKey);
+			this.prevWeekEvents = merged;
+			this.#prevWeekLoaded = true;
 		} catch {
 			if (token !== this.#prevWeekFetchToken) return;
 			this.prevWeekEvents = null;
+		} finally {
+			if (token === this.#prevWeekFetchToken) {
+				this.#prevWeekFetchActive = null;
+				this.#prevWeekBuffer = [];
+			}
 		}
+	}
+
+	#receive(change: RelayChange): void {
+		if (change.kind === 'reset') {
+			this.refetchCurrentView();
+			return;
+		}
+		if (this.babyId !== null && change.event.babyId !== this.babyId) return;
+
+		this.dayEvents = this.#applyToDay(this.dayEvents, change);
+		if (this.#dayFetchActive === this.#dayFetchToken) this.#dayBuffer.push(change);
+
+		if (this.viewMode === 'week' || this.#weekLoaded) {
+			this.weekEvents = this.#applyToWeek(this.weekEvents, change, this.mondayKey);
+			if (this.#weekFetchActive === this.#weekFetchToken) this.#weekBuffer.push(change);
+		}
+
+		if (this.viewMode === 'week' || this.#prevWeekLoaded) {
+			if (this.#prevWeekFetchActive === this.#prevWeekFetchToken) {
+				this.#prevWeekBuffer.push(change);
+			} else {
+				this.prevWeekEvents = this.#applyToWeek(
+					this.prevWeekEvents ?? [],
+					change,
+					this.prevMondayKey
+				);
+			}
+		}
+	}
+
+	#applyToDay(list: EventDTO[], change: ConfirmedActivityChange): EventDTO[] {
+		const gone = change.kind === 'deleted' || change.event.deletedAt !== null;
+		return upsert(
+			list,
+			change.event,
+			!gone && eventOverlapsDay(change.event, this.dayKey, this.nowMs),
+			sortByStartedAtAsc
+		);
+	}
+
+	#applyToWeek(
+		list: EventDTO[],
+		change: ConfirmedActivityChange,
+		mondayKey: string
+	): EventDTO[] {
+		const gone = change.kind === 'deleted' || change.event.deletedAt !== null;
+		return upsert(
+			list,
+			change.event,
+			!gone && this.#overlapsWeek(change.event, mondayKey),
+			sortByStartedAtAsc
+		);
+	}
+
+	#overlapsWeek(event: EventDTO, mondayKey: string): boolean {
+		const [year, month, day] = mondayKey.split('-').map(Number);
+		for (let offset = 0; offset < 7; offset++) {
+			const key = localDayKey(new Date(year, month - 1, day + offset));
+			if (eventOverlapsDay(event, key, this.nowMs)) return true;
+		}
+		return false;
 	}
 
 	/**

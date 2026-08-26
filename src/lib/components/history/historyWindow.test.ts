@@ -456,6 +456,26 @@ describe('relayed changes (SSE and data restore)', () => {
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
+	it('a change never resurrects the comparison after a failed previous-week load', async () => {
+		// setViewMode('week') fetches the week, then the previous week.
+		vi.mocked(listEvents)
+			.mockResolvedValueOnce([])
+			.mockRejectedValueOnce(new Error('network'));
+		view.setViewMode('week');
+		await flush();
+		expect(view.prevWeekEvents).toBeNull();
+
+		const previousWeek = makeEvent({
+			id: 'previous',
+			startedAt: new Date(2026, 7, 18, 9).toISOString()
+		});
+		adapter.change(sync('created', previousWeek));
+
+		// null keeps « Semaine précédente » hidden; [] or ['previous'] would
+		// render a comparison built on a window that was never loaded.
+		expect(view.prevWeekEvents).toBeNull();
+	});
+
 	it('removes an edited activity that moved outside every loaded window', async () => {
 		view.setViewMode('week');
 		await flush();

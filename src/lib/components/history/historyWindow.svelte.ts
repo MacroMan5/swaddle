@@ -284,16 +284,16 @@ export class HistoryWindow {
 			if (this.#weekFetchActive === this.#weekFetchToken) this.#weekBuffer.push(change);
 		}
 
-		if (this.viewMode === 'week' || this.#prevWeekLoaded) {
-			if (this.#prevWeekFetchActive === this.#prevWeekFetchToken) {
-				this.#prevWeekBuffer.push(change);
-			} else {
-				this.prevWeekEvents = this.#applyToWeek(
-					this.prevWeekEvents ?? [],
-					change,
-					this.prevMondayKey
-				);
-			}
+		if (this.#prevWeekFetchActive === this.#prevWeekFetchToken) {
+			this.#prevWeekBuffer.push(change);
+		} else if (this.#prevWeekLoaded) {
+			// Only a successfully loaded baseline may be patched: after a failed
+			// load, prevWeekEvents stays null so the comparison stays hidden.
+			this.prevWeekEvents = this.#applyToWeek(
+				this.prevWeekEvents ?? [],
+				change,
+				this.prevMondayKey
+			);
 		}
 	}
 

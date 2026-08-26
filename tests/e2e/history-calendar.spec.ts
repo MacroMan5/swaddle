@@ -137,10 +137,11 @@ test('a running timer is drawn open and bounded by the current time', async ({ p
 	// the top of today's grid (dayCalendarLayout's `clippedTop`), so the
 	// visible span becomes "midnight to now", which can be under the grid's
 	// own 15-minute minimum-block floor (MIN_BLOCK_MIN in dayCalendarLayout.ts)
-	// in the first ~15 minutes of a new day. The tolerance below accounts for
-	// that floor so the assertion stays exact everywhere else while not
-	// flagging the grid's own documented floor behaviour as a bug.
-	const startedAt = new Date(Date.now() - 90 * 60_000).toISOString();
+	// in the first ~15 minutes of a new day. The extra tolerance below is only
+	// granted in that clipped case, so a real drift bug still fails tightly
+	// outside the midnight window.
+	const startDate = new Date(Date.now() - 90 * 60_000);
+	const startedAt = startDate.toISOString();
 	const started = await request.post('/api/timers/sleep/start', {
 		data: { babyId: 'baby-1', startedAt }
 	});
@@ -151,11 +152,15 @@ test('a running timer is drawn open and bounded by the current time', async ({ p
 		await expect(open).toBeAttached();
 		const id = (await open.getAttribute('data-event-id')) as string;
 		const span = await spanMinutesOf(page, id);
-		// It must stop at "now" (plus the grid's own 15-minute floor near
-		// midnight), never run to the bottom of the day.
+		// It must stop at "now" (plus the grid's own 15-minute floor, but only
+		// when the timer's true start fell on the previous day and got clipped
+		// to the top of today's grid), never run to the bottom of the day.
 		const MIN_BLOCK_MIN = 15;
-		const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-		expect(span.start + span.length).toBeLessThanOrEqual(nowMin + MIN_BLOCK_MIN + 2);
+		const now = new Date();
+		const clippedAtMidnight = startDate.toDateString() !== now.toDateString();
+		const nowMin = now.getHours() * 60 + now.getMinutes();
+		const tolerance = clippedAtMidnight ? MIN_BLOCK_MIN + 2 : 2;
+		expect(span.start + span.length).toBeLessThanOrEqual(nowMin + tolerance);
 	} finally {
 		// Stopping turns the timer into a completed sleep event; leaving it
 		// behind would make it the earliest row of the day for every later spec.

@@ -6,7 +6,7 @@ import type { QuickWord, StructuredQuickIntent } from './types';
  * phrasings a parent may say is testable in one file.
  */
 
-export type PhraseFailure = { error: 'unrecognized' | 'missing_volume' };
+export type PhraseFailure = { error: 'unrecognized' | 'missing_volume' | 'invalid_volume' };
 export type ParsedPhrase = StructuredQuickIntent | PhraseFailure;
 
 export function isPhraseFailure(parsed: ParsedPhrase): parsed is PhraseFailure {
@@ -59,6 +59,12 @@ export function parsePhrase(text: string, words: QuickWord[]): ParsedPhrase {
 
 	switch (trigger.intent.action) {
 		case 'bottle': {
+			// Tokenising splits "120,5" into "120" and "5", so the digits alone
+			// cannot tell a decimal apart from a whole number followed by another:
+			// the raw text is asked instead. Volumes are whole millilitres
+			// everywhere in the domain (FR-017), and silently recording 120 for a
+			// dictated 120,5 is worse than asking again.
+			if (/\d+[.,]\d+/.test(normalizeWord(text))) return { error: 'invalid_volume' };
 			const volume = tokens.find((t) => /^\d+$/.test(t));
 			// "Biberon" alone says nothing about how much was drunk, and guessing a
 			// volume is worse than asking for one.

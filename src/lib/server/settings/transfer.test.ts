@@ -267,6 +267,23 @@ describe('quick words and api tokens in the transfer (issue #97)', () => {
 		expect(exportJson(a).quickWords).toEqual(before);
 	});
 
+	it.each([
+		['!!!', 'punctuation alone'],
+		['gros caca', 'two words'],
+		['petit-dodo', 'a hyphenated pair'],
+		// Stored unnormalised it would never match a dictation, and would shadow
+		// the entry it collides with once normalised.
+		['Néné', 'a word that is not in its stored form']
+	])('refuses a restored word %j — %s', (word, _why) => {
+		const a = seed();
+		const exported = exportJson(a);
+		const before = exported.quickWords;
+		exported.quickWords = [...before, { id: 'qw-broken', word, intent: { action: 'sleep' } }];
+
+		expect(() => importJson(a, exported)).toThrow(RepoError);
+		expect(exportJson(a).quickWords).toEqual(before);
+	});
+
 	it('leaves the vocabulary untouched when restoring a legacy export that has none', () => {
 		const b = seed();
 		const before = exportJson(b).quickWords;

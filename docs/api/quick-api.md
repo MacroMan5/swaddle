@@ -11,9 +11,9 @@ MCP. Toute la logique (bascule des minuteurs, résolution du bébé, phrases
 françaises) vit côté serveur, dans `src/lib/server/quick/`.
 
 Codes d'erreur additionnels : `ambiguous_baby` (409, le foyer ne compte pas
-exactement un bébé et l'appel n'a pas dit lequel), `unrecognized_phrase` et
-`missing_volume` (422, dictée non résolue), `duplicate_word` (409, mot de
-vocabulaire déjà pris).
+exactement un bébé et l'appel n'a pas dit lequel), `unrecognized_phrase`,
+`missing_volume` et `invalid_volume` (422, dictée non résolue),
+`duplicate_word` (409, mot de vocabulaire déjà pris).
 
 ## Authentification
 
@@ -37,7 +37,8 @@ Corps : une **intention**, union discriminée sur `action`. Toutes acceptent un
 
 → `200 { event: EventDTO, did: 'logged' | 'started' | 'stopped', speech: string }`
 · `400 validation_failed` · `409 ambiguous_baby` ·
-`422 unrecognized_phrase | missing_volume` · `401 pin_required`.
+`422 unrecognized_phrase | missing_volume | invalid_volume` ·
+`401 pin_required`.
 
 ### Effets
 
@@ -125,8 +126,8 @@ Le parsing (`src/lib/server/quick/phrase.ts`, fonction pure) :
 2. **Mot déclencheur** : le premier mot du vocabulaire rencontré **dans l'ordre
    du texte** (pas dans l'ordre du vocabulaire), en correspondance mot entier —
    « cacahuète » n'est pas « caca ». Il fixe l'action.
-3. **Modificateurs**, fixes et non configurables : le premier nombre de la
-   phrase (`120`, `120 ml`, `120 millilitres`) devient `volumeMl` ;
+3. **Modificateurs**, fixes et non configurables : le premier nombre **entier**
+   de la phrase (`120`, `120 ml`, `120 millilitres`) devient `volumeMl` ;
    `gauche` / `droite` (ou `droit`) devient `side`. Un modificateur sans objet
    est ignoré (« dodo gauche » reste un dodo).
 
@@ -138,7 +139,15 @@ suivante, sans cache ni redémarrage.
 | Cas | Réponse |
 |---|---|
 | « biberon » sans nombre | `422 missing_volume` |
+| « biberon 120,5 » (volume décimal) | `422 invalid_volume` |
 | aucun mot du vocabulaire reconnu | `422 unrecognized_phrase` |
+
+Les volumes sont des millilitres **entiers** dans tout le domaine (FR-017) :
+une dictée décimale est refusée plutôt qu'arrondie en silence — enregistrer 120
+pour un « 120,5 » entendu serait un chiffre que personne n'a dit. Le refus est
+propre à la quantité, pas au biberon : d'où son propre code plutôt qu'un
+`missing_volume` dont la phrase parlée (« Il me faut le volume ») serait
+malhonnête ici.
 
 Les deux portent, **à la racine du corps**, un `speech` lisible par
 l'assistant — un client vocal lit le même champ quel que soit le statut :
@@ -149,7 +158,8 @@ l'assistant — un client vocal lit le même champ quel que soit le statut :
 ```
 
 `unrecognized_phrase` répète ce qui a été entendu :
-`Je n'ai pas compris “bonjour”`.
+`Je n'ai pas compris “bonjour”` ; `invalid_volume` dit la règle :
+`Le volume doit être un nombre entier de millilitres`.
 
 Un volume hors bornes FR-017 (« biberon 5000 ») reste un
 `400 validation_failed`, comme la même intention envoyée structurée.
@@ -179,9 +189,10 @@ biberon », la quantité vient de la phrase ; tout champ en trop est ignoré.
 Le vocabulaire est semé à la migration v3 (`biberon`, `pipi`, `caca`, `couche`,
 `dodo`, `sieste`, `tetee`, `teton`, `nene`), s'édite dans « Mots vocaux » des
 réglages, et suit l'export/restauration JSON comme le reste de la configuration
-du foyer (`docs/api/settings-api.md`) — une restauration dont un mot porte une
-intention illisible est refusée en bloc (`400 validation_failed`), le
-vocabulaire en place restant intact.
+du foyer (`docs/api/settings-api.md`) — une restauration est refusée en bloc
+(`400 validation_failed`, vocabulaire en place intact) si un mot porte une
+intention illisible, n'est pas exactement un mot tokenisé (« gros caca »,
+« !!! », « Néné ») ou fait doublon une fois normalisé.
 
 ### Exemple
 

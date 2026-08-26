@@ -6,6 +6,7 @@ import { insertEventRow, rowToDto, type EventRow } from '$lib/server/events/even
 import { RepoError } from '$lib/server/events/repo';
 import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
 import { isTimerType, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
+import { tokenize } from '$lib/server/quick/phrase';
 import { quickWordIntentSchema } from '$lib/server/quick/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
@@ -184,13 +185,28 @@ function validateGraph(data: ParsedExport): Issue[] {
 				message: `duplicate quick word id ${w.id}`
 			});
 		wordIds.add(w.id);
-		if (words.has(w.word))
+		// The same rule `addQuickWord` applies, through the same tokeniser: a
+		// stored word is exactly what a dictation would be cut into. A payload
+		// carrying "gros caca", "!!!" or « Néné » would restore fine and then sit
+		// in the vocabulary unable to ever match — or, once normalised, shadow the
+		// entry it collides with in the parser's lookup.
+		const tokens = tokenize(w.word);
+		const word = tokens.length === 1 ? tokens[0] : null;
+		if (word !== w.word)
+			issues.push({
+				path: `quickWords.${i}.word`,
+				code: 'invalid_value',
+				message: `quick word ${w.word} is not a single normalised word`
+			});
+		// Compared after normalisation, so two spellings of one word cannot both
+		// come in and silently collapse into one.
+		else if (words.has(word))
 			issues.push({
 				path: `quickWords.${i}.word`,
 				code: 'duplicate_word',
 				message: `duplicate quick word ${w.word}`
 			});
-		words.add(w.word);
+		else words.add(word);
 		// The stored intent is read back — and parsed — every time the vocabulary
 		// is listed: by a dictation, by GET /api/quick/words, by the settings
 		// page. A payload carrying an unreadable one would restore fine and then

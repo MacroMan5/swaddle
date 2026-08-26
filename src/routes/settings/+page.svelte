@@ -362,8 +362,10 @@
 
 	function tokenLastUsedLabel(at: string | null): string {
 		if (at === null) return 'jamais utilisé';
-		// Stored at day granularity (apiTokens.ts), so only the date is shown.
-		return `utilisé le ${new Date(at).toLocaleDateString('fr-CA', { dateStyle: 'medium' })}`;
+		// Stored as midnight UTC at day granularity (apiTokens.ts), so it is read
+		// back in UTC too: rendered in a local zone behind Greenwich, that instant
+		// is the previous evening and the label would name the wrong day.
+		return `utilisé le ${new Date(at).toLocaleDateString('fr-CA', { dateStyle: 'medium', timeZone: 'UTC' })}`;
 	}
 
 	async function createToken(event: SubmitEvent) {

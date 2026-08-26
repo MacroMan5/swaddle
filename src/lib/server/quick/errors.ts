@@ -12,7 +12,8 @@ export type QuickErrorCode =
 	| 'ambiguous_baby'
 	| 'duplicate_word'
 	| 'unrecognized_phrase'
-	| 'missing_volume';
+	| 'missing_volume'
+	| 'invalid_volume';
 
 const STATUS: Record<QuickErrorCode, number> = {
 	ambiguous_baby: 409,
@@ -20,7 +21,8 @@ const STATUS: Record<QuickErrorCode, number> = {
 	// Well-formed request, understood vocabulary surface, nothing to do with it:
 	// 422 rather than 400, which is reserved for a body the schema refused.
 	unrecognized_phrase: 422,
-	missing_volume: 422
+	missing_volume: 422,
+	invalid_volume: 422
 };
 
 export class QuickError extends Error {

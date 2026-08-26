@@ -67,15 +67,15 @@ export async function expectNoSeriousViolations(
 /**
  * Turns the Registre entrance/pulse animations off for this page.
  *
- * playwright.config.ts already asks for `reducedMotion: 'reduce'` at the top
- * level, and `testInfo.project.use.reducedMotion` does resolve to `'reduce'` —
- * but under Playwright 1.62 the browser context is not actually emulating it
- * (`matchMedia('(prefers-reduced-motion: reduce)').matches` is `false` in the
- * page until `page.emulateMedia` is called explicitly). Left unhandled, axe
- * samples colours mid-fade and reports dozens of phantom contrast failures
- * (#faf9f7 text half-way through `enter-up`). Calling it here keeps this
- * ticket's scans honest without changing the shared config's timing for every
- * other spec; the config discrepancy is filed as a follow-up.
+ * Redundant since #87: playwright.config.ts now routes `reducedMotion` through
+ * `contextOptions`, so every browser project's context emulates it for real
+ * (reduced-motion.spec.ts asserts it does). It used not to — the top-level
+ * `reducedMotion` option resolved in `testInfo` but never reached the page
+ * under Playwright 1.62 — and axe then sampled colours mid-fade and reported
+ * dozens of phantom contrast failures (#faf9f7 text half-way through
+ * `enter-up`). Kept as a cheap, local belt-and-braces for the scans that were
+ * bitten by it, and as the one-liner to reach for if a future spec ever needs
+ * a page to differ from the shared default.
  */
 export async function reduceMotion(page: Page): Promise<void> {
 	await page.emulateMedia({ reducedMotion: 'reduce' });

@@ -45,7 +45,19 @@ export default defineConfig({
 	],
 	// reducedMotion keeps the Registre entrance/pulse animations out of e2e
 	// timing — specs assert layout and behavior, not motion.
-	use: { baseURL: BASE_A, reducedMotion: 'reduce' },
+	//
+	// It has to travel through `contextOptions`, not through the top-level
+	// `reducedMotion` option: up to and including Playwright 1.62.1 the runner
+	// builds the `page` fixture's context by copying a hand-written list of
+	// options, and `reducedMotion` is missing from that list — so
+	// `testInfo.project.use.reducedMotion` reports 'reduce' while
+	// `matchMedia('(prefers-reduced-motion: reduce)')` stays false in the page
+	// (microsoft/playwright#42001, fixed in 1.63, unreleased at time of
+	// writing). `contextOptions` is spread into the context options verbatim,
+	// so it is not subject to that list. Once the project is on >= 1.63 this
+	// can go back to a plain `reducedMotion: 'reduce'`; reduced-motion.spec.ts
+	// asserts the emulation really reaches the page either way.
+	use: { baseURL: BASE_A, contextOptions: { reducedMotion: 'reduce' } },
 	// Chromium and WebKit approximate the documented support matrix (Chrome
 	// Android, Safari iOS) closely enough on desktop engines to be worth
 	// running in CI; see docs/testing/real-device-checklist.md for the gaps

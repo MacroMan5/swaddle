@@ -100,6 +100,100 @@ describe('migrations', () => {
 		expect(db.pragma('user_version', { simple: true })).toBe(migrations.length);
 	});
 
+	// v3 — the integration surface's schema (ADR 0004): named API tokens and the
+	// voice vocabulary. The vocabulary is only consumed by a later slice, but the
+	// schema version is laid down once.
+	describe('v3 (api_token, quick_word)', () => {
+		const QUICK_WORDS = [
+			['biberon', { action: 'bottle' }],
+			['pipi', { action: 'diaper', kind: 'wet' }],
+			['caca', { action: 'diaper', kind: 'dirty' }],
+			['couche', { action: 'diaper', kind: 'both' }],
+			['dodo', { action: 'sleep' }],
+			['sieste', { action: 'sleep' }],
+			['tetee', { action: 'nursing' }],
+			['teton', { action: 'nursing' }],
+			['nene', { action: 'nursing' }]
+		] as const;
+
+		function expectV3(db: Database.Database) {
+			const tables = db
+				.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+				.all()
+				.map((r: any) => r.name);
+			expect(tables).toEqual(expect.arrayContaining(['api_token', 'quick_word']));
+
+			const words = db.prepare('SELECT word, intent FROM quick_word ORDER BY word').all() as {
+				word: string;
+				intent: string;
+			}[];
+			expect(
+				words.map((w) => [w.word, JSON.parse(w.intent)]).sort((a, b) => (a[0] < b[0] ? -1 : 1))
+			).toEqual([...QUICK_WORDS].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+		}
+
+		it('creates both tables and seeds the French vocabulary on a fresh db', () => {
+			const db = new Database(':memory:');
+			migrate(db);
+			expectV3(db);
+		});
+
+		it('applies on an existing v2 database without touching its data', () => {
+			const db = v1WithTwoActiveSleeps();
+			db.exec(migrations[1]);
+			db.pragma('user_version = 2');
+			const eventsBefore = db.prepare('SELECT COUNT(*) AS n FROM event').get();
+
+			migrate(db);
+
+			expect(db.pragma('user_version', { simple: true })).toBe(migrations.length);
+			expectV3(db);
+			expect(db.prepare('SELECT COUNT(*) AS n FROM event').get()).toEqual(eventsBefore);
+		});
+
+		it('keeps token hashes and vocabulary words unique', () => {
+			const db = new Database(':memory:');
+			migrate(db);
+			const insert = db.prepare(
+				'INSERT INTO api_token (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)'
+			);
+			insert.run('t1', 'iPhone', 'deadbeef', '2026-08-26T00:00:00.000Z');
+			expect(() => insert.run('t2', 'iPad', 'deadbeef', '2026-08-26T00:00:00.000Z')).toThrow(
+				/UNIQUE/
+			);
+			expect(() =>
+				db
+					.prepare('INSERT INTO quick_word (id, word, intent) VALUES (?, ?, ?)')
+					.run('w1', 'dodo', '{"action":"sleep"}')
+			).toThrow(/UNIQUE/);
+		});
+
+		it('detaches a token from its caregiver when the caregiver is deleted', () => {
+			const dir = mkdtempSync(join(tmpdir(), 'swaddle-db-'));
+			// openDb (not a bare :memory: Database) so foreign_keys is ON — the
+			// ON DELETE SET NULL clause is inert without it.
+			const db = openDb(join(dir, 'test.db'));
+			try {
+				db.prepare('INSERT INTO caregiver (id, name, color, created_at) VALUES (?, ?, ?, ?)').run(
+					'cg-1',
+					'Papa',
+					'#0284C7',
+					'2026-08-26T00:00:00.000Z'
+				);
+				db.prepare(
+					'INSERT INTO api_token (id, name, token_hash, caregiver_id, created_at) VALUES (?, ?, ?, ?, ?)'
+				).run('t1', 'iPhone', 'deadbeef', 'cg-1', '2026-08-26T00:00:00.000Z');
+				db.prepare("DELETE FROM caregiver WHERE id = 'cg-1'").run();
+				expect(db.prepare("SELECT caregiver_id FROM api_token WHERE id = 't1'").get()).toEqual({
+					caregiver_id: null
+				});
+			} finally {
+				db.close();
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+	});
+
 	it('enforces event type check constraint', () => {
 		const db = new Database(':memory:');
 		migrate(db);

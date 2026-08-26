@@ -5,6 +5,7 @@ import type {
 	CreateEventInput,
 	Details,
 	EventDTO,
+	EventType,
 	Issue,
 	PatchEventInput,
 	Side,
@@ -234,6 +235,20 @@ export function listBabies(db: DB): BabyDTO[] {
 	return db
 		.prepare('SELECT id, name, birthdate, timezone FROM baby ORDER BY created_at')
 		.all() as BabyDTO[];
+}
+
+/**
+ * The most recent non-deleted event of a type for a baby — what the quick
+ * surface reads to default a nursing side to the opposite of the last known
+ * one. rowid breaks a same-millisecond tie, as elsewhere.
+ */
+export function lastEventOfType(db: DB, babyId: string, type: EventType): EventDTO | undefined {
+	const row = db
+		.prepare(
+			'SELECT * FROM event WHERE baby_id = ? AND type = ? AND deleted_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1'
+		)
+		.get(babyId, type) as EventRow | undefined;
+	return row && rowToDto(row);
 }
 
 export function listActiveTimers(db: DB, babyId?: string): EventDTO[] {

@@ -6,6 +6,12 @@ dans la poche. S'appuie sur `POST /api/quick`
 ([contrat](../api/quick-api.md)) et sur les jetons API
 ([`docs/api/settings-api.md`](../api/settings-api.md) § Jetons API).
 
+> **Statut : expérimental.** Les recettes ci-dessous suivent le contrat de
+> l'API, mais les comportements propres à iOS (HTTP en clair sur le LAN,
+> téléphone verrouillé, corps d'une réponse `422`) ne sont pas documentés par
+> Apple : tant que la checklist du § 5 n'est pas remplie sur un iPhone réel,
+> ne tenez rien de tout cela pour acquis.
+
 ## 1. Prérequis
 
 - **Swaddle joignable sur le réseau local**, par exemple `http://swaddle.home`
@@ -14,6 +20,14 @@ dans la poche. S'appuie sur `POST /api/quick`
   (ex. « iPhone maman »), validez, puis **copiez immédiatement le jeton
   affiché** (`swd_…`) — il n'est montré qu'une seule fois, Swaddle n'en garde
   que le hachage. S'il est perdu, il faut en recréer un.
+- **Un seul bébé dans le foyer** pour les corps de requête tels quels :
+  sans `babyId`, l'API résout le bébé toute seule uniquement dans ce cas ;
+  avec plusieurs bébés elle répond `409 ambiguous_baby` — une réponse qui n'a
+  **pas** de champ `speech`, le raccourci resterait donc muet. Foyer à
+  plusieurs bébés : ajoutez `"babyId": "<id>"` au corps JSON et faites **un
+  raccourci par bébé** (« Swaddle Léo », « Swaddle Mia ») ; les identifiants
+  s'obtiennent via `GET /api/babies` (contrat dans
+  [`docs/api/events-api.md`](../api/events-api.md)).
 
 ## 2. Le raccourci générique « Swaddle »
 
@@ -39,11 +53,16 @@ Dans l'app **Raccourcis** :
    le résultat de l'action précédente (le corps JSON renvoyé par Swaddle).
 5. Ajouter l'action **Énoncer le texte** sur cette valeur.
 
-L'étape 4 fonctionne aussi bien pour une réponse `200` que pour une erreur
-`422` : dans les deux cas `speech` est à la racine du corps JSON
-(`docs/api/quick-api.md` § `phrase`), donc Siri lit toujours une phrase utile
-— un succès (« Biberon 120 millilitres enregistré ») comme un refus
-(« Je n'ai pas compris “bonjour” »).
+Côté serveur, `speech` est à la racine du corps JSON aussi bien pour une
+réponse `200` que pour une erreur `422` (`docs/api/quick-api.md` § `phrase`),
+précisément pour que l'étape 4 lise toujours une phrase utile — un succès
+(« Biberon 120 millilitres enregistré ») comme un refus (« Je n'ai pas
+compris “bonjour” »). **Réserve à valider** : il reste à confirmer sur
+appareil que « Obtenir le contenu de l'URL » transmet bien le corps d'une
+réponse non-2xx à l'action suivante au lieu d'échouer — c'est un point
+explicite de la checklist du § 5. Si ce n'est pas le cas, le contournement
+prévu est côté serveur (renvoyer les refus de dictée en `200` avec leur
+`speech`) ; ouvrir une issue de suivi plutôt que de bricoler le raccourci.
 
 **Usage** : « Hey Siri, Swaddle » → dicter par exemple « biberon 120 »,
 « néné droite », « pipi », « dodo » — Siri répond à voix haute.
@@ -113,6 +132,9 @@ contre le serveur Swaddle en production (le Pi).
       démarrée » → l'événement est visible dans « Aujourd'hui »
 - [ ] Erreur lisible : dicter un mot inconnu → Siri lit « Je n'ai pas
       compris… »
+- [ ] Refus `422` : le corps JSON d'une réponse non-2xx atteint bien
+      « Obtenir la valeur du dictionnaire » (Siri lit le refus, pas une
+      erreur générique du raccourci — voir la réserve du § 2)
 
 ### Résultats
 

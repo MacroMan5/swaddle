@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '$lib/server/db';
 import { EVENT_COLUMNS } from '$lib/server/events/eventRow';
 import { RepoError } from '$lib/server/events/repo';
-import { createBaby, createCaregiver, getPinHash, setPinHash } from './repo';
+import { createApiToken, listApiTokens, verifyBearer } from './apiTokens';
+import { createBaby, createCaregiver, getPinHash, listCaregivers, setPinHash } from './repo';
 import { exportCsv, exportJson, importJson, snapshotTo } from './transfer';
 
 function seed() {
@@ -221,6 +222,95 @@ describe('exportJson / importJson round-trip (AC-007)', () => {
 
 		const b = openDb(':memory:');
 		expect(() => importJson(b, exported)).not.toThrow();
+	});
+});
+
+// #97: the voice vocabulary is household configuration and travels with the
+// data; API tokens are per-device secrets and deliberately do not.
+describe('quick words and api tokens in the transfer (issue #97)', () => {
+	it('exports the vocabulary and restores a customised one', () => {
+		const a = seed();
+		a.prepare('INSERT INTO quick_word (id, word, intent) VALUES (?, ?, ?)').run(
+			'qw-nini',
+			'nini',
+			'{"action":"nursing"}'
+		);
+		a.prepare("DELETE FROM quick_word WHERE word = 'sieste'").run();
+
+		const exported = exportJson(a);
+		expect(exported.quickWords).toContainEqual({
+			id: 'qw-nini',
+			word: 'nini',
+			intent: { action: 'nursing' }
+		});
+		expect(exported.quickWords.map((w) => w.word)).not.toContain('sieste');
+
+		const b = openDb(':memory:');
+		importJson(b, exported);
+		expect(exportJson(b).quickWords).toEqual(exported.quickWords);
+	});
+
+	it('leaves the vocabulary untouched when restoring a legacy export that has none', () => {
+		const b = seed();
+		const before = exportJson(b).quickWords;
+		expect(before.length).toBeGreaterThan(0);
+
+		const { quickWords: _dropped, ...legacy } = exportJson(seed());
+		void _dropped;
+		expect(() => importJson(b, legacy)).not.toThrow();
+		expect(exportJson(b).quickWords).toEqual(before);
+	});
+
+	it('never exports an api token, and a restore leaves the household s tokens alone', () => {
+		const a = seed();
+		const { plaintext, token } = createApiToken(a, { name: 'iPhone' });
+		const exported = exportJson(a);
+		expect(JSON.stringify(exported)).not.toContain(plaintext);
+		expect(JSON.stringify(exported)).not.toContain(token.id);
+		expect('apiTokens' in exported).toBe(false);
+
+		// Restoring into the same database must not cut the family's devices off.
+		importJson(a, exported);
+		expect(verifyBearer(a, `Bearer ${plaintext}`)?.tokenId).toBe(token.id);
+	});
+
+	it('keeps a token attached to its caregiver when the restore recreates that caregiver', () => {
+		const a = seed();
+		const caregiverId = listCaregivers(a)[0].id;
+		const { plaintext, token } = createApiToken(a, { name: 'iPhone', caregiverId });
+		expect(token.caregiverId).toBe(caregiverId);
+
+		// The restore wipes and recreates the caregiver table; ON DELETE SET NULL
+		// would otherwise silently detach every token on the way through, even
+		// though the payload puts the very same caregiver ids back.
+		importJson(a, exportJson(a));
+
+		expect(listApiTokens(a)[0].caregiverId).toBe(caregiverId);
+		expect(verifyBearer(a, `Bearer ${plaintext}`)).toEqual({
+			tokenId: token.id,
+			caregiverId
+		});
+	});
+
+	it('leaves a token detached when the restored payload no longer holds its caregiver', () => {
+		const a = seed();
+		const caregiverId = listCaregivers(a)[0].id;
+		const { plaintext, token } = createApiToken(a, { name: 'iPhone', caregiverId });
+
+		// A payload from a household that has since dropped that caregiver (and
+		// the events referencing it): the link has nothing to point at any more.
+		const exported = exportJson(a);
+		exported.caregivers = [];
+		exported.events = [];
+
+		importJson(a, exported);
+
+		expect(listApiTokens(a)[0].caregiverId).toBeNull();
+		// The token itself keeps working — it just attributes to nobody.
+		expect(verifyBearer(a, `Bearer ${plaintext}`)).toEqual({
+			tokenId: token.id,
+			caregiverId: null
+		});
 	});
 });
 

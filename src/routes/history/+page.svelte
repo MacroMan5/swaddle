@@ -4,7 +4,7 @@
 	// anti-race machinery live in `historyWindow.svelte.ts`; this page is markup,
 	// bindings and purely presentational state.
 	import { getContext, onDestroy, onMount } from 'svelte';
-	import { Plus } from '@lucide/svelte';
+	import { Plus, Trash2 } from '@lucide/svelte';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 	import { CATEGORY_OF, type Category } from '$lib/components/today/todayDerivations';
@@ -15,6 +15,7 @@
 	import EventList from '$lib/components/history/EventList.svelte';
 	import { HistoryWindow } from '$lib/components/history/historyWindow.svelte';
 	import ManualAddSheet from '$lib/components/history/ManualAddSheet.svelte';
+	import RecentlyDeletedSheet from '$lib/components/history/RecentlyDeletedSheet.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 	import WeekView from '$lib/components/history/WeekView.svelte';
 	import { pageTitle } from '$lib/meta';
@@ -33,6 +34,7 @@
 	let editEvent = $state<EventDTO | null>(null);
 	let editOpen = $state(false);
 	let addOpen = $state(false);
+	let recentlyDeletedOpen = $state(false);
 	// Several undo windows can be open at once, keyed by event id (same pattern
 	// as the Today screen's toast queue).
 	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
@@ -53,6 +55,11 @@
 	}
 
 	function handleSaved(event: EventDTO): void {
+		view.mergeEvent(event);
+		view.refetchCurrentView();
+	}
+
+	function handleRestored(event: EventDTO): void {
 		view.mergeEvent(event);
 		view.refetchCurrentView();
 	}
@@ -93,16 +100,27 @@
 
 <div class="flex flex-col gap-4 p-4">
 	<div class="border-border enter flex items-center justify-between gap-2 border-b-2 pb-3">
-		<h1 class="text-screen-title text-ink">Historique</h1>
-		<button
-			type="button"
-			disabled={view.babyId === null}
-			onclick={() => (addOpen = true)}
-			class="bg-primary text-on-primary active:bg-primary-pressed flex min-h-12 items-center justify-start gap-2 rounded-control px-4 py-2 font-semibold active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
-		>
-			<Plus size={18} aria-hidden="true" />
-			Ajouter
-		</button>
+		<h1 class="text-screen-title text-ink truncate">Historique</h1>
+		<div class="flex shrink-0 items-center gap-2">
+			<button
+				type="button"
+				disabled={view.babyId === null}
+				onclick={() => (recentlyDeletedOpen = true)}
+				aria-label="Supprimés récemment"
+				class="border-border text-ink-muted flex min-h-12 min-w-12 items-center justify-center rounded-control border-2 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
+			>
+				<Trash2 size={18} aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				disabled={view.babyId === null}
+				onclick={() => (addOpen = true)}
+				class="bg-primary text-on-primary active:bg-primary-pressed flex min-h-12 items-center justify-start gap-2 rounded-control px-4 py-2 font-semibold active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
+			>
+				<Plus size={18} aria-hidden="true" />
+				Ajouter
+			</button>
+		</div>
 	</div>
 
 	<div class="enter" style="--enter-delay: 60ms">
@@ -213,6 +231,11 @@
 	defaultAt={manualAddDefault}
 	caregivers={view.caregivers}
 	onSaved={handleSaved}
+/>
+<RecentlyDeletedSheet
+	bind:open={recentlyDeletedOpen}
+	babyId={view.babyId}
+	onRestored={handleRestored}
 />
 
 {#if toasts.length > 0}

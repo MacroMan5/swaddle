@@ -21,6 +21,9 @@ export type HandlerContext<B> = {
 	url: URL;
 	request: Request;
 	cookies: Cookies;
+	/** What `hooks.server.ts` resolved about the caller — the Bearer token and
+	 * the caregiver it is linked to (issue #97). */
+	locals: App.Locals;
 };
 
 export type HandlerOptions<B> = {
@@ -100,7 +103,8 @@ export function handler<B = Record<string, never>>(
 			params: event.params,
 			url: event.url,
 			request: event.request,
-			cookies: event.cookies
+			cookies: event.cookies,
+			locals: event.locals
 		};
 
 		try {

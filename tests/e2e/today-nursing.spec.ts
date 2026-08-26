@@ -49,20 +49,47 @@ test('bottle sheet records type, volume and rejects a 1500 ml volume inline', as
 	page,
 	request
 }) => {
+	const before = await (await request.get('/api/events?babyId=baby-1')).json();
+	const today = new Date().toDateString();
+	const previousBottles = before.events.filter(
+		(event: { type: string; startedAt: string }) =>
+			event.type === 'bottle' && new Date(event.startedAt).toDateString() === today
+	);
+	const previousTotal = previousBottles.reduce(
+		(total: number, event: { details: { volumeMl: number } }) => total + event.details.volumeMl,
+		0
+	);
+	const volume = 91;
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Biberon' }).click();
+	const bottleTile = page.getByRole('button', { name: 'Biberon' });
+	await bottleTile.click();
 	await page.getByRole('button', { name: 'Préparation' }).click();
 	await page.getByLabel(/volume/i).fill('1500');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
 	await expect(page.getByText(/1000/)).toBeVisible(); // inline FR-017 error, sheet stays open
-	await page.getByLabel(/volume/i).fill('90');
+	await page.getByLabel(/volume/i).fill(String(volume));
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
 	// A generous timeout: the save toast's render lands slightly after the API
 	// response settles, and that margin is tighter under WebKit than Chromium.
 	await expect(page.getByRole('status')).toContainText('Biberon', { timeout: 10_000 });
+	const bottleSummary = page.getByTestId('bottle-summary');
+	await expect(bottleSummary).toContainText(
+		`${previousBottles.length + 1} · ${previousTotal + volume} ml`
+	);
 	const { events } = await (await request.get('/api/events?babyId=baby-1')).json();
-	const bottle = events.find((e: { type: string }) => e.type === 'bottle');
-	expect(bottle.details).toMatchObject({ milkType: 'formula', volumeMl: 90 });
+	const beforeIds = new Set(before.events.map((event: { id: string }) => event.id));
+	const bottle = events.find((event: { id: string }) => !beforeIds.has(event.id));
+	expect(bottle.details).toMatchObject({ milkType: 'formula', volumeMl: volume });
+
+	await page.getByRole('status').getByRole('button', { name: 'Annuler' }).click();
+	if (previousBottles.length === 0) await expect(bottleSummary).toBeHidden();
+	else await expect(bottleSummary).toContainText(`${previousBottles.length} · ${previousTotal} ml`);
+	await expect
+		.poll(async () => {
+			const current = await (await request.get('/api/events?babyId=baby-1')).json();
+			return current.events.some((e: { id: string }) => e.id === bottle.id);
+		})
+		.toBe(false);
 });
 
 test('DEC-001: a paused nursing segment does not inflate the shared total', async ({ page }) => {

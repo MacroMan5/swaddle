@@ -46,13 +46,13 @@ Les décisions structurantes sont consignées dans `docs/adr/`.
 Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 
 ```sh
-# `-p` : rejouable — un re-run entre bien dans swaddle/ au lieu de continuer
-# dans le répertoire courant (et d'y écraser un .env étranger).
+# Bloc rejouable : `-p` fait entrer un re-run dans swaddle/ (au lieu de
+# continuer dans le répertoire courant), et un `.env` déjà présent est conservé.
 mkdir -p swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
-# L'URL exacte que vos navigateurs utiliseront pour joindre l'app —
-# remplacez-la par la vôtre (nom de domaine local ou IP du serveur).
-echo "SWADDLE_ORIGIN=http://<ip-du-serveur>:3010" > .env
+# Premier lancement : déclarez l'URL exacte que vos navigateurs utiliseront
+# pour joindre l'app (nom de domaine local ou IP du serveur).
+[ -f .env ] || echo "SWADDLE_ORIGIN=http://<ip-du-serveur>:3010" > .env
 mkdir -p data && sudo chown -R 1000:1000 data
 docker compose pull && docker compose up -d
 ```

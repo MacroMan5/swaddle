@@ -162,8 +162,18 @@ poursuive (#57). En cas de payload invalide, rien n'est écrit (ni l'instantané
 préalable n'est perdu : il reste sur disque même si la restauration échoue
 ensuite).
 
+Taille : le corps est borné à 10 Mo (`MAX_BODY_BYTES`, `src/lib/limits.ts`).
+Au-delà, la requête est refusée **avant** l'instantané et avant tout parsing —
+sur le `content-length` annoncé, ou en cours de flux par l'adaptateur
+(`BODY_SIZE_LIMIT=10M`, déclaré dans le `Dockerfile`, `deploy/docker-compose.yml`
+et par défaut dans `server.js`). Un export volumineux mais valide n'est donc
+jamais signalé comme JSON invalide (#45).
+
 → `200 { restored: { babies: number; caregivers: number; events: number };
-snapshot: string }` · `400 validation_failed`.
+snapshot: string }` · `400 validation_failed` · `413 payload_too_large`.
+
+`413 payload_too_large` s'applique en réalité à toute route `/api` qui lit un
+corps JSON ; seule la restauration peut l'atteindre en pratique.
 
 ## Portes serveur — `hooks.server.ts` (FR-015, FR-016)
 

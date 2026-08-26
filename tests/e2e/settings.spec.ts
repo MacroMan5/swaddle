@@ -90,3 +90,24 @@ test('the Ce serveur block shows the address and connected device count', async 
 	await download;
 	await expect(section).not.toContainText('jamais');
 });
+
+test('#45: a file above the 10 Mo bound is refused without being read or sent', async ({ page }) => {
+	await page.goto('/settings');
+	const before = await (await page.request.get('/api/export/json')).json();
+
+	const posted: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST' && r.url().includes('/api/restore')) posted.push(r.url());
+	});
+
+	await page.locator('#restore-file').setInputFiles({
+		name: 'swaddle-export.json',
+		mimeType: 'application/json',
+		buffer: Buffer.from(`{"pad":"${'x'.repeat(11 * 1024 * 1024)}"}`)
+	});
+
+	await expect(page.getByText('Fichier trop volumineux (10 Mo maximum).')).toBeVisible();
+	expect(posted).toHaveLength(0);
+	const after = await (await page.request.get('/api/export/json')).json();
+	expect(after.events).toEqual(before.events);
+});

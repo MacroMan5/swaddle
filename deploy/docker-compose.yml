@@ -18,6 +18,11 @@ services:
       # Taille maximale d'une requête (restauration d'un export JSON) — voir
       # README.md. Doit rester égale à la limite applicative (10 Mo).
       - "BODY_SIZE_LIMIT=${SWADDLE_BODY_SIZE_LIMIT:-10M}"
+      # URL utilisée par les navigateurs pour joindre l'app — voir README.md.
+      # Sans elle, adapter-node suppose https et le cookie de session PIN est
+      # marqué Secure, ce qu'un navigateur refuse d'envoyer en clair (issue #69).
+      # Pas de valeur publique par défaut : requise, sinon échec au démarrage.
+      - "ORIGIN=${SWADDLE_ORIGIN:?Définissez SWADDLE_ORIGIN dans .env (voir README.md)}"
     labels:
       # Les mises à jour de cette app (données du bébé + migrations SQLite)
       # restent manuelles.

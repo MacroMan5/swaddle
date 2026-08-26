@@ -10,6 +10,8 @@ import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './r
 
 type DB = Database.Database;
 
+export type QuickWordDTO = { id: string; word: string; intent: unknown };
+
 export type SwaddleExport = {
 	format: 'swaddle-export';
 	version: 1;
@@ -18,7 +20,27 @@ export type SwaddleExport = {
 	babies: BabyDTO[];
 	caregivers: CaregiverDTO[];
 	events: EventDTO[];
+	/**
+	 * The voice vocabulary (#97): household configuration, so it travels with
+	 * the data. API tokens deliberately do NOT — they are per-device secrets,
+	 * useless to whoever restores the file and dangerous in a copy of it; a
+	 * restored household recreates them from /settings.
+	 *
+	 * Optional on import (`version` stays 1): an export taken before this field
+	 * existed must still restore, and leaves the vocabulary as it is.
+	 */
+	quickWords: QuickWordDTO[];
 };
+
+function listQuickWords(db: DB): QuickWordDTO[] {
+	return (
+		db.prepare('SELECT id, word, intent FROM quick_word ORDER BY word').all() as {
+			id: string;
+			word: string;
+			intent: string;
+		}[]
+	).map((r) => ({ id: r.id, word: r.word, intent: JSON.parse(r.intent) as unknown }));
+}
 
 function listAllEvents(db: DB): EventDTO[] {
 	// Soft-deleted rows are included so a restore is lossless.
@@ -40,7 +62,8 @@ export function exportJson(db: DB): SwaddleExport {
 		household: { volumeUnit: household.volumeUnit, theme: household.theme },
 		babies: listAllBabies(db),
 		caregivers: listCaregivers(db),
-		events: listAllEvents(db)
+		events: listAllEvents(db),
+		quickWords: listQuickWords(db)
 	};
 }
 
@@ -103,7 +126,12 @@ const exportSchema = z.object({
 			updatedAt: z.string(),
 			deletedAt: z.string().nullable()
 		})
-	)
+	),
+	// Optional: exports predating #97 carry no vocabulary and must still
+	// restore. Absent means "leave the current words alone", not "wipe them".
+	quickWords: z
+		.array(z.object({ id: z.string(), word: z.string().min(1), intent: z.unknown() }))
+		.optional()
 });
 
 type ParsedExport = z.infer<typeof exportSchema>;
@@ -140,6 +168,28 @@ function validateGraph(data: ParsedExport): Issue[] {
 				message: `duplicate caregiver id ${c.id}`
 			});
 		caregiverIds.add(c.id);
+	});
+
+	// quick_word holds two unique columns; a payload that duplicates either
+	// would otherwise surface as a raw SQLITE_CONSTRAINT_UNIQUE, which the
+	// route maps to `timer_conflict` — a nonsense answer for a vocabulary.
+	const wordIds = new Set<string>();
+	const words = new Set<string>();
+	(data.quickWords ?? []).forEach((w, i) => {
+		if (wordIds.has(w.id))
+			issues.push({
+				path: `quickWords.${i}.id`,
+				code: 'duplicate_id',
+				message: `duplicate quick word id ${w.id}`
+			});
+		wordIds.add(w.id);
+		if (words.has(w.word))
+			issues.push({
+				path: `quickWords.${i}.word`,
+				code: 'duplicate_word',
+				message: `duplicate quick word ${w.word}`
+			});
+		words.add(w.word);
 	});
 
 	const eventIds = new Set<string>();
@@ -245,7 +295,7 @@ export function importJson(
 	if (graphIssues.length > 0)
 		throw new RepoError('validation_failed', 'invalid export payload', graphIssues);
 
-	const { household, babies, caregivers, events } = parsed.data;
+	const { household, babies, caregivers, events, quickWords } = parsed.data;
 	// The export never carries the pin hash (see exportJson): a restore must
 	// not silently disable the household's current PIN, so it's read before
 	// the wipe and rewritten as-is.
@@ -276,6 +326,15 @@ export function importJson(
 		// just been checked against its event type by `validateGraph`, so the
 		// payload really is an `EventDTO` here.
 		for (const e of events) insertEventRow(db, e as EventDTO);
+
+		// api_token is untouched on purpose: the payload never carries tokens, and
+		// wiping the table would silently cut off every device the household has
+		// paired — including the one that may have triggered this restore.
+		if (quickWords !== undefined) {
+			db.exec('DELETE FROM quick_word');
+			const insertWord = db.prepare('INSERT INTO quick_word (id, word, intent) VALUES (?, ?, ?)');
+			for (const w of quickWords) insertWord.run(w.id, w.word, JSON.stringify(w.intent ?? null));
+		}
 	})();
 
 	return { babies: babies.length, caregivers: caregivers.length, events: events.length };

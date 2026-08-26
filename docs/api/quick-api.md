@@ -7,8 +7,10 @@ Complète `docs/api/events-api.md` : même enveloppe d'erreur
 MCP. Toute la logique (bascule des minuteurs, résolution du bébé, phrases
 françaises) vit côté serveur, dans `src/lib/server/quick/`.
 
-Code d'erreur additionnel : `ambiguous_baby` (409, le foyer ne compte pas
-exactement un bébé et l'appel n'a pas dit lequel).
+Codes d'erreur additionnels : `ambiguous_baby` (409, le foyer ne compte pas
+exactement un bébé et l'appel n'a pas dit lequel), `unrecognized_phrase` et
+`missing_volume` (422, dictée non résolue), `duplicate_word` (409, mot de
+vocabulaire déjà pris).
 
 ## Authentification
 
@@ -27,10 +29,12 @@ Corps : une **intention**, union discriminée sur `action`. Toutes acceptent un
 { action: 'diaper';  kind: 'wet' | 'dirty' | 'both'; babyId?: string }
 { action: 'sleep';                                   babyId?: string }
 { action: 'nursing'; side?: 'left' | 'right';        babyId?: string }
+{ action: 'phrase';  text: string;                   babyId?: string }  // 200 caractères max
 ```
 
 → `200 { event: EventDTO, did: 'logged' | 'started' | 'stopped', speech: string }`
-· `400 validation_failed` · `409 ambiguous_baby` · `401 pin_required`.
+· `400 validation_failed` · `409 ambiguous_baby` ·
+`422 unrecognized_phrase | missing_volume` · `401 pin_required`.
 
 ### Effets
 
@@ -40,6 +44,7 @@ Corps : une **intention**, union discriminée sur `action`. Toutes acceptent un
 | `diaper` | événement ponctuel ; `kind` devient `details = { pee, poo }` (`wet` → pipi seul, `dirty` → caca seul, `both` → les deux) | `logged` |
 | `sleep` | **bascule** : minuteur `sleep` actif → arrêt, sinon démarrage | `stopped` / `started` |
 | `nursing` | **bascule** ; au démarrage, `side` explicite, sinon l'opposé du dernier côté connu du bébé (`left` si aucune tétée enregistrée) | `stopped` / `started` |
+| `phrase` | résolue en l'une des intentions ci-dessus contre le vocabulaire du foyer, puis traitée à l'identique | selon l'intention résolue |
 
 `milkType` n'est pas une donnée que la voix apporte : la saisie rapide écrit
 `breast` (le défaut de la feuille « Biberon »), à corriger dans l'historique si
@@ -103,9 +108,84 @@ curl -X POST http://swaddle.home/api/quick \
 # {"event":{…},"did":"started","speech":"Dodo démarré"}
 ```
 
-## Hors périmètre
+## L'intention `phrase`
 
-L'intention `phrase` (dictée libre parsée contre un vocabulaire configurable,
-ADR 0004 § 3) et les routes `/api/quick/words` arrivent dans une tranche
-ultérieure ; l'union d'intentions est faite pour les accueillir sans changer
-ce contrat.
+Une dictée libre — « néné droite », « biberon 120 », « caca » — résolue côté
+serveur contre le vocabulaire du foyer, puis exécutée comme l'intention
+structurée qu'elle est devenue. Un seul raccourci Siri générique suffit donc,
+et ajouter un synonyme ne touche aucun téléphone.
+
+Le parsing (`src/lib/server/quick/phrase.ts`, fonction pure) :
+
+1. **Normalisation** : minuscules, accents retirés, ponctuation ignorée
+   (« Néné ! » → `nene`).
+2. **Mot déclencheur** : le premier mot du vocabulaire rencontré **dans l'ordre
+   du texte** (pas dans l'ordre du vocabulaire), en correspondance mot entier —
+   « cacahuète » n'est pas « caca ». Il fixe l'action.
+3. **Modificateurs**, fixes et non configurables : le premier nombre de la
+   phrase (`120`, `120 ml`, `120 millilitres`) devient `volumeMl` ;
+   `gauche` / `droite` (ou `droit`) devient `side`. Un modificateur sans objet
+   est ignoré (« dodo gauche » reste un dodo).
+
+Le vocabulaire est relu à chaque appel : un mot ajouté est reconnu à la dictée
+suivante, sans cache ni redémarrage.
+
+### Refus
+
+| Cas | Réponse |
+|---|---|
+| « biberon » sans nombre | `422 missing_volume` |
+| aucun mot du vocabulaire reconnu | `422 unrecognized_phrase` |
+
+Les deux portent, **à la racine du corps**, un `speech` lisible par
+l'assistant — un client vocal lit le même champ quel que soit le statut :
+
+```json
+{ "error": { "code": "missing_volume", "message": "…" },
+  "speech": "Il me faut le volume du biberon" }
+```
+
+`unrecognized_phrase` répète ce qui a été entendu :
+`Je n'ai pas compris “bonjour”`.
+
+Un volume hors bornes FR-017 (« biberon 5000 ») reste un
+`400 validation_failed`, comme la même intention envoyée structurée.
+
+## Vocabulaire — `/api/quick/words`
+
+Les mots sont stockés **tels qu'une dictée serait découpée** : le mot passe par
+la tokenisation de `parsePhrase` (minuscules, sans accents, ponctuation
+retirée), donc « Néné ! » saisi dans les réglages et `nene` dicté sont la même
+entrée. Ce qui donnerait plus d'un mot — « petit-dodo », « l'été », « gros
+caca » — est refusé plutôt que stocké en entrée qu'aucune phrase ne pourrait
+déclencher ; un « mot » fait uniquement de ponctuation l'est aussi. Un mot
+porte un gabarit d'intention **sans modificateur** — « biberon » veut dire « un
+biberon », la quantité vient de la phrase ; tout champ en trop est ignoré.
+
+- `GET /api/quick/words` → `200 { words: { id, word, intent }[] }`.
+- `POST /api/quick/words` `{ word, intent }` → `201 { id, word, intent }` ·
+  `400 validation_failed` (mot vide, plus d'un mot une fois tokenisé, intention
+  inconnue) ·
+  `409 duplicate_word` si le mot normalisé est déjà pris.
+- `DELETE /api/quick/words/[id]` → `204` · `404 not_found`.
+
+`intent` prend l'une de ces formes : `{ action: 'bottle' }`,
+`{ action: 'diaper', kind: 'wet' | 'dirty' | 'both' }`, `{ action: 'sleep' }`,
+`{ action: 'nursing' }`.
+
+Le vocabulaire est semé à la migration v3 (`biberon`, `pipi`, `caca`, `couche`,
+`dodo`, `sieste`, `tetee`, `teton`, `nene`), s'édite dans « Mots vocaux » des
+réglages, et suit l'export/restauration JSON comme le reste de la configuration
+du foyer (`docs/api/settings-api.md`) — une restauration dont un mot porte une
+intention illisible est refusée en bloc (`400 validation_failed`), le
+vocabulaire en place restant intact.
+
+### Exemple
+
+```sh
+curl -X POST http://swaddle.home/api/quick \
+  -H 'authorization: Bearer swd_…' \
+  -H 'content-type: application/json' \
+  -d '{"action":"phrase","text":"néné droite"}'
+# {"event":{…},"did":"started","speech":"Tétée côté droit démarrée"}
+```

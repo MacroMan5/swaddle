@@ -250,6 +250,23 @@ describe('quick words and api tokens in the transfer (issue #97)', () => {
 		expect(exportJson(b).quickWords).toEqual(exported.quickWords);
 	});
 
+	it.each([
+		[null, 'no intent at all'],
+		[{ action: 'burp' }, 'an unknown action'],
+		[{ action: 'diaper' }, 'a diaper without its kind'],
+		['sleep', 'a bare string']
+	])('refuses a restored word whose intent is %j — %s', (intent, _why) => {
+		const a = seed();
+		const exported = exportJson(a);
+		const before = exported.quickWords;
+		exported.quickWords = [...before, { id: 'qw-broken', word: 'casse', intent }];
+
+		// Refused on the way in: a word the vocabulary cannot read would break
+		// every later read of it — the settings page included.
+		expect(() => importJson(a, exported)).toThrow(RepoError);
+		expect(exportJson(a).quickWords).toEqual(before);
+	});
+
 	it('leaves the vocabulary untouched when restoring a legacy export that has none', () => {
 		const b = seed();
 		const before = exportJson(b).quickWords;

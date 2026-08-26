@@ -6,6 +6,7 @@ import { insertEventRow, rowToDto, type EventRow } from '$lib/server/events/even
 import { RepoError } from '$lib/server/events/repo';
 import type { BabyDTO, EventDTO, Issue } from '$lib/server/events/types';
 import { isTimerType, parseDetails, validateDetailsContext, validateEventTimes } from '$lib/server/events/types';
+import { quickWordIntentSchema } from '$lib/server/quick/types';
 import { getHousehold, getPinHash, listCaregivers, type CaregiverDTO } from './repo';
 
 type DB = Database.Database;
@@ -190,6 +191,19 @@ function validateGraph(data: ParsedExport): Issue[] {
 				message: `duplicate quick word ${w.word}`
 			});
 		words.add(w.word);
+		// The stored intent is read back — and parsed — every time the vocabulary
+		// is listed: by a dictation, by GET /api/quick/words, by the settings
+		// page. A payload carrying an unreadable one would restore fine and then
+		// break every one of those reads, including the reload the restore itself
+		// triggers. It is checked here instead, against the same schema the add
+		// route uses.
+		const intent = quickWordIntentSchema.safeParse(w.intent);
+		if (!intent.success)
+			issues.push({
+				path: `quickWords.${i}.intent`,
+				code: 'invalid_value',
+				message: `invalid intent for quick word ${w.word}`
+			});
 	});
 
 	const eventIds = new Set<string>();

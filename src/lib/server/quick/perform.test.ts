@@ -3,7 +3,9 @@ import type Database from 'better-sqlite3';
 import { openDb } from '../db';
 import { subscribe, type Change } from '../events/broadcast';
 import { createEvent, listActiveTimers } from '../events/repo';
-import { QuickError, performQuick } from './perform';
+import { QuickError } from './errors';
+import { performQuick } from './perform';
+import { addQuickWord } from './words';
 
 let db: Database.Database;
 let changes: Change[];
@@ -214,5 +216,70 @@ describe('attribution and broadcast', () => {
 		changes = [];
 		const stopped = performQuick(db, { action: 'sleep' }, ctx);
 		expect(changes).toEqual([{ kind: 'updated', event: stopped.event }]);
+	});
+});
+
+// Issue #99: a dictated sentence resolved against the vocabulary in the
+// database, then performed exactly like the structured intent it became.
+describe('phrase', () => {
+	it('starts and stops a nursing session from a dictated sentence', () => {
+		const started = performQuick(db, { action: 'phrase', text: 'néné droite' }, ctx);
+		expect(started.did).toBe('started');
+		expect(started.speech).toBe('Tétée côté droit démarrée');
+		expect(started.event.type).toBe('nursing');
+		expect(listActiveTimers(db, 'baby-1').map((e) => e.type)).toEqual(['nursing']);
+
+		const stopped = performQuick(db, { action: 'phrase', text: 'néné' }, ctx);
+		expect(stopped.did).toBe('stopped');
+		expect(stopped.speech).toMatch(/^Tétée terminée, /);
+		expect(stopped.event.id).toBe(started.event.id);
+	});
+
+	it('logs a bottle with the volume the sentence carried', () => {
+		const result = performQuick(db, { action: 'phrase', text: 'Biberon 120 ml' }, ctx);
+
+		expect(result.did).toBe('logged');
+		expect(result.speech).toBe('Biberon 120 millilitres enregistré');
+		expect(result.event.details).toEqual({ milkType: 'breast', volumeMl: 120 });
+	});
+
+	it('recognises a word added a moment earlier, with no cache in between', () => {
+		addQuickWord(db, { word: 'Nini', intent: { action: 'sleep' } });
+
+		expect(performQuick(db, { action: 'phrase', text: 'nini' }, ctx).speech).toBe('Dodo démarré');
+	});
+
+	it('refuses a bottle with no volume, and says what is missing', () => {
+		try {
+			performQuick(db, { action: 'phrase', text: 'biberon' }, ctx);
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as QuickError).code).toBe('missing_volume');
+			expect((e as QuickError).speech).toBe('Il me faut le volume du biberon');
+		}
+	});
+
+	it('refuses a sentence holding no vocabulary word, echoing what it heard', () => {
+		try {
+			performQuick(db, { action: 'phrase', text: 'bonjour ' }, ctx);
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as QuickError).code).toBe('unrecognized_phrase');
+			expect((e as QuickError).speech).toBe("Je n'ai pas compris “bonjour”");
+		}
+	});
+
+	it('writes nothing when the phrase is refused', () => {
+		changes = [];
+		expect(() => performQuick(db, { action: 'phrase', text: 'bonjour' }, ctx)).toThrow(QuickError);
+		expect(changes).toEqual([]);
+	});
+
+	it('honours an explicit babyId when several babies exist', () => {
+		db = openDb(':memory:');
+		seed(db, ['baby-1', 'baby-2']);
+
+		const result = performQuick(db, { action: 'phrase', text: 'dodo', babyId: 'baby-2' }, ctx);
+		expect(result.event.babyId).toBe('baby-2');
 	});
 });

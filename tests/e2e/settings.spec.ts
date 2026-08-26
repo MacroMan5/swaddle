@@ -371,3 +371,32 @@ test('#52: caregiver create/edit/delete failures only mark their own input inval
 	const created = caregivers.caregivers.find((c: { name: string }) => c.name === 'Casque52');
 	if (created) await page.request.delete(`/api/caregivers/${created.id}`);
 });
+
+test('#99: the voice vocabulary is listed, extended and trimmed from the settings', async ({
+	page
+}) => {
+	await page.goto('/settings');
+	const section = page.getByTestId('quick-words');
+
+	// Grouped by what a word stands for, seeded words included.
+	await expect(section.getByRole('heading', { name: 'Tétée' })).toBeVisible();
+	await expect(section.getByText('nene', { exact: true })).toBeVisible();
+
+	await section.getByLabel('Nouveau mot').fill('Nini');
+	await section.getByLabel('Activité').selectOption({ label: 'Tétée' });
+	await section.getByRole('button', { name: 'Ajouter un mot' }).click();
+	// Normalised on the way in, and announced.
+	await expect(section.getByText('nini', { exact: true })).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: 'Mot Nini ajouté.' })).toBeAttached();
+
+	// The same word again, whatever the spelling.
+	await section.getByLabel('Nouveau mot').fill('NINI');
+	await section.getByRole('button', { name: 'Ajouter un mot' }).click();
+	await expect(
+		section.getByRole('alert').filter({ hasText: 'Ce mot est déjà utilisé.' })
+	).toBeVisible();
+
+	page.once('dialog', (dialog) => dialog.accept());
+	await section.getByRole('button', { name: 'Supprimer le mot nini' }).click();
+	await expect(section.getByText('nini', { exact: true })).toHaveCount(0);
+});

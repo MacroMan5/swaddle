@@ -17,24 +17,13 @@ import {
 	stopTimer
 } from '../events/repo';
 import { publish, type Change } from '../events/broadcast';
+import { QuickError } from './errors';
+import { isPhraseFailure, parsePhrase } from './phrase';
 import { SPOKEN_DIAPER, SPOKEN_SIDE, spokenDuration } from './speech';
-import type { QuickIntent } from './types';
+import { listQuickWords } from './words';
+import type { QuickIntent, StructuredQuickIntent } from './types';
 
 type DB = Database.Database;
-
-/**
- * The one refusal this module owns. Everything else it can go wrong on is a
- * `RepoError` raised by the domain (FR-017 validation above all), which the
- * routes already map.
- */
-export class QuickError extends Error {
-	constructor(
-		public code: 'ambiguous_baby',
-		message: string
-	) {
-		super(message);
-	}
-}
 
 export type QuickResult = {
 	event: EventDTO;
@@ -87,6 +76,35 @@ function spokenLengthOf(event: EventDTO): string {
 }
 
 type Outcome = { event: EventDTO; did: QuickResult['did']; speech: string };
+
+/**
+ * A dictation becomes an ordinary intent before anything else happens: the
+ * vocabulary is read on every call, so a word added in the settings works on
+ * the very next sentence, with no cache to invalidate and no phone to touch.
+ *
+ * Both refusals carry the French sentence the assistant reads back — the parent
+ * is holding a phone they did not want to look at.
+ */
+function resolveIntent(db: DB, intent: QuickIntent): StructuredQuickIntent {
+	if (intent.action !== 'phrase') return intent;
+
+	const parsed = parsePhrase(intent.text, listQuickWords(db));
+	if (isPhraseFailure(parsed)) {
+		if (parsed.error === 'missing_volume')
+			throw new QuickError(
+				'missing_volume',
+				'the phrase names a bottle but no volume',
+				'Il me faut le volume du biberon'
+			);
+		throw new QuickError(
+			'unrecognized_phrase',
+			'no vocabulary word was found in the phrase',
+			`Je n'ai pas compris “${intent.text.trim()}”`
+		);
+	}
+	// The caller's explicit baby wins: a phrase never names one.
+	return { ...parsed, babyId: intent.babyId };
+}
 
 function logPoint(
 	db: DB,
@@ -171,9 +189,10 @@ function toggleTimer(
  */
 export function performQuick(
 	db: DB,
-	intent: QuickIntent,
+	rawIntent: QuickIntent,
 	ctx: { caregiverId: string | null }
 ): QuickResult {
+	const intent = resolveIntent(db, rawIntent);
 	const babyId = resolveBaby(db, intent.babyId);
 	const outcome = db.transaction((): Outcome => {
 		switch (intent.action) {

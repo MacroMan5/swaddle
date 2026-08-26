@@ -1,5 +1,5 @@
 import { MAX_BODY_LABEL } from '$lib/limits';
-import { boundLabel, volumeBounds, type VolumeUnit } from '$lib/client/volume';
+import { volumeTooBigMessage, volumeTooSmallMessage, type VolumeUnit } from '$lib/client/volume';
 
 export type ApiErrorBody = {
 	error?: { code?: string; message?: string; issues?: { path: string; message: string }[] };
@@ -130,12 +130,11 @@ const FIELD_MESSAGES: Record<
  * one decimal can express, so every number named here is also acceptable.
  */
 function volumeFieldMessage(code: string, unit: VolumeUnit): string | undefined {
-	const { min, max } = volumeBounds(unit);
 	switch (code) {
 		case 'too_small':
-			return `Le volume doit être d’au moins ${boundLabel(min, unit)}.`;
+			return volumeTooSmallMessage(unit);
 		case 'too_big':
-			return `Le volume ne peut pas dépasser ${boundLabel(max, unit)}.`;
+			return volumeTooBigMessage(unit);
 		case 'invalid_type':
 			return 'Le volume doit être un nombre.';
 		default:

@@ -7,7 +7,7 @@
 	import { fieldMessage } from '$lib/errors';
 	import {
 		formatVolumeValue,
-		parseVolumeMl,
+		parseVolumeEntry,
 		parseVolumeValue,
 		volumeBounds,
 		volumePresets,
@@ -100,8 +100,19 @@
 		volumeError = null;
 		timeError = null;
 		formError = null;
-		// Converted to canonical millilitres exactly once, here (#44).
-		const volumeMl = parseVolumeMl(volume, unit) ?? NaN;
+		// Judged in the unit it was typed in, then converted to canonical
+		// millilitres exactly once (#44). An out-of-range entry never reaches the
+		// server: in oz it could otherwise round into a legal millilitre count
+		// (0,04 oz → 1 ml) and come back displayed as "0,0 oz".
+		const entry = parseVolumeEntry(volume, unit);
+		if (entry.status === 'out-of-range') {
+			pending = false;
+			volumeError = entry.message;
+			return;
+		}
+		// A blank or unparseable field is left to the server, whose own "must be
+		// a number" message already covers it.
+		const volumeMl = entry.status === 'ok' ? entry.volumeMl : NaN;
 		let event;
 		try {
 			event = await createEvent({

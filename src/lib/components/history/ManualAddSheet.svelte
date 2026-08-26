@@ -8,7 +8,7 @@
 	import { ApiError, createEvent } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
-	import { parseVolumeMl } from '$lib/client/volume';
+	import { parseVolumeEntry } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
 		CaregiverDTO,
@@ -156,12 +156,24 @@
 				details = { segments };
 				end = segments[segments.length - 1].endedAt;
 			} else if (selectedType === 'bottle') {
-				// Converted to canonical millilitres exactly once, here (#44).
-				details = { milkType, volumeMl: parseVolumeMl(volumeMl, unit) ?? NaN };
+				// Judged in the unit it was typed in, then converted once (#44).
+				const entry = parseVolumeEntry(volumeMl, unit);
+				if (entry.status === 'out-of-range') {
+					volumeError = entry.message;
+					pending = false;
+					return;
+				}
+				details = { milkType, volumeMl: entry.status === 'ok' ? entry.volumeMl : NaN };
 			} else if (selectedType === 'pump') {
+				const entry = parseVolumeEntry(volumeMl, unit);
+				if (entry.status === 'out-of-range') {
+					volumeError = entry.message;
+					pending = false;
+					return;
+				}
 				// '' -> null (issue #36), not Number('') === 0: same rule as
-				// EventEditSheet, see parseVolumeMl.
-				details = { side: pumpSide, volumeMl: parseVolumeMl(volumeMl, unit) };
+				// EventEditSheet, see parseVolumeEntry.
+				details = { side: pumpSide, volumeMl: entry.status === 'ok' ? entry.volumeMl : null };
 				end = fromLocalInputValue(endedAt);
 			} else if (selectedType === 'diaper') {
 				details = { pee, poo };

@@ -9,7 +9,7 @@
 	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
-	import { displayVolumeValue, editedVolumeMl } from '$lib/client/volume';
+	import { displayVolumeValue, editedVolumeEntry } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
 	import type {
@@ -223,11 +223,20 @@
 					details: { segments: built }
 				});
 			} else {
+				// Judged in the unit it was typed in (#44); an untouched field keeps
+				// its stored millilitres verbatim.
+				const entry = editedVolumeEntry(volumeMl, pristineVolume, unit);
+				if (entry.status === 'out-of-range') {
+					pending = false;
+					volumeError = entry.message;
+					return;
+				}
+				const entered = entry.status === 'ok' ? entry.volumeMl : null;
 				const details: Details =
 					event.type === 'bottle'
-						? { milkType, volumeMl: editedVolumeMl(volumeMl, pristineVolume, unit) ?? NaN }
+						? { milkType, volumeMl: entered ?? NaN }
 						: event.type === 'pump'
-							? { side: pumpSide, volumeMl: editedVolumeMl(volumeMl, pristineVolume, unit) }
+							? { side: pumpSide, volumeMl: entered }
 							: event.type === 'diaper'
 								? { pee, poo }
 								: {};

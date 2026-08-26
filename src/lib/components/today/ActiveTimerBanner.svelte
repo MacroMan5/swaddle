@@ -8,7 +8,7 @@
 	import { page } from '$app/state';
 	import { nursingAction, stopTimer, ApiError } from '$lib/client/api';
 	import { formatClock, formatTimeOfDay, nursingDurationMs } from '$lib/client/format';
-	import { isVolumeMlInRange, parseVolumeMl, volumeRangeLabel } from '$lib/client/volume';
+	import { parseVolumeEntry, volumeRangeLabel } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { detailsOf, isType } from '$lib/client/types';
 	import type { CaregiverDTO, EventDTO, Side } from '$lib/client/types';
@@ -114,15 +114,15 @@
 	 * stays the backstop of record (item 7). The typed value is converted to
 	 * canonical millilitres first, and the message quotes the household's unit. */
 	function finishPump(event: EventDTO): Promise<void> {
-		const raw = pumpVolumes[event.id] ?? '';
-		const volumeMl = parseVolumeMl(raw, unit);
-		if (volumeMl === null || !isVolumeMlInRange(volumeMl)) {
+		const entry = parseVolumeEntry(pumpVolumes[event.id] ?? '', unit);
+		if (entry.status !== 'ok') {
 			pumpVolumeErrors = {
 				...pumpVolumeErrors,
 				[event.id]: `Le volume doit être ${volumeRangeLabel(unit)}.`
 			};
 			return Promise.resolve();
 		}
+		const { volumeMl } = entry;
 		pumpVolumeErrors = { ...pumpVolumeErrors, [event.id]: '' };
 		return run(event.id, () => stopTimer('pump', { babyId: babyId as string, volumeMl }));
 	}

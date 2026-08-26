@@ -100,6 +100,30 @@ test('#44: an ounce entry converts to the nearest whole millilitre and obeys the
 	await page.getByLabel('Volume (oz)').fill('40');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
 	await expect(page.getByText('Le volume ne peut pas dépasser 33,8 oz.')).toBeVisible();
+
+	// Under the advertised floor: 0,04 oz converts to a legal 1 ml, so only a
+	// check on the *entered* ounces catches it — otherwise it would be stored
+	// and come back displayed as "0,0 oz".
+	const before = (await (await request.get('/api/events?babyId=baby-1')).json()).events.length;
+	await page.getByLabel('Volume (oz)').fill('0,04');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByText('Le volume doit être d’au moins 0,1 oz.')).toBeVisible();
+	const after = (await (await request.get('/api/events?babyId=baby-1')).json()).events.length;
+	expect(after).toBe(before);
+
+	// A finer value inside the range is accepted at the precision the field
+	// advertises: 4,25 oz is 4,3 oz, which is 127 ml.
+	await page.getByLabel('Volume (oz)').fill('4,25');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect
+		.poll(async () => {
+			const { events } = await (await request.get('/api/events?babyId=baby-1')).json();
+			return events.some(
+				(e: { type: string; details: { volumeMl?: number } }) =>
+					e.type === 'bottle' && e.details.volumeMl === 127
+			);
+		})
+		.toBe(true);
 });
 
 test('#44: editing in oz leaves an untouched volume exactly as stored, and converts a real edit once', async ({

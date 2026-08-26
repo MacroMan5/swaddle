@@ -97,36 +97,83 @@ export function parseVolumeValue(raw: string): number | null {
 }
 
 /**
- * A typed field value → canonical millilitres, or null when it isn't a number.
- *
- * Null on an empty field is load-bearing (issue #36): `pump.volumeMl` is
- * nullable server-side because the volume isn't known until the session ends,
- * so an empty field must send `null`, not `Number('') === 0` — a phantom zero
- * that trips the generic `min(1)` rule instead of letting the server's own
- * "volume required to close a pump session" rule apply.
+ * The entered value rounded to the precision the field advertises: one decimal
+ * in ounces (what `formatVolume` shows), whole millilitres otherwise (what the
+ * canonical store holds). Rounding *before* judging the value is what makes the
+ * bounds honest — see `parseVolumeEntry`.
  */
-export function parseVolumeMl(raw: string, unit: VolumeUnit): number | null {
-	const value = parseVolumeValue(raw);
-	if (value === null) return null;
-	return unit === 'oz' ? ozToMl(value) : value;
+export function roundToUnitPrecision(value: number, unit: VolumeUnit): number {
+	return unit === 'oz' ? Math.round(value * 10) / 10 : Math.round(value);
 }
 
-/** True when `ml` is inside the canonical range the server enforces. */
-export function isVolumeMlInRange(ml: number): boolean {
-	return ml >= MIN_VOLUME_ML && ml <= MAX_VOLUME_ML;
+/** "Le volume doit être d’au moins 1 ml." / "… 0,1 oz." */
+export function volumeTooSmallMessage(unit: VolumeUnit): string {
+	return `Le volume doit être d’au moins ${boundLabel(volumeBounds(unit).min, unit)}.`;
+}
+
+/** "Le volume ne peut pas dépasser 1000 ml." / "… 33,8 oz." */
+export function volumeTooBigMessage(unit: VolumeUnit): string {
+	return `Le volume ne peut pas dépasser ${boundLabel(volumeBounds(unit).max, unit)}.`;
 }
 
 /**
- * The canonical millilitres an edited field means. When the field still reads
- * exactly as it was rendered from `originalMl`, the stored value is returned
- * untouched: converting "3,0 oz" back would land on 89 ml, silently rewriting
- * a 90 ml bottle nobody edited.
+ * What a volume field's raw text means.
+ *
+ * `empty` is load-bearing (issue #36): `pump.volumeMl` is nullable server-side
+ * because the volume isn't known until the session ends, so a blank field must
+ * send `null`, not `Number('') === 0` — a phantom zero that trips the generic
+ * `min(1)` rule instead of letting the server's own "volume required to close a
+ * pump session" rule apply. `invalid` is left to the server, whose "must be a
+ * number" message already covers it.
  */
-export function editedVolumeMl(
+export type VolumeEntry =
+	| { status: 'empty' }
+	| { status: 'invalid' }
+	| { status: 'out-of-range'; message: string }
+	| { status: 'ok'; volumeMl: number };
+
+/**
+ * A typed field value → canonical millilitres, judged in the unit it was typed
+ * in.
+ *
+ * **Precision rule**: the entry is first rounded to the precision the field
+ * advertises (`roundToUnitPrecision`), then checked against that unit's bounds,
+ * and only then converted. Rounding first is deliberate — an ounce field shows
+ * one decimal, so "4,25" is an in-range 4,3 oz and is accepted rather than
+ * rejected for a precision the field never promised to keep.
+ *
+ * Checking the *entered* value rather than the converted millilitres is what
+ * closes the gap the ounce bounds exist for: 0,04 oz converts to a perfectly
+ * legal 1 ml, so the server would accept it — and the row would then read
+ * "0,0 oz", a value the form declares out of range. Anything that would display
+ * outside 0,1–33,8 oz is refused here, before the conversion can smuggle it in.
+ */
+export function parseVolumeEntry(raw: string, unit: VolumeUnit): VolumeEntry {
+	if (raw.trim() === '') return { status: 'empty' };
+	const value = parseVolumeValue(raw);
+	if (value === null) return { status: 'invalid' };
+
+	const rounded = roundToUnitPrecision(value, unit);
+	const { min, max } = volumeBounds(unit);
+	if (rounded < min) return { status: 'out-of-range', message: volumeTooSmallMessage(unit) };
+	if (rounded > max) return { status: 'out-of-range', message: volumeTooBigMessage(unit) };
+
+	return { status: 'ok', volumeMl: unit === 'oz' ? ozToMl(rounded) : rounded };
+}
+
+/**
+ * What an *edited* volume field means. When the field still reads exactly as it
+ * was rendered from `pristine.ml`, that stored value is returned untouched:
+ * re-reading "3,0 oz" would land on 89 ml, silently rewriting a 90 ml bottle
+ * nobody edited.
+ */
+export function editedVolumeEntry(
 	raw: string,
 	pristine: { raw: string; ml: number | null },
 	unit: VolumeUnit
-): number | null {
-	if (raw === pristine.raw) return pristine.ml;
-	return parseVolumeMl(raw, unit);
+): VolumeEntry {
+	if (raw === pristine.raw) {
+		return pristine.ml === null ? { status: 'empty' } : { status: 'ok', volumeMl: pristine.ml };
+	}
+	return parseVolumeEntry(raw, unit);
 }

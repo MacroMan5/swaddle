@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { RepoError } from '$lib/server/events/repo';
 import { QuickError } from './errors';
-import { normalizeWord } from './phrase';
+import { tokenize } from './phrase';
 import { quickWordIntentSchema, type QuickWord, type QuickWordIntent } from './types';
 
 type DB = Database.Database;
@@ -29,22 +29,28 @@ export function listQuickWords(db: DB): QuickWord[] {
 }
 
 /**
- * Adds a synonym. The word is normalised first, so « Nini » and "nini" are the
- * same entry — and the duplicate is refused here rather than left to the unique
- * index, whose constraint error the route would map to something meaningless.
+ * Adds a synonym. What is stored is what a dictation would be cut into: the
+ * word goes through the parser's own tokeniser, so « Nini » and "nini" are the
+ * same entry and « Nini ! » is stored as the word it will be matched by.
+ *
+ * Anything that comes out as more than one token — "petit-dodo", "l'ete",
+ * "gros caca" — is refused rather than stored as an entry no sentence could
+ * ever match; so is a word made of punctuation alone, which comes out as none.
+ *
+ * The duplicate is refused here too, rather than left to the unique index,
+ * whose constraint error the route would map to something meaningless.
  */
 export function addQuickWord(db: DB, input: { word: string; intent: QuickWordIntent }): QuickWord {
-	const word = normalizeWord(input.word);
-	if (word === '')
+	const tokens = tokenize(input.word);
+	if (tokens.length === 0)
 		throw new RepoError('validation_failed', 'a vocabulary word cannot be empty', [
 			{ path: 'word', code: 'too_small', message: 'a vocabulary word cannot be empty' }
 		]);
-	// A trigger word is matched whole against one spoken word; a two-word entry
-	// could never match, so it is refused instead of silently never firing.
-	if (/\s/.test(word))
+	if (tokens.length > 1)
 		throw new RepoError('validation_failed', 'a vocabulary word must be a single word', [
 			{ path: 'word', code: 'custom', message: 'a vocabulary word must be a single word' }
 		]);
+	const word = tokens[0];
 
 	const existing = db.prepare('SELECT id FROM quick_word WHERE word = ?').get(word);
 	if (existing) throw new QuickError('duplicate_word', `the word ${word} is already used`);

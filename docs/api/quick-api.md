@@ -153,14 +153,19 @@ Un volume hors bornes FR-017 (« biberon 5000 ») reste un
 
 ## Vocabulaire — `/api/quick/words`
 
-Les mots sont stockés **normalisés** (minuscules, sans accents, un seul mot) :
-« Néné » saisi dans les réglages et `nene` dicté sont la même entrée. Un mot
+Les mots sont stockés **tels qu'une dictée serait découpée** : le mot passe par
+la tokenisation de `parsePhrase` (minuscules, sans accents, ponctuation
+retirée), donc « Néné ! » saisi dans les réglages et `nene` dicté sont la même
+entrée. Ce qui donnerait plus d'un mot — « petit-dodo », « l'été », « gros
+caca » — est refusé plutôt que stocké en entrée qu'aucune phrase ne pourrait
+déclencher ; un « mot » fait uniquement de ponctuation l'est aussi. Un mot
 porte un gabarit d'intention **sans modificateur** — « biberon » veut dire « un
 biberon », la quantité vient de la phrase ; tout champ en trop est ignoré.
 
 - `GET /api/quick/words` → `200 { words: { id, word, intent }[] }`.
 - `POST /api/quick/words` `{ word, intent }` → `201 { id, word, intent }` ·
-  `400 validation_failed` (mot vide, deux mots, intention inconnue) ·
+  `400 validation_failed` (mot vide, plus d'un mot une fois tokenisé, intention
+  inconnue) ·
   `409 duplicate_word` si le mot normalisé est déjà pris.
 - `DELETE /api/quick/words/[id]` → `204` · `404 not_found`.
 
@@ -171,7 +176,9 @@ biberon », la quantité vient de la phrase ; tout champ en trop est ignoré.
 Le vocabulaire est semé à la migration v3 (`biberon`, `pipi`, `caca`, `couche`,
 `dodo`, `sieste`, `tetee`, `teton`, `nene`), s'édite dans « Mots vocaux » des
 réglages, et suit l'export/restauration JSON comme le reste de la configuration
-du foyer (`docs/api/settings-api.md`).
+du foyer (`docs/api/settings-api.md`) — une restauration dont un mot porte une
+intention illisible est refusée en bloc (`400 validation_failed`), le
+vocabulaire en place restant intact.
 
 ### Exemple
 

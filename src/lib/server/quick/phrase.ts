@@ -29,8 +29,12 @@ export function normalizeWord(text: string): string {
 /**
  * Words, in the order they were said. Everything that is not a letter or a
  * digit separates: punctuation is not part of a word, and « caca… » is "caca".
+ *
+ * Exported because it is the only definition of "a word" this feature has: the
+ * vocabulary stores what this returns, so what a parent types can never be
+ * something a dictation would split in two and never match.
  */
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
 	return normalizeWord(text)
 		.split(/[^a-z0-9]+/)
 		.filter((t) => t !== '');

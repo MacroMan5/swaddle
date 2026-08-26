@@ -64,6 +64,11 @@ describe('/api/quick/words', () => {
 	it.each([
 		[{ word: '', intent: { action: 'sleep' } }, 'an empty word'],
 		[{ word: 'gros caca', intent: { action: 'diaper', kind: 'dirty' } }, 'two words'],
+		// Punctuation inside a word splits it in two once tokenised, so it could
+		// never be the whole word a sentence is matched against.
+		[{ word: 'petit-dodo', intent: { action: 'sleep' } }, 'a hyphenated pair'],
+		[{ word: "l'ete", intent: { action: 'sleep' } }, 'an elided pair'],
+		[{ word: '!', intent: { action: 'sleep' } }, 'punctuation alone'],
 		[{ word: 'nini' }, 'no intent'],
 		[{ word: 'nini', intent: { action: 'burp' } }, 'an unknown action'],
 		[{ word: 'nini', intent: { action: 'diaper' } }, 'a diaper without its kind']
@@ -72,6 +77,15 @@ describe('/api/quick/words', () => {
 
 		expect(response.status).toBe(400);
 		expect((await response.json()).error.code).toBe('validation_failed');
+	});
+
+	it('stores the word as a dictation would be tokenised, trailing punctuation dropped', async () => {
+		const created = await (
+			await request('POST', { word: 'Nini !', intent: { action: 'nursing' } })
+		).json();
+
+		// Stored the way `parsePhrase` will see it, so the word really matches.
+		expect(created.word).toBe('nini');
 	});
 
 	it('keeps only the action of an intent: a word never carries a modifier', async () => {

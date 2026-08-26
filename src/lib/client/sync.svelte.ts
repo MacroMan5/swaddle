@@ -1,4 +1,4 @@
-import { getTimers, listTodayEvents } from './api';
+import { ApiError, getTimers, listTodayEvents } from './api';
 import { sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
@@ -14,8 +14,28 @@ const browser = typeof window !== 'undefined';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected';
 
+/**
+ * Bootstrap state of `events` (issue #47): 'idle' before the first fetch,
+ * 'loading' while no authoritative list has landed yet, 'ready' once one has,
+ * 'error' when the last fetch failed. Consumers use it to tell a genuinely
+ * empty day ('ready' + no events) from a failed load.
+ */
+export type EventsStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+/** One in-flight events request: the local day it queried and its promise. */
+type EventsRequest = { dayKey: string; promise: Promise<void> };
+
 function isActiveTimer(event: EventDTO): boolean {
 	return event.deletedAt === null && event.endedAt === null && isTimerType(event.type);
+}
+
+/** The French text to show for a failed load: the mapped API message when the
+ * server answered, the generic connection sentence when the transport itself
+ * failed (there is no envelope to read a code from). */
+function loadErrorMessage(error: unknown): string {
+	return error instanceof ApiError
+		? error.userMessage
+		: 'Impossible de charger les activités. Vérifiez votre connexion.';
 }
 
 /**
@@ -28,6 +48,10 @@ export class SyncStore {
 	timers = $state<EventDTO[]>([]);
 	/** 'connecting' until the first open/error, then tracks the live SSE link. */
 	connectionState = $state<ConnectionState>('connecting');
+	/** Bootstrap state of `events` (issue #47) — see `EventsStatus`. */
+	eventsStatus = $state<EventsStatus>('idle');
+	/** French message for the last failed events load, `null` otherwise. */
+	eventsError = $state<string | null>(null);
 	serverOffsetMs = $state(0);
 	nowMs = $state(Date.now());
 	babyId: string | null = null;
@@ -49,6 +73,18 @@ export class SyncStore {
 	 * fetched baseline once it lands so neither side loses information. */
 	#eventsRefreshing = false;
 	#eventsBuffer: { event: EventDTO; deleted: boolean }[] = [];
+	/**
+	 * The events refresh currently in flight, with the local day it queried
+	 * (issue #47). Startup and the initial SSE snapshot both call refreshEvents()
+	 * within the same tick: the second call joins this promise instead of issuing
+	 * a second identical request. Keyed by day so a midnight rollover — the one
+	 * case where the query itself differs — still starts a real new request; that
+	 * newer request wins via #eventsRefreshSeq below.
+	 */
+	#eventsInFlight: EventsRequest | null = null;
+	/** Incremented per real events request; only the latest one commits, so a
+	 * superseded (different-day) request can never land after it. */
+	#eventsRefreshSeq = 0;
 	#timersRefreshing = false;
 	#timersBuffer: { event: EventDTO; deleted: boolean }[] = [];
 
@@ -100,6 +136,14 @@ export class SyncStore {
 	#stopTransport(): void {
 		this.#alive = false;
 		this.#generation++;
+		// A refresh from the previous run must never be joined by the next one:
+		// it is already invalidated by the generation bump and would resolve
+		// without committing, leaving the new run with no data at all.
+		this.#eventsInFlight = null;
+		this.#eventsRefreshing = false;
+		this.#eventsBuffer = [];
+		this.eventsStatus = 'idle';
+		this.eventsError = null;
 		if (this.#tick !== null) clearInterval(this.#tick);
 		this.#tick = null;
 		this.#source?.close();
@@ -157,24 +201,55 @@ export class SyncStore {
 	 * refresh is never lost (item 1). Independent of refreshTimers: a reset's two
 	 * refreshes no longer invalidate each other (item 2).
 	 */
-	async refreshEvents(): Promise<void> {
-		if (this.babyId === null) return;
+	refreshEvents(): Promise<void> {
+		const babyId = this.babyId;
+		if (babyId === null) return Promise.resolve();
+		const now = new Date(this.nowMs);
+		const dayKey = localDayKey(now);
+		// Coalescing (issue #47): an identical request already on the wire is the
+		// answer to this call too. Awaiting it — rather than firing a second one —
+		// also keeps the buffer replay below a single, well-defined merge.
+		const inFlight = this.#eventsInFlight;
+		if (inFlight !== null && inFlight.dayKey === dayKey) return inFlight.promise;
+		const request: EventsRequest = { dayKey, promise: Promise.resolve() };
+		request.promise = this.#fetchEvents(babyId, now, request);
+		this.#eventsInFlight = request;
+		return request.promise;
+	}
+
+	async #fetchEvents(babyId: string, now: Date, request: EventsRequest): Promise<void> {
 		const generation = this.#generation;
+		const seq = ++this.#eventsRefreshSeq;
 		this.#eventsRefreshing = true;
 		this.#eventsBuffer = [];
-		const fetched = await listTodayEvents(this.babyId, new Date(this.nowMs));
-		this.#eventsRefreshing = false;
-		if (generation !== this.#generation) {
-			this.#eventsBuffer = [];
-			return; // stopped, or restarted for another baby, meanwhile
+		if (this.eventsStatus !== 'ready') this.eventsStatus = 'loading';
+		try {
+			const fetched = await listTodayEvents(babyId, now);
+			if (generation !== this.#generation || seq !== this.#eventsRefreshSeq) return;
+			let merged = sortByStartedAtDesc(fetched);
+			for (const { event, deleted } of this.#eventsBuffer) {
+				const gone = deleted || event.deletedAt !== null;
+				merged = upsert(merged, event, !gone && this.#isToday(event), sortByStartedAtDesc);
+			}
+			this.events = merged;
+			// The error clears only here, once authoritative data has landed.
+			this.eventsError = null;
+			this.eventsStatus = 'ready';
+		} catch (error) {
+			if (generation !== this.#generation || seq !== this.#eventsRefreshSeq) return;
+			// No authoritative list: say so instead of leaving an empty (or stale)
+			// list that reads as the truth about the day.
+			this.eventsError = loadErrorMessage(error);
+			this.eventsStatus = 'error';
+		} finally {
+			// Guarded: a superseded request must not clear the flags of the newer
+			// one that replaced it, nor drop its buffer.
+			if (seq === this.#eventsRefreshSeq) {
+				this.#eventsRefreshing = false;
+				this.#eventsBuffer = [];
+			}
+			if (this.#eventsInFlight === request) this.#eventsInFlight = null;
 		}
-		let merged = sortByStartedAtDesc(fetched);
-		for (const { event, deleted } of this.#eventsBuffer) {
-			const gone = deleted || event.deletedAt !== null;
-			merged = upsert(merged, event, !gone && this.#isToday(event), sortByStartedAtDesc);
-		}
-		this.#eventsBuffer = [];
-		this.events = merged;
 	}
 
 	async refreshTimers(): Promise<void> {
@@ -182,8 +257,17 @@ export class SyncStore {
 		const generation = this.#generation;
 		this.#timersRefreshing = true;
 		this.#timersBuffer = [];
-		const { timers } = await getTimers(this.babyId);
+		// Active timers also arrive with every SSE snapshot, so a failed poll
+		// self-heals on the next (re)connection; keeping the current list is
+		// better than blanking the banner. Swallowed here so the `void` call
+		// sites can never raise an unhandled rejection.
+		const result = await getTimers(this.babyId).catch(() => null);
 		this.#timersRefreshing = false;
+		if (result === null) {
+			this.#timersBuffer = [];
+			return;
+		}
+		const { timers } = result;
 		if (generation !== this.#generation) {
 			this.#timersBuffer = [];
 			return;

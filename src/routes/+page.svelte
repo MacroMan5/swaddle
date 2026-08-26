@@ -2,7 +2,7 @@
 	import { getContext, onMount } from 'svelte';
 	import { listBabies, listCaregivers, ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
-	import type { BabyDTO, CaregiverDTO } from '$lib/client/types';
+	import type { CaregiverDTO } from '$lib/client/types';
 	import ActiveTimerBanner from '$lib/components/today/ActiveTimerBanner.svelte';
 	import BottleSheet from '$lib/components/today/BottleSheet.svelte';
 	import DaySummary from '$lib/components/today/DaySummary.svelte';
@@ -18,7 +18,6 @@
 	// just drives start() with the resolved baby id.
 	const store = getContext<SyncStore>('sync');
 
-	let baby = $state<BabyDTO | null>(null);
 	let caregivers = $state<CaregiverDTO[]>([]);
 	let caregiverId = $state<string | null>(null);
 	let loadError = $state<string | null>(null);
@@ -30,7 +29,9 @@
 	// Several undo windows can be open at once (item 9): a queue keyed by event id.
 	let toasts = $state<{ id: string; message: string; onUndo: () => Promise<void> }[]>([]);
 
-	const babyId = $derived(baby?.id ?? null);
+	// The baby lives on the store (#46: `baby` SSE messages keep it live across
+	// devices), not as a local copy that a correction elsewhere would leave stale.
+	const babyId = $derived(store.baby?.id ?? null);
 	// One alert for the whole bootstrap: the baby/caregiver load and the events
 	// load (issue #47) fail the same way from the user's point of view.
 	const bootstrapError = $derived(loadError ?? store.eventsError);
@@ -56,8 +57,8 @@
 			caregivers = caregiverList;
 			const first = babies[0];
 			if (first) {
-				baby = first;
 				store.start(first.id);
+				store.setBaby(first);
 			}
 		} catch (e) {
 			loadError =
@@ -86,7 +87,7 @@
 	<!-- Staggered entrance, first mount only — these wrappers are never
 	     remounted by an SSE update, so the animation cannot replay. -->
 	<div class="enter">
-		<TodayHeader babyName={baby?.name ?? null} birthdate={baby?.birthdate ?? null} />
+		<TodayHeader babyName={store.baby?.name ?? null} birthdate={store.baby?.birthdate ?? null} />
 	</div>
 
 	{#if bootstrapError}

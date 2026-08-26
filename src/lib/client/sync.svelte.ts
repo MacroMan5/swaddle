@@ -3,7 +3,7 @@ import { sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
 import { isTimerType } from './types';
-import type { EventDTO, SnapshotMessage, SyncKind, SyncMessage } from './types';
+import type { BabyDTO, BabyUpdateMessage, EventDTO, SnapshotMessage, SyncKind, SyncMessage } from './types';
 
 /** A change relayed to non-today views. A `sync` message carries `event`; a
  * snapshot/reset (reconnect or data restore) has no single event to apply
@@ -55,6 +55,10 @@ export class SyncStore {
 	serverOffsetMs = $state(0);
 	nowMs = $state(Date.now());
 	babyId: string | null = null;
+	/** The current baby's profile (#46): set once by the caller that resolved
+	 * it (Today's bootstrap), then kept live by `baby` SSE messages so a
+	 * correction made on another device shows up without a reload. */
+	baby = $state<BabyDTO | null>(null);
 
 	#source: EventSource | null = null;
 	#tick: ReturnType<typeof setInterval> | null = null;
@@ -125,6 +129,11 @@ export class SyncStore {
 		// needed).
 		source.addEventListener('reset', (e) =>
 			this.applyReset(JSON.parse((e as MessageEvent).data) as { serverTime: string })
+		);
+		// #46: a baby correction made elsewhere; older servers never send it, so
+		// this listener is inert until then, same as `reset` above.
+		source.addEventListener('baby', (e) =>
+			this.applyBabyUpdate(JSON.parse((e as MessageEvent).data) as BabyUpdateMessage)
 		);
 	}
 
@@ -297,6 +306,20 @@ export class SyncStore {
 			void this.refreshTimers();
 		}
 		this.#emitChange({ kind: 'reset' });
+	}
+
+	/** Set once by the caller that resolved the current baby (Today's bootstrap);
+	 * see `baby` above. */
+	setBaby(baby: BabyDTO): void {
+		this.baby = baby;
+	}
+
+	/** #46: applies a baby correction pushed from another device. Ignored if it
+	 * names a different baby than the one this store is currently tracking. */
+	applyBabyUpdate(message: BabyUpdateMessage): void {
+		this.#setServerTime(message.serverTime);
+		if (this.babyId !== null && message.baby.id !== this.babyId) return;
+		this.baby = message.baby;
 	}
 
 	applyChange(message: SyncMessage): void {

@@ -136,8 +136,20 @@ Export versionné complet, y compris les événements supprimés en douceur
   babies: BabyDTO[];
   caregivers: CaregiverDTO[];
   events: EventDTO[];
+  quickWords: { id: string; word: string; intent: unknown }[];
 }
 ```
+
+`quickWords` (#97) est le vocabulaire vocal : de la configuration du foyer,
+donc il voyage avec les données. Les **jetons API n'y sont jamais** — ce sont
+des secrets d'appareil, inutiles à qui restaure le fichier et dangereux dans
+une copie de celui-ci ; un foyer restauré les recrée depuis `/settings`.
+
+À l'import, `quickWords` est **facultatif** (la `version` reste `1`) : un
+export antérieur à #97 se restaure toujours et laisse le vocabulaire en place.
+Présent, il remplace intégralement la table. La table `api_token` n'est jamais
+touchée par une restauration : la vider couperait chaque appareil déjà appairé,
+y compris celui qui a déclenché la restauration.
 
 → `200` avec `content-disposition: attachment;
 filename="swaddle-export-<date>.json"`.
@@ -193,6 +205,72 @@ snapshot: string }` · `400 validation_failed` · `413 payload_too_large`.
 `413 payload_too_large` s'applique en réalité à toute route `/api` qui lit un
 corps JSON ; seule la restauration peut l'atteindre en pratique.
 
+## Jetons API — `/api/tokens` (#97, ADR 0004)
+
+Un jeton nommé laisse un client externe (Raccourci iOS, `rest_command` Home
+Assistant, `curl`) appeler l'API sans cookie de session, via
+`Authorization: Bearer <clair>`.
+
+### ApiTokenDTO
+
+```ts
+{ id: string; name: string; caregiverId: string | null;
+  createdAt: string; lastUsedAt: string | null; revokedAt: string | null }
+```
+
+Ni le clair ni le hachage n'apparaissent jamais dans un `ApiTokenDTO`.
+
+- **Format du clair** : `swd_` + 32 octets aléatoires en base64url. Le préfixe
+  rend le jeton reconnaissable dans un journal ou un scan de secrets.
+- **Stockage** : SHA-256 hexadécimal du clair, comparé en temps constant. Le
+  PIN, secret humain faible, garde scrypt ; 256 bits d'entropie machine n'ont
+  pas besoin d'un KDF lent, et la vérification tourne à chaque requête API.
+- **`lastUsedAt`** est arrondi au jour (minuit UTC) : une écriture par jour et
+  par jeton au maximum, pas une par requête.
+- **`caregiverId`** est facultatif et passe à `null` si l'aidant est supprimé
+  (`ON DELETE SET NULL`) — supprimer un aidant ne révoque jamais un jeton.
+
+### `POST /api/tokens`
+
+Corps : `{ name (1–100 caractères), caregiverId? }`.
+
+→ `201 { plaintext: string, token: ApiTokenDTO }` · `400 validation_failed`
+(nom invalide, ou `caregiverId` inconnu).
+
+**Seule réponse de toute l'API portant le clair** : seul son hachage est
+conservé, un jeton perdu se recrée, jamais ne se retrouve.
+
+### `GET /api/tokens`
+
+→ `200 { tokens: ApiTokenDTO[] }`, dans l'ordre de création, jetons révoqués
+inclus (l'écran des réglages montre qu'un appareil a été coupé).
+
+### `DELETE /api/tokens/[id]`
+
+Révocation, pas suppression : `revokedAt` est posé, la ligne reste listée et
+son hachage reste pris à jamais. Idempotent — une seconde révocation ne
+déplace pas l'horodatage.
+
+→ `204` · `404 not_found`.
+
+### Portée d'un jeton
+
+Un Bearer valide vaut session PIN pour `/api/*` **uniquement** :
+
+- les **pages** restent redirigées vers `/pin` — un jeton est la
+  référence d'un appareil sans écran, pas un moyen de naviguer dans l'app ;
+- `/api/tokens*` est **exclu** : créer ou révoquer un jeton exige une session
+  PIN, depuis `/settings` sur un appareil réellement déverrouillé. Sinon un
+  jeton fuité pourrait se forger des successeurs ou révoquer les autres
+  appareils du foyer.
+
+Un Bearer absent, malformé, inconnu ou révoqué est traité comme aucun Bearer :
+`401 pin_required` si un code PIN est actif.
+
+Le `caregiverId` du jeton est posé dans `event.locals.apiToken` par
+`hooks.server.ts`, pour l'attribution des écritures faites via l'API (tranche
+ultérieure).
+
 ## Portes serveur — `hooks.server.ts` (FR-015, FR-016)
 
 Deux portes s'appliquent à chaque requête, **le code PIN évalué en premier** :
@@ -202,7 +280,8 @@ Deux portes s'appliquent à chaque requête, **le code PIN évalué en premier**
    reçoivent `401 pin_required` (FR-015 : le code protège l'ensemble de
    l'application, y compris l'API) — sauf `/pin` lui-même et
    `POST /api/auth/pin`, toujours accessibles pour que le déverrouillage soit
-   possible.
+   possible, et sauf les appels `/api/*` portant un Bearer valide (voir
+   § Jetons API ci-dessus).
 2. **Configuration** : tant qu'aucun bébé et aucun aidant n'existent, les
    pages sont redirigées vers `/setup` (303) — sauf `/setup` lui-même et les
    routes API dont l'assistant a besoin (`/api/babies`, `/api/caregivers`,

@@ -50,7 +50,8 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 
 - `src/lib/server/db/` — couche SQLite : `openDb`/`getDb` (WAL, `foreign_keys ON`),
   migrations embarquées versionnées par `user_version` dans `migrations.ts`.
-  Schéma v1 + v2 (index UNIQUE minuteur actif) : `household`, `baby`,
+  Schéma v1 + v2 (index UNIQUE minuteur actif) + v3 (`api_token`,
+  `quick_word` semé des défauts français) : `household`, `baby`,
   `caregiver`, `event` (JSON `details` par type). Le mapping colonne↔DTO et
   l'insertion fidèle vivent dans `src/lib/server/events/eventRow.ts`, partagés
   par le repo et `settings/transfer.ts`.
@@ -63,14 +64,20 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 - `src/lib/server/settings/` — domaine des réglages (slice 5) : `repo.ts`
   (foyer/bébé/aidants), `auth.ts` (hash PIN scrypt, session HMAC),
   `transfer.ts` (export JSON/CSV, restauration transactionnelle, instantané
-  SQLite via `VACUUM INTO`), `gate.ts` (décision pure des portes). Routes :
-  `/api/babies` (POST), `/api/caregivers[...]`, `/api/household[...]`,
-  `/api/auth/pin`, `/api/export/json|csv`, `/api/backup`, `/api/restore`,
+  SQLite via `VACUUM INTO`), `gate.ts` (décision pure des portes),
+  `apiTokens.ts` (jetons Bearer nommés, ADR 0004 : clair `swd_` rendu une
+  seule fois, SHA-256 stocké, `lastUsedAt` arrondi au jour, révocation).
+  Routes : `/api/babies` (POST), `/api/caregivers[...]`,
+  `/api/household[...]`, `/api/auth/pin`, `/api/export/json|csv`,
+  `/api/backup`, `/api/restore`, `/api/tokens[...]` (session PIN seulement),
   `/api/server-info` (bloc « Ce serveur », `serverInfo.ts`) —
   contrat détaillé dans `docs/api/settings-api.md`.
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
-  `gateDecision`. Pages : `/setup` (assistant premier lancement), `/pin`
+  `gateDecision`. Le hook vérifie aussi le `Authorization: Bearer`
+  (`verifyBearer`) et passe le booléen à la décision, qui reste pure : un
+  jeton valide vaut session PIN pour `/api/*` sauf `/api/tokens*`, jamais
+  pour une page ; son aidant est posé dans `event.locals.apiToken`. Pages : `/setup` (assistant premier lancement), `/pin`
   (déverrouillage), `/settings` (réglages complets, FR-011). Le hook applique
   aussi `applySecurityHeaders` (`src/lib/server/securityHeaders.ts`) à toute
   réponse ; la CSP same-origin (mode nonce, pour l'amorce de thème inline de

@@ -85,6 +85,12 @@
 	let newCaregiverName = $state('');
 	let newCaregiverColor = $state(CAREGIVER_COLORS[0]);
 	let caregiverError = $state<string | null>(null);
+	// Which operation the current caregiverError belongs to, so only the
+	// input that actually caused it gets aria-invalid/aria-describedby: a
+	// rejected edit or delete must not also mark the unrelated "add" name
+	// field invalid, and vice-versa (issue #52). Delete has no input of its
+	// own — its failure is announced through the alert region only.
+	let caregiverErrorSource = $state<'add' | 'edit' | 'delete' | null>(null);
 	// sr-only confirmation (add/edit/delete give no visible confirmation text —
 	// the list update is itself the visual feedback) so successes are still
 	// announced (issue #52).
@@ -95,6 +101,7 @@
 	async function addCaregiver(event: SubmitEvent) {
 		event.preventDefault();
 		caregiverError = null;
+		caregiverErrorSource = null;
 		const addedName = newCaregiverName;
 		const { ok, value } = await postJson('/api/caregivers', 'POST', {
 			name: addedName,
@@ -102,6 +109,7 @@
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'add';
 			caregiverErrorNonce++;
 			return;
 		}
@@ -115,6 +123,7 @@
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'DELETE');
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'delete';
 			caregiverErrorNonce++;
 			return;
 		}
@@ -135,6 +144,7 @@
 		editCaregiverName = cg.name;
 		editCaregiverColor = cg.color;
 		caregiverError = null;
+		caregiverErrorSource = null;
 	}
 
 	function cancelEditCaregiver() {
@@ -144,12 +154,14 @@
 	async function saveCaregiver(event: SubmitEvent, id: string) {
 		event.preventDefault();
 		caregiverError = null;
+		caregiverErrorSource = null;
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'PATCH', {
 			name: editCaregiverName,
 			color: editCaregiverColor
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'edit';
 			caregiverErrorNonce++;
 			return;
 		}
@@ -503,14 +515,12 @@
 									onclick={() => startEditBaby(baby)}>Modifier</Button
 								>
 							</div>
-							{#if babySuccessId === baby.id}
-								<LiveMessage
-									text="Profil du bébé mis à jour."
-									kind="status"
-									nonce={babySuccessNonce}
-									class="text-ink-muted text-sm"
-								/>
-							{/if}
+							<LiveMessage
+								text={babySuccessId === baby.id ? 'Profil du bébé mis à jour.' : null}
+								kind="status"
+								nonce={babySuccessNonce}
+								class="text-ink-muted text-sm"
+							/>
 						{/if}
 					</div>
 				{:else}
@@ -598,8 +608,8 @@
 									class="min-h-12 text-base"
 									bind:value={editCaregiverName}
 									required
-									aria-invalid={caregiverError !== null}
-									aria-describedby={caregiverError !== null ? 'caregiver-error' : undefined}
+									aria-invalid={caregiverErrorSource === 'edit'}
+									aria-describedby={caregiverErrorSource === 'edit' ? 'caregiver-error' : undefined}
 								/>
 								<div class="flex flex-wrap gap-2">
 									{#each CAREGIVER_COLORS as color (color)}
@@ -653,8 +663,8 @@
 					class="min-h-12 text-base"
 					bind:value={newCaregiverName}
 					required
-					aria-invalid={caregiverError !== null}
-					aria-describedby={caregiverError !== null ? 'caregiver-error' : undefined}
+					aria-invalid={caregiverErrorSource === 'add'}
+					aria-describedby={caregiverErrorSource === 'add' ? 'caregiver-error' : undefined}
 				/>
 				<div class="flex flex-wrap gap-2">
 					{#each CAREGIVER_COLORS as color (color)}

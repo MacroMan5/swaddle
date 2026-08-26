@@ -29,7 +29,13 @@
 
 <section class="border-border bg-surface-raised -mx-1 flex flex-col gap-1 border-t-2 px-1 pt-3">
 	<h2 class="text-section text-ink-muted uppercase">Derniers événements</h2>
-	{#if recent.length === 0}
+	{#if store.eventsStatus === 'loading' || store.eventsStatus === 'idle'}
+		<p class="text-ink-muted text-body py-2">Chargement des activités…</p>
+	{:else if store.eventsStatus === 'error'}
+		<!-- Never claim the day is empty when the load failed (issue #47); the
+		     page-level alert carries the message and the retry button. -->
+		<p class="text-ink-muted text-body py-2">Activités indisponibles</p>
+	{:else if recent.length === 0}
 		<p class="text-ink-muted text-body py-2">Aucune activité — tout commence ici</p>
 	{:else}
 		<ul class="divide-border-hair divide-y">

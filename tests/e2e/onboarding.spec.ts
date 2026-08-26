@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-const B = 'http://localhost:3001';
+import { BASE_B } from './ports';
+
+const B = BASE_B;
 
 test('AC-008: empty db redirects to the wizard; baby + caregiver make the app usable', async ({ page }) => {
 	await page.goto(`${B}/`);

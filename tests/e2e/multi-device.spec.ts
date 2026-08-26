@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { BASE_A } from './ports';
 
 test.afterEach(async ({ request }) => {
 	for (const type of ['nursing', 'pump', 'sleep'])
@@ -15,8 +16,8 @@ test('AC-003: sleep started on device A is visible and stoppable on device B; A 
 	// manually created context resolves `goto('/')` to http://localhost:3000/
 	// without this) — passed explicitly anyway so the spec doesn't rely on
 	// that inheritance being obvious to a future reader.
-	const ctxA = await browser.newContext({ baseURL: 'http://localhost:3000' });
-	const ctxB = await browser.newContext({ baseURL: 'http://localhost:3000' });
+	const ctxA = await browser.newContext({ baseURL: BASE_A });
+	const ctxB = await browser.newContext({ baseURL: BASE_A });
 	const pageA = await ctxA.newPage();
 	const pageB = await ctxB.newPage();
 

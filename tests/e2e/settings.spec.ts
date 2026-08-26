@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 test('#46: correcting the baby profile shows pending, success and error states', async ({ page }) => {
@@ -132,6 +135,51 @@ test('the Ce serveur block shows the address and connected device count', async 
 	await page.getByRole('button', { name: 'Télécharger une sauvegarde' }).click();
 	await download;
 	await expect(section).not.toContainText('jamais');
+});
+
+test('#49: restoring a different unit/theme resyncs the visible controls without a reload, and survives one', async ({
+	page
+}) => {
+	const original = await (await page.request.get('/api/export/json')).json();
+	// Flip both away from whatever this run's household currently holds, so the
+	// assertions below only pass if the restore actually took effect.
+	const flippedUnit = original.household.volumeUnit === 'ml' ? 'oz' : 'ml';
+	const flippedTheme = original.household.theme === 'dark' ? 'light' : 'dark';
+	const flipped = { ...original, household: { volumeUnit: flippedUnit, theme: flippedTheme } };
+
+	const dir = mkdtempSync(join(tmpdir(), 'swaddle-restore-'));
+	const file = join(dir, 'flipped.json');
+	writeFileSync(file, JSON.stringify(flipped));
+
+	await page.goto('/settings');
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.setInputFiles('#restore-file', file);
+	await expect(page.getByText(/^Restauré :/)).toBeVisible();
+
+	// The controls above reflect the restored household immediately — no
+	// reload — and agree with a fresh GET of the same data (issue #49).
+	await expect(
+		page.getByRole('button', { name: flippedUnit, exact: true })
+	).toHaveClass(/bg-primary/);
+	const themeLabel = flippedTheme === 'dark' ? 'Sombre' : 'Clair';
+	await expect(page.getByRole('button', { name: themeLabel })).toHaveClass(/bg-primary/);
+	if (flippedTheme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/);
+	else await expect(page.locator('html')).not.toHaveClass(/dark/);
+	const household = await (await page.request.get('/api/household')).json();
+	expect(household).toMatchObject({ volumeUnit: flippedUnit, theme: flippedTheme });
+
+	// Still true after a real reload (fresh load props, not just invalidateAll).
+	await page.reload();
+	await expect(
+		page.getByRole('button', { name: flippedUnit, exact: true })
+	).toHaveClass(/bg-primary/);
+	await expect(page.getByRole('button', { name: themeLabel })).toHaveClass(/bg-primary/);
+	if (flippedTheme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/);
+	else await expect(page.locator('html')).not.toHaveClass(/dark/);
+
+	// Restore the original export so later specs see the household they expect.
+	const revert = await page.request.post('/api/restore', { data: original });
+	expect(revert.ok()).toBeTruthy();
 });
 
 test('#45: a file above the 10 Mo bound is refused without being read or sent', async ({ page }) => {

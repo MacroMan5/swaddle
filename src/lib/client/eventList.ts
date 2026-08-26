@@ -4,6 +4,7 @@
 // single implementation: the `updatedAt` guard below is the only thing standing
 // between an out-of-order response and a regressed list, and it must not exist
 // in two divergent copies.
+import type { ActivityChangeKind } from './activityChanges';
 import type { EventDTO } from './types';
 
 /** Newest first — the reading order of the Today screen. */
@@ -32,7 +33,7 @@ export function sortByDeletedAtDesc(events: EventDTO[]): EventDTO[] {
  * chooses what deletion means for it (drop it from a live window, keep it in
  * the recently-deleted sheet).
  */
-export function isDeletion(change: { kind: string; event: EventDTO }): boolean {
+export function isDeletion(change: { kind: ActivityChangeKind; event: EventDTO }): boolean {
 	return change.kind === 'deleted' || change.event.deletedAt !== null;
 }
 

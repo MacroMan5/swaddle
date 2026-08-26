@@ -37,9 +37,10 @@ export class BufferedFetch<C> {
 				return owner.#buffer;
 			},
 			end: () => {
-				if (token !== this.#token) return false;
-				this.#active = null;
-				this.#buffer = [];
+				// Superseded or already ended: report false, touch nothing.
+				if (token !== owner.#token || owner.#active !== token) return false;
+				owner.#active = null;
+				owner.#buffer = [];
 				return true;
 			}
 		};

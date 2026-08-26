@@ -112,8 +112,14 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   et `subscribeChanges` : relais de changements pour les vues hors
   « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte),
   `eventList.ts` (`upsert` — fusion idempotente last-write-wins gardée par
-  `updatedAt` — et les tris `sortByStartedAtAsc/Desc` ; toute liste
-  d'événements côté client passe par là, jamais par une copie locale).
+  `updatedAt` —, les tris `sortByStartedAtAsc/Desc`/`sortByDeletedAtDesc` et
+  `isDeletion` — le seul module qui décide « cette change signifie-t-elle
+  supprimé » (#88) ; toute liste d'événements côté client passe par là,
+  jamais par une copie locale),
+  `bufferedFetch.ts` (`BufferedFetch` : garde anti-course des fetchs
+  chevauchants — jeton de supersession + buffer de replay des changes reçues
+  en vol ; consommé par `SyncStore`, `HistoryWindow` et la feuille
+  « Supprimés récemment », jamais recopié à la main).
   Ne jamais importer `$lib/server/*` depuis ce dossier.
 - `src/lib/components/today/` — écran « Aujourd'hui » en direction « Registre »
   (palette 2b, `docs/design/design-system.md`) : `TodayHeader` (titre + âge),

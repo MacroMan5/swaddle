@@ -54,6 +54,13 @@ describe('BufferedFetch', () => {
 		expect(fetch.inFlight).toBe(false);
 	});
 
+	it('end() is idempotent: only the first call reports having ended the run', () => {
+		const fetch = new BufferedFetch<string>();
+		const run = fetch.begin();
+		expect(run.end()).toBe(true);
+		expect(run.end()).toBe(false);
+	});
+
 	it('inFlight is false once the current run ended', () => {
 		const fetch = new BufferedFetch<string>();
 		const run = fetch.begin();

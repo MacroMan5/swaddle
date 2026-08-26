@@ -109,6 +109,39 @@ describe('initial window', () => {
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
+	it('no incremental change kind ever refetches — membership is recomputed locally; only reset does (issue #88 finding 2)', async () => {
+		view.start();
+		await flush();
+		view.setViewMode('week');
+		await flush();
+		vi.mocked(listEvents).mockClear();
+
+		// Every kind, including the membership-changing deleted/restored pair.
+		adapter.change(sync('created', makeEvent()));
+		adapter.change(
+			sync('updated', makeEvent({ note: 'x', updatedAt: new Date(NOW.getTime() + 1).toISOString() }))
+		);
+		adapter.change(
+			sync(
+				'deleted',
+				makeEvent({
+					deletedAt: new Date(NOW.getTime() + 2).toISOString(),
+					updatedAt: new Date(NOW.getTime() + 2).toISOString()
+				})
+			)
+		);
+		adapter.change(
+			sync('restored', makeEvent({ updatedAt: new Date(NOW.getTime() + 3).toISOString() }))
+		);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+		expect(view.visibleDayEvents.map((event) => event.id)).toEqual(['ev-1']);
+
+		// The contrast: a reset carries no event to apply, so it must refetch.
+		adapter.reset({ serverTime: NOW.toISOString() });
+		await flush();
+		expect(vi.mocked(listEvents)).toHaveBeenCalled();
+	});
+
 	it('stop() unsubscribes: a later change no longer refetches', async () => {
 		view.start();
 		await flush();

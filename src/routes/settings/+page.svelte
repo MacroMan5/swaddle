@@ -9,6 +9,7 @@
 	import { applyForcedThemeColor } from '$lib/client/themeColor';
 	import { reconcileStoredCaregiverId, setStoredCaregiverId } from '$lib/client/caregiverSelection';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
+	import LiveMessage from '$lib/components/LiveMessage.svelte';
 
 	let { data } = $props();
 
@@ -41,6 +42,11 @@
 	// one, but nothing here should assume it).
 	let babySuccessId = $state<string | null>(null);
 	let babyPending = $state(false);
+	// Bumped on every (re)set of babyError/babySuccessId so a repeated identical
+	// outcome — e.g. saving twice in a row and getting the same success or error
+	// message — is announced again (see LiveMessage.svelte).
+	let babyErrorNonce = $state(0);
+	let babySuccessNonce = $state(0);
 
 	function startEditBaby(baby: { id: string; name: string; birthdate: string }) {
 		editingBabyId = baby.id;
@@ -66,10 +72,12 @@
 		babyPending = false;
 		if (!ok) {
 			babyError = errorMessage(value);
+			babyErrorNonce++;
 			return;
 		}
 		editingBabyId = null;
 		babySuccessId = id;
+		babySuccessNonce++;
 		await invalidateAll();
 	}
 
@@ -77,28 +85,41 @@
 	let newCaregiverName = $state('');
 	let newCaregiverColor = $state(CAREGIVER_COLORS[0]);
 	let caregiverError = $state<string | null>(null);
+	// sr-only confirmation (add/edit/delete give no visible confirmation text —
+	// the list update is itself the visual feedback) so successes are still
+	// announced (issue #52).
+	let caregiverStatus = $state<string | null>(null);
+	let caregiverErrorNonce = $state(0);
+	let caregiverStatusNonce = $state(0);
 
 	async function addCaregiver(event: SubmitEvent) {
 		event.preventDefault();
 		caregiverError = null;
+		const addedName = newCaregiverName;
 		const { ok, value } = await postJson('/api/caregivers', 'POST', {
-			name: newCaregiverName,
+			name: addedName,
 			color: newCaregiverColor
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorNonce++;
 			return;
 		}
 		newCaregiverName = '';
+		caregiverStatus = `Aidant ${addedName} ajouté.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
 	}
 
-	async function deleteCaregiver(id: string) {
+	async function deleteCaregiver(id: string, name: string) {
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'DELETE');
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorNonce++;
 			return;
 		}
+		caregiverStatus = `Aidant ${name} supprimé.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
 		// Reconcile immediately (issue #48): deleting this device's own selection
 		// must not leave it pointing at a caregiver that no longer exists.
@@ -129,9 +150,12 @@
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorNonce++;
 			return;
 		}
 		editingCaregiverId = null;
+		caregiverStatus = `Aidant ${editCaregiverName} mis à jour.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
 	}
 
@@ -157,6 +181,11 @@
 	let volumeUnit = $derived(volumeUnitOverride ?? data.household.volumeUnit);
 	let volumeUnitError = $state<string | null>(null);
 	let volumeUnitPending = $state(false);
+	// sr-only confirmation (the visual feedback is the pressed-button styling)
+	// so a successful unit change is still announced (issue #52).
+	let volumeUnitStatus = $state<string | null>(null);
+	let volumeUnitErrorNonce = $state(0);
+	let volumeUnitStatusNonce = $state(0);
 
 	async function setVolumeUnit(unit: 'ml' | 'oz') {
 		volumeUnitError = null;
@@ -176,8 +205,11 @@
 			volumeUnitOverride = null;
 			volumeUnitPending = false;
 			volumeUnitError = errorMessage(value);
+			volumeUnitErrorNonce++;
 			return;
 		}
+		volumeUnitStatus = `Unité mise à jour : ${unit}.`;
+		volumeUnitStatusNonce++;
 		await invalidateAll();
 		volumeUnitOverride = null;
 		volumeUnitPending = false;
@@ -188,6 +220,18 @@
 	let themeOverride = $state<'light' | 'dark' | 'auto' | null>(null);
 	let theme = $derived(themeOverride ?? data.household.theme);
 	let themeError = $state<string | null>(null);
+	// sr-only confirmation (the visual feedback is the pressed-button styling
+	// plus the document's own class/color change) so a successful theme change
+	// is still announced (issue #52).
+	let themeStatus = $state<string | null>(null);
+	let themeErrorNonce = $state(0);
+	let themeStatusNonce = $state(0);
+
+	const THEME_LABELS: Record<'light' | 'dark' | 'auto', string> = {
+		light: 'Clair',
+		dark: 'Sombre',
+		auto: 'Auto'
+	};
 
 	function applyTheme(t: 'light' | 'dark' | 'auto') {
 		const dark =
@@ -214,8 +258,11 @@
 			if (previousStoredTheme === null) localStorage.removeItem('swaddle.theme');
 			else localStorage.setItem('swaddle.theme', previousStoredTheme);
 			themeError = errorMessage(value);
+			themeErrorNonce++;
 			return;
 		}
+		themeStatus = `Thème mis à jour : ${THEME_LABELS[t]}.`;
+		themeStatusNonce++;
 		// Kept until invalidateAll refreshes data.household.theme to match, for
 		// the same no-flicker reason as volumeUnit above.
 		await invalidateAll();
@@ -231,6 +278,8 @@
 	let currentPin = $state('');
 	let pinError = $state<string | null>(null);
 	let pinMessage = $state<string | null>(null);
+	let pinErrorNonce = $state(0);
+	let pinMessageNonce = $state(0);
 
 	async function enablePin(event: SubmitEvent) {
 		event.preventDefault();
@@ -238,6 +287,7 @@
 		pinMessage = null;
 		if (newPin !== newPinConfirm) {
 			pinError = 'Les deux codes ne correspondent pas.';
+			pinErrorNonce++;
 			return;
 		}
 		const { ok, value } = await postJson('/api/household/pin', 'PUT', {
@@ -246,6 +296,7 @@
 		});
 		if (!ok) {
 			pinError = errorMessage(value);
+			pinErrorNonce++;
 			return;
 		}
 		pinEnabledOverride = true;
@@ -253,6 +304,7 @@
 		newPinConfirm = '';
 		currentPin = '';
 		pinMessage = 'Code PIN mis à jour.';
+		pinMessageNonce++;
 		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
 		// for the same no-flicker reason as volumeUnit above.
 		await invalidateAll();
@@ -266,11 +318,13 @@
 		const { ok, value } = await postJson('/api/household/pin', 'DELETE', { currentPin });
 		if (!ok) {
 			pinError = errorMessage(value);
+			pinErrorNonce++;
 			return;
 		}
 		pinEnabledOverride = false;
 		currentPin = '';
 		pinMessage = 'Code PIN désactivé.';
+		pinMessageNonce++;
 		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
 		// for the same no-flicker reason as volumeUnit above.
 		await invalidateAll();
@@ -281,6 +335,8 @@
 	let restoreMessage = $state<string | null>(null);
 	let restoreError = $state<string | null>(null);
 	let restoreInput: HTMLInputElement | null = null;
+	let restoreMessageNonce = $state(0);
+	let restoreErrorNonce = $state(0);
 
 	async function restoreFile(event: Event) {
 		restoreMessage = null;
@@ -293,6 +349,7 @@
 		// nothing about the current data changes.
 		if (file.size > MAX_BODY_BYTES) {
 			restoreError = userMessage('payload_too_large');
+			restoreErrorNonce++;
 			input.value = '';
 			return;
 		}
@@ -302,6 +359,7 @@
 			parsed = JSON.parse(text);
 		} catch {
 			restoreError = 'Fichier JSON invalide.';
+			restoreErrorNonce++;
 			input.value = '';
 			return;
 		}
@@ -313,10 +371,12 @@
 		input.value = '';
 		if (!ok) {
 			restoreError = errorMessage(value);
+			restoreErrorNonce++;
 			return;
 		}
 		const { babies, caregivers, events } = value.restored;
 		restoreMessage = `Restauré : ${babies} bébé(s), ${caregivers} aidant(s), ${events} événement(s).`;
+		restoreMessageNonce++;
 		await invalidateAll();
 		// Unité and PIN above derive straight from data.household, refreshed by
 		// invalidateAll — the theme also needs applying to the document (dark
@@ -332,6 +392,12 @@
 	// refresh « Dernière sauvegarde » via invalidateAll once the response lands.
 	let backupPending = $state(false);
 	let backupError = $state<string | null>(null);
+	// sr-only confirmation (the visual feedback is the download itself, plus
+	// the refreshed « Dernière sauvegarde » timestamp) so a successful backup
+	// is still announced (issue #52).
+	let backupStatus = $state<string | null>(null);
+	let backupErrorNonce = $state(0);
+	let backupStatusNonce = $state(0);
 
 	async function downloadBackup() {
 		if (backupPending) return;
@@ -341,6 +407,7 @@
 			const res = await fetch('/api/backup');
 			if (!res.ok) {
 				backupError = 'Une erreur est survenue.';
+				backupErrorNonce++;
 				return;
 			}
 			const blob = await res.blob();
@@ -351,9 +418,12 @@
 			a.download = match?.[1] ?? 'swaddle-backup.sqlite';
 			a.click();
 			URL.revokeObjectURL(url);
+			backupStatus = 'Sauvegarde téléchargée.';
+			backupStatusNonce++;
 			await invalidateAll();
 		} catch {
 			backupError = 'Une erreur est survenue.';
+			backupErrorNonce++;
 		} finally {
 			backupPending = false;
 		}
@@ -393,6 +463,8 @@
 									bind:value={editBabyName}
 									required
 									maxlength={100}
+									aria-invalid={babyError !== null}
+									aria-describedby={babyError !== null ? `baby-error-${baby.id}` : undefined}
 								/>
 								<Label for={`edit-baby-birthdate-${baby.id}`}>Date de naissance</Label>
 								<Input
@@ -401,8 +473,16 @@
 									class="min-h-12 text-base"
 									bind:value={editBabyBirthdate}
 									required
+									aria-invalid={babyError !== null}
+									aria-describedby={babyError !== null ? `baby-error-${baby.id}` : undefined}
 								/>
-								{#if babyError}<p class="text-danger text-sm">{babyError}</p>{/if}
+								<LiveMessage
+									id={`baby-error-${baby.id}`}
+									text={babyError}
+									kind="alert"
+									nonce={babyErrorNonce}
+									class="text-danger text-sm"
+								/>
 								<div class="flex gap-2">
 									<Button type="submit" class="min-h-12" disabled={babyPending}
 										>{babyPending ? 'Enregistrement…' : 'Enregistrer'}</Button
@@ -423,7 +503,14 @@
 									onclick={() => startEditBaby(baby)}>Modifier</Button
 								>
 							</div>
-							{#if babySuccessId === baby.id}<p class="text-ink-muted text-sm">Profil du bébé mis à jour.</p>{/if}
+							{#if babySuccessId === baby.id}
+								<LiveMessage
+									text="Profil du bébé mis à jour."
+									kind="status"
+									nonce={babySuccessNonce}
+									class="text-ink-muted text-sm"
+								/>
+							{/if}
 						{/if}
 					</div>
 				{:else}
@@ -438,6 +525,7 @@
 							class="min-h-12 flex-1"
 							disabled={volumeUnitPending}
 							variant={volumeUnit === 'ml' ? 'default' : 'outline'}
+							aria-describedby={volumeUnitError !== null ? 'volume-unit-error' : undefined}
 							onclick={() => setVolumeUnit('ml')}>ml</Button
 						>
 						<Button
@@ -445,10 +533,18 @@
 							class="min-h-12 flex-1"
 							disabled={volumeUnitPending}
 							variant={volumeUnit === 'oz' ? 'default' : 'outline'}
+							aria-describedby={volumeUnitError !== null ? 'volume-unit-error' : undefined}
 							onclick={() => setVolumeUnit('oz')}>oz</Button
 						>
 					</div>
-					{#if volumeUnitError}<p class="text-danger text-sm">{volumeUnitError}</p>{/if}
+					<LiveMessage
+						id="volume-unit-error"
+						text={volumeUnitError}
+						kind="alert"
+						nonce={volumeUnitErrorNonce}
+						class="text-danger text-sm"
+					/>
+					<LiveMessage text={volumeUnitStatus} kind="status" nonce={volumeUnitStatusNonce} class="sr-only" />
 				</div>
 
 				<div class="flex flex-col gap-2 py-2">
@@ -458,22 +554,32 @@
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'light' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('light')}>Clair</Button
 						>
 						<Button
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'dark' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('dark')}>Sombre</Button
 						>
 						<Button
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'auto' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('auto')}>Auto</Button
 						>
 					</div>
-					{#if themeError}<p class="text-danger text-sm">{themeError}</p>{/if}
+					<LiveMessage
+						id="theme-error"
+						text={themeError}
+						kind="alert"
+						nonce={themeErrorNonce}
+						class="text-danger text-sm"
+					/>
+					<LiveMessage text={themeStatus} kind="status" nonce={themeStatusNonce} class="sr-only" />
 				</div>
 			</div>
 		</section>
@@ -492,6 +598,8 @@
 									class="min-h-12 text-base"
 									bind:value={editCaregiverName}
 									required
+									aria-invalid={caregiverError !== null}
+									aria-describedby={caregiverError !== null ? 'caregiver-error' : undefined}
 								/>
 								<div class="flex flex-wrap gap-2">
 									{#each CAREGIVER_COLORS as color (color)}
@@ -530,7 +638,7 @@
 									variant="ghost"
 									class="text-danger min-h-12"
 									aria-label={`Supprimer ${cg.name}`}
-									onclick={() => deleteCaregiver(cg.id)}>Supprimer</Button
+									onclick={() => deleteCaregiver(cg.id, cg.name)}>Supprimer</Button
 								>
 							</div>
 						{/if}
@@ -540,7 +648,14 @@
 
 			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={addCaregiver}>
 				<Label for="new-caregiver-name">Nom de l’aidant</Label>
-				<Input id="new-caregiver-name" class="min-h-12 text-base" bind:value={newCaregiverName} required />
+				<Input
+					id="new-caregiver-name"
+					class="min-h-12 text-base"
+					bind:value={newCaregiverName}
+					required
+					aria-invalid={caregiverError !== null}
+					aria-describedby={caregiverError !== null ? 'caregiver-error' : undefined}
+				/>
 				<div class="flex flex-wrap gap-2">
 					{#each CAREGIVER_COLORS as color (color)}
 						<button
@@ -554,7 +669,14 @@
 						></button>
 					{/each}
 				</div>
-				{#if caregiverError}<p class="text-danger text-sm">{caregiverError}</p>{/if}
+				<LiveMessage
+					id="caregiver-error"
+					text={caregiverError}
+					kind="alert"
+					nonce={caregiverErrorNonce}
+					class="text-danger text-sm"
+				/>
+				<LiveMessage text={caregiverStatus} kind="status" nonce={caregiverStatusNonce} class="sr-only" />
 				<Button type="submit" class="min-h-12">Ajouter un aidant</Button>
 			</form>
 
@@ -607,6 +729,8 @@
 						class="min-h-12 text-base"
 						bind:value={currentPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin">Nouveau code (4 à 8 chiffres)</Label>
 					<Input
@@ -616,6 +740,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin-confirm">Confirmer le nouveau code</Label>
 					<Input
@@ -625,6 +751,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPinConfirm}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" class="min-h-12">Changer le code</Button>
 				</form>
@@ -637,6 +765,8 @@
 						class="min-h-12 text-base"
 						bind:value={currentPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" variant="destructive" class="min-h-12">Désactiver le code PIN</Button>
 				</form>
@@ -650,6 +780,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin-confirm">Confirmer le code</Label>
 					<Input
@@ -659,12 +791,20 @@
 						class="min-h-12 text-base"
 						bind:value={newPinConfirm}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" class="min-h-12">Activer le code PIN</Button>
 				</form>
 			{/if}
-			{#if pinError}<p class="text-danger text-sm">{pinError}</p>{/if}
-			{#if pinMessage}<p class="text-ink-muted text-sm">{pinMessage}</p>{/if}
+			<LiveMessage id="pin-error" text={pinError} kind="alert" nonce={pinErrorNonce} class="text-danger text-sm" />
+			<LiveMessage
+				id="pin-message"
+				text={pinMessage}
+				kind="status"
+				nonce={pinMessageNonce}
+				class="text-ink-muted text-sm"
+			/>
 		</section>
 
 		<section class="flex flex-col gap-3 p-4">
@@ -680,6 +820,7 @@
 					variant="outline"
 					disabled={backupPending}
 					onclick={downloadBackup}
+					aria-describedby={backupError !== null ? 'backup-error' : undefined}
 					class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Télécharger une sauvegarde</Button
 				>
@@ -698,12 +839,31 @@
 				<Button
 					variant="outline"
 					class="text-primary-text h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					aria-describedby={restoreError !== null ? 'restore-error' : undefined}
 					onclick={() => restoreInput?.click()}>Restaurer depuis un fichier…</Button
 				>
 			</div>
-			{#if backupError}<p class="text-danger text-sm">{backupError}</p>{/if}
-			{#if restoreError}<p class="text-danger text-sm">{restoreError}</p>{/if}
-			{#if restoreMessage}<p class="text-ink-muted text-sm">{restoreMessage}</p>{/if}
+			<LiveMessage
+				id="backup-error"
+				text={backupError}
+				kind="alert"
+				nonce={backupErrorNonce}
+				class="text-danger text-sm"
+			/>
+			<LiveMessage text={backupStatus} kind="status" nonce={backupStatusNonce} class="sr-only" />
+			<LiveMessage
+				id="restore-error"
+				text={restoreError}
+				kind="alert"
+				nonce={restoreErrorNonce}
+				class="text-danger text-sm"
+			/>
+			<LiveMessage
+				text={restoreMessage}
+				kind="status"
+				nonce={restoreMessageNonce}
+				class="text-ink-muted text-sm"
+			/>
 		</section>
 
 		<section class="flex flex-col gap-1 p-4">

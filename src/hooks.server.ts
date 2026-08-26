@@ -5,6 +5,7 @@ import { apiError } from '$lib/server/api';
 import { SESSION_COOKIE } from '$lib/server/settings/auth';
 import { getPinHash } from '$lib/server/settings/repo';
 import { gateDecision } from '$lib/server/settings/gate';
+import { verifyBearer } from '$lib/server/settings/apiTokens';
 import { applySecurityHeaders } from '$lib/server/securityHeaders';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -12,11 +13,19 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const pathname = event.url.pathname;
 	const isApi = pathname.startsWith('/api/');
 
+	// The impure half of the Bearer gate (ADR 0004): verified here, handed to
+	// the pure decision as a boolean. The token's caregiver rides on `locals` so
+	// writes made through the API can be attributed to whoever the parents
+	// linked the device to.
+	const bearer = verifyBearer(db, event.request.headers.get('authorization'));
+	event.locals.apiToken = bearer;
+
 	const decision = gateDecision({
 		pathname,
 		setupComplete: isSetupComplete(db),
 		pinHash: getPinHash(db),
-		sessionCookie: event.cookies.get(SESSION_COOKIE)
+		sessionCookie: event.cookies.get(SESSION_COOKIE),
+		hasBearerAuth: bearer !== null
 	});
 
 	// The gate redirects stay `throw redirect(...)` so SvelteKit keeps encoding

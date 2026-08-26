@@ -96,4 +96,46 @@ describe('gateDecision', () => {
 			expect(gateDecision({ ...base, pathname: '/api/auth/pin' })).toBe('ok');
 		});
 	});
+
+	// ADR 0004: a valid Bearer stands in for a PIN session, but only on /api/*.
+	// The hook does the verifying; the decision only takes the boolean.
+	describe('bearer authentication (issue #97)', () => {
+		const locked = { setupComplete: true, pinHash: 'stored', sessionCookie: undefined } as const;
+
+		it('a valid bearer unlocks the API without a cookie', () => {
+			for (const pathname of ['/api/events', '/api/timers/nursing', '/api/stream']) {
+				expect(gateDecision({ ...locked, pathname, hasBearerAuth: true })).toBe('ok');
+			}
+		});
+
+		it('a valid bearer never unlocks a page', () => {
+			for (const pathname of ['/', '/history', '/settings']) {
+				expect(gateDecision({ ...locked, pathname, hasBearerAuth: true })).toBe('to-pin');
+			}
+		});
+
+		it('an invalid, unknown or revoked bearer is just no bearer → to-pin', () => {
+			// The hook turns all three into hasBearerAuth: false.
+			expect(gateDecision({ ...locked, pathname: '/api/events', hasBearerAuth: false })).toBe('to-pin');
+			expect(gateDecision({ ...locked, pathname: '/api/events' })).toBe('to-pin');
+		});
+
+		it('token management stays session-only: a bearer cannot mint or revoke tokens', () => {
+			for (const pathname of ['/api/tokens', '/api/tokens/abc']) {
+				expect(gateDecision({ ...locked, pathname, hasBearerAuth: true })).toBe('to-pin');
+			}
+		});
+
+		it('a bearer still cannot skip the setup gate on a page', () => {
+			expect(
+				gateDecision({
+					pathname: '/',
+					setupComplete: false,
+					pinHash: null,
+					sessionCookie: undefined,
+					hasBearerAuth: true
+				})
+			).toBe('to-setup');
+		});
+	});
 });

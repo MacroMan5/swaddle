@@ -21,10 +21,8 @@ export const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
  * serious/critical impact.
  *
  * Deliberately empty: every scan in a11y-scan.spec.ts passes the full WCAG
- * 2.1 A/AA rule set as-is, so there is nothing to waive rule-wide. The one
- * genuine finding (the dimmed active quick-action tile) is waived at the node
- * level, in the scan that sees it, so the rule stays armed everywhere else.
- * Keep it that way: a rule waived here is a rule no route can fail again.
+ * 2.1 A/AA rule set as-is, with no node-level exclusion either. Keep it that
+ * way: a rule waived here is a rule no route can fail again.
  */
 export const WAIVED_RULES: Record<string, string> = {};
 

@@ -365,43 +365,35 @@ test('200% zoom: every route reflows without a horizontal scrollbar', async ({ p
 
 test('WCAG 1.4.12 text spacing does not clip or overlap the critical controls', async ({ page }) => {
 	await reduceMotion(page);
-	// 390 px — a current phone in portrait — is where the strict "nothing is
-	// clipped" assertion runs. At the 320 px floor the three hero tiles (a
-	// 3-column grid of ~85 px cells) clip their labels horizontally once
-	// letter-spacing grows by 0.12em: "Allaiter" needs 98 px of the 85 px it
-	// has. That is a real 1.4.12 shortfall, but a property of the Registre
-	// 3-up tile grid at the narrowest supported width — no remediation ticket
-	// touched it, and un-clipping it means re-deciding that grid, so it is
-	// reported as a follow-up rather than patched here. Functionality is not
-	// lost: each tile's accessible name is an `aria-label`, unaffected by the
-	// visual truncation, and the 320 px pass below still requires every control
-	// to stay hit-testable with no horizontal scrolling.
-	await page.setViewportSize({ width: 390, height: 844 });
-	await page.goto('/');
-	await page.addStyleTag({ content: TEXT_SPACING_CSS });
-	await expectNoHorizontalScroll(page, '/ with 1.4.12 text spacing');
+	// The strict "nothing is clipped" assertion runs at both supported ends of
+	// the range: 390 px (a current phone in portrait) and the 320 px floor,
+	// where the three hero tiles only get ~85 px of a 3-column grid. Their
+	// labels scale with the viewport below 390 px (issue #86, `.tile-label` in
+	// app.css) precisely so this holds at 320 px too.
+	for (const [width, height] of [
+		[390, 844],
+		[320, 568]
+	]) {
+		await page.setViewportSize({ width, height });
+		await page.goto('/');
+		await page.addStyleTag({ content: TEXT_SPACING_CSS });
+		await expectNoHorizontalScroll(page, `/ at ${width} px with 1.4.12 text spacing`);
 
-	// "Not clipped" = the control's own content still fits inside its box; the
-	// tiles have a fixed height, which is where a 1.5 line-height would bite.
-	for (const name of ['Allaiter', 'Biberon', 'Couche', 'Pipi', 'Caca', 'Les deux']) {
-		const control = page.getByRole('button', { name, exact: true });
-		await expectHitTestable(control, `"${name}" with 1.4.12 text spacing`);
-		const clipped = await control.evaluate(
-			(el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1
-		);
-		expect(clipped, `"${name}" clips its own label under 1.4.12 text spacing`).toBe(false);
-	}
-
-	// The 320 px floor: no horizontal scrolling and every control still tappable.
-	await page.setViewportSize({ width: 320, height: 568 });
-	await page.goto('/');
-	await page.addStyleTag({ content: TEXT_SPACING_CSS });
-	await expectNoHorizontalScroll(page, '/ at 320 px with 1.4.12 text spacing');
-	for (const name of ['Allaiter', 'Biberon', 'Couche', 'Pipi', 'Caca', 'Les deux']) {
-		await expectHitTestable(
-			page.getByRole('button', { name, exact: true }),
-			`"${name}" at 320 px with 1.4.12 text spacing`
-		);
+		// "Not clipped" = the control's own content still fits inside its box;
+		// the tiles have a fixed height, which is where a 1.5 line-height would
+		// bite, and a fixed grid column, which is where 0.12em letter-spacing
+		// would.
+		for (const name of ['Allaiter', 'Biberon', 'Couche', 'Pipi', 'Caca', 'Les deux']) {
+			const control = page.getByRole('button', { name, exact: true });
+			await expectHitTestable(control, `"${name}" at ${width} px with 1.4.12 text spacing`);
+			const clipped = await control.evaluate(
+				(el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1
+			);
+			expect(
+				clipped,
+				`"${name}" clips its own label at ${width} px under 1.4.12 text spacing`
+			).toBe(false);
+		}
 	}
 
 	await page.goto('/history');

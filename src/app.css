@@ -209,6 +209,9 @@
 	--sleep-700: #3730a3;
 
 	--radius: 6px;
+	/* De-emphasis of a control whose timer is already running (see .is-running
+	   below) — never applied to text, only to decoration. */
+	--opacity-dimmed: 0.55;
 	--popover: var(--surface-raised);
 	--popover-foreground: var(--ink);
 	--secondary: var(--surface);
@@ -278,6 +281,27 @@ body {
 /* Obligatoire sur tout chiffre dynamique (minuteurs, totaux) */
 .tabular {
 	font-variant-numeric: tabular-nums;
+}
+
+/* A quick-action control whose timer is already running is de-emphasised
+   through its decoration only — the category bar and the icon. Fading the
+   whole control (the previous `opacity-55`) blended --on-primary into
+   --primary and dropped its "En cours" label to 2.4:1, a WCAG 1.4.3 failure;
+   the label now keeps the contrast of the control it sits on. */
+.is-running > svg,
+.is-running > .tile-bar {
+	opacity: var(--opacity-dimmed);
+}
+
+/* Below the 390 px reference phone the 3-up hero grid leaves about 61 px of
+   content per tile, less than "Biberon" needs at `text-tile` once WCAG 1.4.12
+   text spacing widens it — so the label scales with the viewport instead of
+   being clipped, which in turn lets the hint underneath wrap. At 390 px and
+   above the Registre tile is untouched. */
+@media (width < 390px) {
+	.tile-label {
+		font-size: clamp(12px, 3.75vw, var(--text-tile));
+	}
 }
 
 @keyframes enter-up {

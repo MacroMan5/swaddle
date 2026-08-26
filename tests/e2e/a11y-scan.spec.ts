@@ -1,4 +1,3 @@
-import type AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import {
 	expectNoSeriousViolations,
@@ -43,23 +42,15 @@ test('Today: events, an active timer and an open sheet (light)', async ({ page, 
 		await page.goto('/');
 		await expect(page.getByTestId('active-timers')).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Biberon', exact: true })).toBeVisible();
-		// WAIVED (scoped to this one node, so the rule stays armed everywhere
-		// else): while a timer runs, the matching quick-action tile is
-		// de-emphasised with `opacity-55` (QuickActions.svelte), which blends
-		// --on-primary into --primary and drops the "En cours" label to 2.4:1 —
-		// a real WCAG 1.4.3 failure, but a pre-existing property of the Registre
-		// tile language, not something this remediation (#44/#47/#50/#51/#52/#53)
-		// introduced or touched. Changing how an active tile is dimmed is a
-		// design-system decision (three tiles share the treatment, NFR-008 wants
-		// it token-driven), so it is reported as a follow-up defect rather than
-		// patched from a verification ticket.
-		const withoutDimmedTile = (b: AxeBuilder) => b.exclude(ACTIVE_TILE);
-		await expectNoSeriousViolations(page, 'Today · events + active timer · light', withoutDimmedTile);
+		// The running control is scanned like any other node: its de-emphasis
+		// now fades decoration only, so its "En cours" label keeps the contrast
+		// of the control it sits on (issue #85).
+		await expect(page.locator(ACTIVE_TILE)).toBeVisible();
+		await expectNoSeriousViolations(page, 'Today · events + active timer · light');
 
 		await page.getByRole('button', { name: 'Biberon', exact: true }).click();
 		await expect(page.getByRole('dialog')).toBeVisible();
-		// Same waived node: the dimmed tile is still rendered behind the sheet.
-		await expectNoSeriousViolations(page, 'Today · bottle sheet open · light', withoutDimmedTile);
+		await expectNoSeriousViolations(page, 'Today · bottle sheet open · light');
 		await page.keyboard.press('Escape');
 		await expect(page.getByRole('dialog')).toBeHidden();
 	} finally {

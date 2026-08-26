@@ -85,7 +85,7 @@ Auto-hébergée via `@fontsource` (NFR-006 : aucun CDN, y compris Google Fonts).
 | `text-category` | 9.5 px / 700 | MAJUSCULES, `ls .13em`, couleur 700 de catégorie |
 | `text-status` | 10 px / 700 | MAJUSCULES, `ls .16em`, ligne d'état du bandeau |
 | `text-brand` | 13 px / 800 | MAJUSCULES, `ls .2em`, mot-symbole |
-| `text-tile` / `text-tile-hint` | 16 px / 800 · 11 px / 600 | tuiles de saisie rapide |
+| `text-tile` / `text-tile-hint` | 16 px / 800 · 11 px / 600 | tuiles de saisie rapide (le libellé descend jusqu'à 12 px sous 390 px de large — WCAG 1.4.12) |
 | `text-value` / `text-label` | 15 px / 700 · 14 px / 600 | lignes libellé/valeur (`--ink-label`) |
 | `text-row` / `text-row-time` | 14 px / 600 · 14 px / 700 | lignes d'événement (heure tabular) |
 | `text-delta` | 20 px / 800 | deltas signés de la semaine |
@@ -149,7 +149,9 @@ Quatre mouvements, tous derrière `prefers-reduced-motion` :
 - Minuteur actif : bandeau plein accent en haut d'écran (carré pulsant,
   chrono 56/800 tabular, boutons 52 px alignés à gauche, « Terminer »
   toujours au-dessus de la ligne de flottaison) ; la tuile de la catégorie
-  passe à 55 % d'opacité et un tap ramène au bandeau.
+  s'estompe (`--opacity-dimmed`, 55 %) **sur sa décoration seule** — filet
+  haut et icône, jamais le texte, dont le contraste doit rester ≥ 4,5:1
+  (WCAG 1.4.3) — et un tap ramène au bandeau.
 - Toast « Annuler » : `aria-live="polite"`, 5 s, ne vole pas le focus.
 - État vide accueillant à la première ouverture (« Aucune activité — tout
   commence ici »), jamais un écran blanc.

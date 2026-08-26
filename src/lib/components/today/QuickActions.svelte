@@ -122,12 +122,13 @@
 			aria-label="Allaiter"
 			disabled={babyId === null}
 			onclick={handleNursingTap}
-			class="{tileBase} bg-feed-100 {nursingActive ? 'opacity-55' : ''}"
+			class="{tileBase} bg-feed-100"
+			class:is-running={nursingActive}
 		>
-			<span class="bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Heart size={26} class="text-feed-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Allaiter</span>
+				<span class="tile-label text-tile text-ink">Allaiter</span>
 				<span class="text-tile-hint text-ink-muted">{nursingActive ? 'En cours' : 'G · D'}</span>
 			</span>
 		</button>
@@ -139,10 +140,10 @@
 			onclick={onOpenBottle}
 			class="{tileBase} bg-feed-100"
 		>
-			<span class="bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Milk size={26} class="text-feed-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Biberon</span>
+				<span class="tile-label text-tile text-ink">Biberon</span>
 				<span class="text-tile-hint text-ink-muted tabular-nums">
 					{lastVolume === null ? unit : formatVolume(lastVolume, unit)}
 				</span>
@@ -157,10 +158,10 @@
 			onclick={() => (diaperPickerOpen = !diaperPickerOpen)}
 			class="{tileBase} bg-diaper-100"
 		>
-			<span class="bg-diaper-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-diaper-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Droplets size={26} class="text-diaper-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Couche</span>
+				<span class="tile-label text-tile text-ink">Couche</span>
 				<span class="text-tile-hint text-ink-muted">Pipi · Caca</span>
 			</span>
 		</button>
@@ -201,9 +202,8 @@
 			aria-label={sleepActive ? 'Sommeil en cours' : 'Commencer le sommeil'}
 			disabled={sleepPending || babyId === null}
 			onclick={startSleep}
-			class="bg-primary text-on-primary active:bg-primary-pressed col-span-2 flex h-14 items-center justify-start gap-2 rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 {sleepActive
-				? 'opacity-55'
-				: ''}"
+			class="bg-primary text-on-primary active:bg-primary-pressed col-span-2 flex h-14 items-center justify-start gap-2 rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
+			class:is-running={sleepActive}
 		>
 			<Moon size={20} aria-hidden="true" />
 			<span class="text-tile" aria-hidden="true">{sleepActive ? 'En cours' : 'Sommeil'}</span>
@@ -213,9 +213,8 @@
 			aria-label="Tirage"
 			disabled={babyId === null}
 			onclick={handlePumpTap}
-			class="border-border bg-surface-raised text-ink flex h-14 items-center justify-center gap-2 rounded-control border-2 active:translate-y-px active:shadow-none motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 {pumpActive
-				? 'opacity-55'
-				: ''}"
+			class="border-border bg-surface-raised text-ink flex h-14 items-center justify-center gap-2 rounded-control border-2 active:translate-y-px active:shadow-none motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+			class:is-running={pumpActive}
 		>
 			<Wind size={20} aria-hidden="true" />
 			<span class="text-tile-hint" aria-hidden="true">{pumpActive ? 'En cours' : 'Tirage'}</span>

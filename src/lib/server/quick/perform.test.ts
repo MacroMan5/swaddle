@@ -137,6 +137,27 @@ describe('nursing toggle', () => {
 		expect(started.speech).toBe('Tétée côté droit démarrée');
 	});
 
+	it('announces the fed time, not the wall clock: a pause is not nursing', () => {
+		const started = performQuick(db, { action: 'nursing', side: 'left' }, ctx);
+
+		// 10 min on the left, a 30 min pause, then 5 min on the right still
+		// running — the stop closes the last segment. Wall clock says 45 minutes;
+		// the baby fed for 15.
+		const at = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
+		db.prepare('UPDATE event SET started_at = ?, details = ? WHERE id = ?').run(
+			at(45),
+			JSON.stringify({
+				segments: [
+					{ side: 'left', startedAt: at(45), endedAt: at(35) },
+					{ side: 'right', startedAt: at(5), endedAt: null }
+				]
+			}),
+			started.event.id
+		);
+
+		expect(performQuick(db, { action: 'nursing' }, ctx).speech).toBe('Tétée terminée, 15 minutes');
+	});
+
 	it('starts on the left when no nursing session was ever recorded', () => {
 		expect(performQuick(db, { action: 'nursing' }, ctx).speech).toBe('Tétée côté gauche démarrée');
 	});

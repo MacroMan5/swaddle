@@ -88,6 +88,11 @@ Phrase française prête à être lue à voix haute par l'assistant. Exemples :
 Les durées sont arrondies à la minute : `moins d'une minute`, `12 minutes`,
 `1 heure`, `2 heures 1 minute`.
 
+La durée annoncée à l'arrêt d'une **tétée** est la durée effective (DEC-001) :
+la somme des segments, pauses exclues — 10 min au sein gauche, 30 min de pause
+puis 5 min à droite s'annoncent « 15 minutes », pas 45. Le **dodo**, lui, est
+bien l'écart entre le début et la fin.
+
 ### Exemple
 
 ```sh

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import {
 	detailsOf,
+	nursingDurationMs,
 	parseCreateEvent,
 	type EventDTO,
 	type Side,
@@ -72,8 +73,17 @@ function defaultNursingSide(db: DB, babyId: string): Side {
 	return segments[segments.length - 1].side === 'left' ? 'right' : 'left';
 }
 
-function durationOf(event: EventDTO): string {
-	return spokenDuration(Date.parse(event.endedAt ?? event.startedAt) - Date.parse(event.startedAt));
+/**
+ * What to say a finished session lasted. Sleep is wall clock — it ran from
+ * start to end. Nursing is not: a paused session keeps counting on the clock
+ * while nobody is feeding, so the announced duration is the sum of its
+ * segments (DEC-001), the same number the Today screen shows.
+ */
+function spokenLengthOf(event: EventDTO): string {
+	const endedAt = Date.parse(event.endedAt ?? event.startedAt);
+	if (event.type === 'nursing')
+		return spokenDuration(nursingDurationMs(detailsOf(event, 'nursing').segments, endedAt));
+	return spokenDuration(endedAt - Date.parse(event.startedAt));
 }
 
 type Outcome = { event: EventDTO; did: QuickResult['did']; speech: string };
@@ -136,7 +146,7 @@ function toggleTimer(
 		return {
 			event,
 			did: 'stopped',
-			speech: `${isSleep ? 'Dodo terminé' : 'Tétée terminée'}, ${durationOf(event)}`
+			speech: `${isSleep ? 'Dodo terminé' : 'Tétée terminée'}, ${spokenLengthOf(event)}`
 		};
 	}
 

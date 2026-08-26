@@ -108,6 +108,15 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		await expect(page.locator('html')).toHaveClass(/dark/);
 		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
 
+		// Let the save land before reloading. A reload aborts an in-flight
+		// fetch, and the settings page reads that as a failed save and rolls the
+		// choice back (localStorage included) — which is the *page's* contract,
+		// not what this test is about: it asserts that a *stored* forced theme
+		// survives a reload.
+		await expect
+			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
+			.toBe('dark');
+
 		// Survives a reload: the inline bootstrap in app.html applies the same
 		// override before paint, so a stored forced theme never flashes the
 		// OS-tracked color first.

@@ -50,7 +50,13 @@ test('reset server A to its freshly seeded state', () => {
 	}
 });
 
-test('reset server B to a pristine, pre-onboarding state', async () => {
+test('reset server B to a pristine, pre-onboarding state', async ({}, testInfo) => {
+	// The poll below can legitimately take close to the full 30s lockout
+	// (lockoutMs in auth.ts) when this reset starts shortly after chromium's
+	// brute-force test — comfortably above Playwright's 30s per-test default,
+	// so give this test its own margin instead of racing that default.
+	testInfo.setTimeout(60_000);
+
 	// Install a known pin so the poll below can log in successfully — that's
 	// the only thing that clears `pinThrottle` (src/lib/server/settings/auth.ts),
 	// the in-memory brute-force counter the "brute-force throttle" test in

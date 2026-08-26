@@ -59,12 +59,28 @@ export default defineConfig({
 	// so a second project replaying the same specs against already-mutated
 	// servers would fail assumptions like AC-008's "empty db" on B, or
 	// collide with literal test data chromium's run left on A (see
-	// reset-servers.setup.ts). Rather than rely on run-order guarantees
-	// across independent Playwright projects (undocumented and not worth
-	// depending on), `dependencies` forces a strict chain — api → chromium →
-	// reset-servers → webkit — so `reset-servers.setup.ts` always runs once,
-	// after chromium's specs have finished and before webkit's start,
-	// putting both servers back to the state global-setup.ts left them in.
+	// reset-servers.setup.ts).
+	//
+	// Ordering is by project list order below, not `dependencies`: an
+	// earlier version used `dependencies` (api → chromium → reset-servers →
+	// webkit) to force that order, but Playwright skips a project entirely
+	// when a project it depends on has a failing test — which meant one red
+	// chromium test silently dropped every webkit result from the run and
+	// hid whether the failure was engine-specific. With `workers: 1` and no
+	// `dependencies`, Playwright instead runs projects strictly in the order
+	// they're listed here (verified empirically: a full run, and a run with
+	// a deliberately failing chromium test, both showed reset-servers and
+	// webkit running afterwards in full) — the ordering guarantee we need,
+	// without the failure making projects disappear.
+	//
+	// This does mean a *filtered* run must include `reset-servers` itself if
+	// it spans both browser engines: `--project=chromium --project=webkit`
+	// alone would run webkit straight after chromium with no reset in
+	// between. Use `--project=chromium --project=reset-servers
+	// --project=webkit`, or just omit `--project` for the full ordered run.
+	// A single `--project=webkit` (or `=chromium`) run needs no reset at all
+	// — each `playwright test` invocation starts both webServers fresh, so a
+	// lone project always sees the pristine state global-setup.ts produces.
 	projects: [
 		{
 			name: 'api',
@@ -74,18 +90,15 @@ export default defineConfig({
 		{
 			name: 'chromium',
 			testIgnore: [API_ONLY, RESET_SERVERS],
-			dependencies: ['api'],
 			use: { ...devices['Desktop Chrome'] }
 		},
 		{
 			name: 'reset-servers',
-			testMatch: RESET_SERVERS,
-			dependencies: ['chromium']
+			testMatch: RESET_SERVERS
 		},
 		{
 			name: 'webkit',
 			testIgnore: [API_ONLY, RESET_SERVERS],
-			dependencies: ['reset-servers'],
 			use: { ...devices['Desktop Safari'] }
 		}
 	]

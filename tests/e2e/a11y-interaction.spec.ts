@@ -215,8 +215,15 @@ test('the Today bootstrap error is an alert whose Réessayer is keyboard-reachab
 	// is announced without moving focus) plus a Réessayer reachable and
 	// activatable by keyboard alone, which the real-device checklist asks
 	// VoiceOver/TalkBack to confirm by ear.
+	//
+	// The failure is injected on `GET /api/babies` rather than on the events
+	// load: both feed the same single alert (`bootstrapError` in
+	// src/routes/+page.svelte), but the events path races the SSE snapshot's own
+	// refresh, a race today-bootstrap.spec.ts had to skip under WebKit (#53).
+	// Failing the baby load reaches the same alert deterministically in both
+	// engines, which is what this test is actually about.
 	let failed = false;
-	await page.route('**/api/events?**', async (route) => {
+	await page.route('**/api/babies', async (route) => {
 		if (route.request().method() === 'GET' && !failed) {
 			failed = true;
 			await route.fulfill({
@@ -239,7 +246,7 @@ test('the Today bootstrap error is an alert whose Réessayer is keyboard-reachab
 	await tabUntil(page, (i) => i.text === 'Réessayer', 'the bootstrap Réessayer button');
 	await page.keyboard.press('Enter');
 	await expect(alert).toBeHidden();
-	await page.unroute('**/api/events?**');
+	await page.unroute('**/api/babies');
 });
 
 test('the fixed bottom navigation never obscures the last row of a long list', async ({

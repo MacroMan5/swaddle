@@ -3,11 +3,13 @@
 	// nursing exposes its segments instead of a single end time. Delete opens the
 	// caller's 5 s undo toast; every confirmed response merges into local state.
 	import { getContext, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle } from '@lucide/svelte';
-	import { ApiError, deleteEvent, patchEvent, restoreEvent } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
-	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
+	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import { displayVolumeValue, editedVolumeEntry } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
 	import type {
@@ -25,20 +27,18 @@
 		open = $bindable(false),
 		event,
 		caregivers,
-		onSaved,
 		onDeleted
 	}: {
 		open?: boolean;
 		event: EventDTO | null;
 		caregivers: CaregiverDTO[];
-		// Confirmed HTTP responses are passed back so the caller can merge them
-		// directly into its own visible list (slice-3 pattern) — the caller must
-		// not rely solely on a background refetch/relay to reflect its own writes.
-		onSaved: (event: EventDTO) => void;
-		onDeleted: (event: EventDTO, message: string, onUndo: () => Promise<EventDTO>) => void;
+		onDeleted: (id: string, message: string, onUndo: () => Promise<void>) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
+
+	/** The household's volume unit (#44): display and entry only. */
+	const unit = $derived(page.data.volumeUnit);
 
 	const MILK_TYPES: { value: MilkType; label: string }[] = [
 		{ value: 'breast', label: 'Maternel' },
@@ -57,6 +57,13 @@
 	let endedAt = $state('');
 	let milkType = $state<MilkType>('breast');
 	let volumeMl = $state('');
+	/**
+	 * What the volume field read when the sheet opened, next to the millilitres
+	 * it was rendered from (#44). An untouched field saves the stored value
+	 * verbatim: in oz, re-converting "3,0" would land on 89 ml and quietly
+	 * rewrite a 90 ml bottle nobody edited.
+	 */
+	let pristineVolume = $state<{ raw: string; ml: number | null }>({ raw: '', ml: null });
 	let pumpSide = $state<PumpSide>('both');
 	let pee = $state(false);
 	let poo = $state(false);
@@ -92,8 +99,28 @@
 
 	const isDirty = $derived(open && event !== null && serializeForm() !== initialForm);
 
+	/**
+	 * Identity of what the sheet is editing: the event's id while it is open,
+	 * null otherwise. The init effect below keys on this rather than on `event`
+	 * itself — the page re-derives its list as the corrected clock ticks, so the
+	 * DTO handed to us is a fresh object every second even when nothing about
+	 * the event changed. Keying on the id means an unchanged event produces an
+	 * unchanged derived value, and the effect does not re-run.
+	 */
+	const editingId = $derived(open && event !== null ? event.id : null);
+
 	$effect(() => {
-		if (!open || event === null) return;
+		if (editingId === null) return;
+		// untrack: everything the initialization *reads* — the event's own fields
+		// and the household's unit — must stay out of the dependency set. A re-run
+		// mid-entry silently wipes what the user typed (review P1, the same
+		// failure mode the clock tick caused in ManualAddSheet).
+		untrack(initializeForm);
+	});
+
+	function initializeForm(): void {
+		if (event === null) return;
+		const currentUnit = unit;
 		caregiverId = event.caregiverId ?? '';
 		note = event.note ?? '';
 		startedAt = toLocalInputValue(new Date(Date.parse(event.startedAt)));
@@ -106,11 +133,13 @@
 		if (isType(event, 'bottle')) {
 			const d = event.details;
 			milkType = d.milkType;
-			volumeMl = String(d.volumeMl);
+			volumeMl = displayVolumeValue(d.volumeMl, currentUnit);
+			pristineVolume = { raw: volumeMl, ml: d.volumeMl };
 		} else if (isType(event, 'pump')) {
 			const d = event.details;
 			pumpSide = d.side;
-			volumeMl = d.volumeMl === null ? '' : String(d.volumeMl);
+			volumeMl = d.volumeMl === null ? '' : displayVolumeValue(d.volumeMl, currentUnit);
+			pristineVolume = { raw: volumeMl, ml: d.volumeMl };
 		} else if (isType(event, 'diaper')) {
 			const d = event.details;
 			pee = d.pee;
@@ -124,10 +153,8 @@
 				error: null
 			}));
 		}
-		// untrack: reading the form fields here must not make them effect deps,
-		// or every user edit would re-run the effect and reset the form.
-		initialForm = untrack(() => serializeForm());
-	});
+		initialForm = serializeForm();
+	}
 
 	function setSegmentSide(index: number, side: Side): void {
 		segments = segments.map((s, i) => (i === index ? { ...s, side } : s));
@@ -150,18 +177,18 @@
 			if (segmentMatch) {
 				const index = Number(segmentMatch[1]);
 				segments = segments.map((s, i) =>
-					i === index ? { ...s, error: fieldMessage(issue) } : s
+					i === index ? { ...s, error: fieldMessage(issue, unit) } : s
 				);
 				continue;
 			}
 			if (issue.path === 'details.segments') {
-				formError = fieldMessage(issue);
+				formError = fieldMessage(issue, unit);
 				continue;
 			}
-			if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue);
-			else if (issue.path.endsWith('endedAt')) endedAtError = fieldMessage(issue);
-			else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
-			else formError = fieldMessage(issue);
+			if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue, unit);
+			else if (issue.path.endsWith('endedAt')) endedAtError = fieldMessage(issue, unit);
+			else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue, unit);
+			else formError = fieldMessage(issue, unit);
 		}
 	}
 
@@ -175,7 +202,6 @@
 		segments = segments.map((s) => ({ ...s, error: null }));
 
 		try {
-			let updated: EventDTO;
 			if (event.type === 'nursing') {
 				const built: NursingSegment[] = segments.map((s) => ({
 					side: s.side,
@@ -183,7 +209,7 @@
 					endedAt: s.endedAt === '' ? null : fromLocalInputValue(s.endedAt)
 				}));
 				const last = built[built.length - 1];
-				updated = await patchEvent(event.id, {
+				await store.changes.patch(event.id, {
 					caregiverId: caregiverId === '' ? null : caregiverId,
 					note: note.trim() === '' ? null : note,
 					startedAt: built[0]?.startedAt,
@@ -191,15 +217,24 @@
 					details: { segments: built }
 				});
 			} else {
+				// Judged in the unit it was typed in (#44); an untouched field keeps
+				// its stored millilitres verbatim.
+				const entry = editedVolumeEntry(volumeMl, pristineVolume, unit);
+				if (entry.status === 'out-of-range') {
+					pending = false;
+					volumeError = entry.message;
+					return;
+				}
+				const entered = entry.status === 'ok' ? entry.volumeMl : null;
 				const details: Details =
 					event.type === 'bottle'
-						? { milkType, volumeMl: Number(volumeMl) }
+						? { milkType, volumeMl: entered ?? NaN }
 						: event.type === 'pump'
-							? { side: pumpSide, volumeMl: parsePumpVolumeMl(volumeMl) }
+							? { side: pumpSide, volumeMl: entered }
 							: event.type === 'diaper'
 								? { pee, poo }
 								: {};
-				updated = await patchEvent(event.id, {
+				await store.changes.patch(event.id, {
 					caregiverId: caregiverId === '' ? null : caregiverId,
 					note: note.trim() === '' ? null : note,
 					startedAt: fromLocalInputValue(startedAt),
@@ -207,9 +242,7 @@
 					details
 				});
 			}
-			store.applyServerEvent(updated);
 			open = false;
-			onSaved(updated);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) applyIssues(e.issues);
 			else formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
@@ -223,15 +256,12 @@
 		deleting = true;
 		formError = null;
 		try {
-			const deletedEvent = await deleteEvent(event.id);
-			store.applyServerEvent(deletedEvent, true);
+			await store.changes.delete(event.id);
 			const id = event.id;
 			open = false;
-			onDeleted(deletedEvent, 'Entrée supprimée', async () => {
+			onDeleted(id, 'Entrée supprimée', async () => {
 				try {
-					const restored = await restoreEvent(id);
-					store.applyServerEvent(restored);
-					return restored;
+					await store.changes.restore(id);
 				} catch (e) {
 					throw e instanceof ApiError && e.code === 'timer_conflict'
 						? new Error('Un minuteur du même type est déjà en cours.')
@@ -312,7 +342,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="edit-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="edit-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="edit-volume"
 							inputmode="decimal"
@@ -346,7 +376,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="edit-pump-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="edit-pump-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="edit-pump-volume"
 							inputmode="decimal"

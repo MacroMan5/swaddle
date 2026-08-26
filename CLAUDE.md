@@ -37,7 +37,9 @@ l'utilisateur d'abord.
 - `npm run test:e2e` — e2e Playwright (fait un build de prod ; nécessite
   `npx playwright install chromium` une première fois ; les ports 3000 et 3001
   doivent être libres). Un seul spec : `npx playwright test e2e/<nom>.spec.ts`.
-- `npm run build` — build de production (adapter-node → `build/`).
+- `npm run build` — build de production (adapter-node → `build/`) ; démarrage
+  avec `node server.js` (point d'entrée maison qui pose les en-têtes de
+  sécurité sur les fichiers statiques), jamais `node build`.
 - `docker build -t swaddle .` — image de production (`node:22-slim`, jamais Alpine).
 - CI : runner self-hosted **Windows** (`swaddle-win`) — rien de Linux-only dans
   `ci.yml` (pas de `setup-qemu-action`, pas de `--with-deps`).
@@ -69,7 +71,12 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
   `gateDecision`. Pages : `/setup` (assistant premier lancement), `/pin`
-  (déverrouillage), `/settings` (réglages complets, FR-011).
+  (déverrouillage), `/settings` (réglages complets, FR-011). Le hook applique
+  aussi `applySecurityHeaders` (`src/lib/server/securityHeaders.ts`) à toute
+  réponse ; la CSP same-origin (mode nonce, pour l'amorce de thème inline de
+  `app.html`) est configurée dans `vite.config.ts`, et `server.js` répète les
+  en-têtes de base sur les fichiers statiques servis avant le hook — contrat
+  dans `docs/api/events-api.md` § En-têtes de sécurité.
 - `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn
   re-mappées ; mode sombre par classe `.dark` sur `<html>`. Toute couleur/rayon
   passe par un token (NFR-008) ; échelle typographique en tokens `--text-*`
@@ -90,13 +97,29 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   seule source de vérité, consommé par `DaySummary`, `WeekView` et `/history` ;
   `weekTotals`/`signedDeltaLabel` pour le comparatif semaine),
   `babyAge.ts` (âge court FR depuis `birthdate`, pur),
+  `volume.ts` (unité de volume du foyer, #44 : `mlToOz`/`ozToMl`,
+  `formatVolume`, pas et préréglages par unité, bornes en oz. `parseVolumeEntry`
+  arrondit d'abord la saisie à la précision affichée (1 décimale en oz),
+  la valide contre les bornes de cette unité, puis convertit — sinon une
+  saisie hors bornes (0,04 oz) se convertirait en millilitres légaux (1 ml)
+  et reviendrait affichée « 0,0 oz ». Le stockage
+  reste en millilitres entiers — toute conversion d’affichage se redérive du
+  `volumeMl` canonique, jamais d’une valeur convertie conservée côté client ;
+  l’unité courante vient de `page.data.volumeUnit`, posé par
+  `src/routes/+layout.server.ts`),
   `sync.svelte.ts` (`SyncStore`, classe à runes qui possède la connexion SSE,
   les événements du jour, les minuteurs actifs, l'offset serveur — RISK-001 —
   et `subscribeChanges` : relais de changements pour les vues hors
   « Aujourd'hui » ; instanciée dans `+layout.svelte`, partagée par contexte),
   `eventList.ts` (`upsert` — fusion idempotente last-write-wins gardée par
-  `updatedAt` — et les tris `sortByStartedAtAsc/Desc` ; toute liste
-  d'événements côté client passe par là, jamais par une copie locale).
+  `updatedAt` —, les tris `sortByStartedAtAsc/Desc`/`sortByDeletedAtDesc` et
+  `isDeletion` — le seul module qui décide « cette change signifie-t-elle
+  supprimé » (#88) ; toute liste d'événements côté client passe par là,
+  jamais par une copie locale),
+  `bufferedFetch.ts` (`BufferedFetch` : garde anti-course des fetchs
+  chevauchants — jeton de supersession + buffer de replay des changes reçues
+  en vol ; consommé par `SyncStore`, `HistoryWindow` et la feuille
+  « Supprimés récemment », jamais recopié à la main).
   Ne jamais importer `$lib/server/*` depuis ce dossier.
 - `src/lib/components/today/` — écran « Aujourd'hui » en direction « Registre »
   (palette 2b, `docs/design/design-system.md`) : `TodayHeader` (titre + âge),

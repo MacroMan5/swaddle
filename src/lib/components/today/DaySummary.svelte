@@ -4,6 +4,7 @@
 	// history views, so the screens never disagree (FR-010): duration-based
 	// metrics (nursing, sleep) are day-split.
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import {
 		dailySummary,
 		formatNursingSummary,
@@ -11,9 +12,14 @@
 		hasNursingActivity,
 		localDayKey
 	} from '$lib/client/summaries';
+	import { formatVolume } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 
 	const store = getContext<SyncStore>('sync');
+
+	// Totals are summed in canonical millilitres and only rendered in the
+	// household's unit (#44).
+	const unit = $derived(page.data.volumeUnit);
 
 	const todayKey = $derived(localDayKey(new Date(store.nowMs)));
 	const summary = $derived(dailySummary(store.events, todayKey, store.nowMs));
@@ -49,10 +55,10 @@
 				</div>
 			{/if}
 			{#if summary.bottle.count > 0}
-				<div class="flex items-baseline justify-between gap-4 py-2">
+				<div data-testid="bottle-summary" class="flex items-baseline justify-between gap-4 py-2">
 					<dt class="text-label text-ink-label">Biberon</dt>
 					<dd class="text-value text-ink tabular-nums">
-						{summary.bottle.count} · {summary.bottle.totalMl} ml
+						{summary.bottle.count} · {formatVolume(summary.bottle.totalMl, unit)}
 					</dd>
 				</div>
 			{/if}
@@ -60,7 +66,7 @@
 				<div class="flex items-baseline justify-between gap-4 py-2">
 					<dt class="text-label text-ink-label">Tire-lait</dt>
 					<dd class="text-value text-ink tabular-nums">
-						{summary.pump.count} · {summary.pump.totalMl} ml
+						{summary.pump.count} · {formatVolume(summary.pump.totalMl, unit)}
 					</dd>
 				</div>
 			{/if}

@@ -5,6 +5,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
+	import { pageTitle } from '$lib/meta';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
@@ -64,6 +65,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>{pageTitle('Configuration')}</title>
+</svelte:head>
 
 <div class="bg-surface flex min-h-dvh flex-col p-4">
 	<div class="enter mx-auto flex w-full max-w-sm flex-1 flex-col gap-5">

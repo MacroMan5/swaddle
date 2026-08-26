@@ -12,7 +12,8 @@ describe('userMessage', () => {
 		in_use: 'Impossible : des activités y sont liées.',
 		forbidden: 'Code actuel incorrect.',
 		too_many_attempts: 'Trop de tentatives. Réessayez dans quelques instants.',
-		pin_required: 'Session expirée. Entrez le code.'
+		pin_required: 'Session expirée. Entrez le code.',
+		payload_too_large: 'Fichier trop volumineux (10 Mo maximum).'
 	};
 
 	for (const [code, expected] of Object.entries(messages)) {
@@ -125,6 +126,16 @@ describe('fieldMessage', () => {
 		).toBe('La date de naissance ne peut pas être dans le futur.');
 	});
 
+	it('maps the impossible-calendar-date custom refine by its exact message', () => {
+		expect(
+			fieldMessage({
+				path: 'birthdate',
+				code: 'custom',
+				message: 'birthdate is not a valid calendar date'
+			})
+		).toBe('Cette date n’existe pas.');
+	});
+
 	it('falls back for an unrecognised custom message', () => {
 		expect(fieldMessage({ path: 'x', code: 'custom', message: 'something else entirely' })).toBe(
 			'Champ invalide.'
@@ -181,6 +192,26 @@ describe('fieldMessage', () => {
 	it('falls back to the generic message for a completely unknown code', () => {
 		expect(fieldMessage({ path: 'volumeMl', code: 'not_multiple_of', message: 'x' })).toBe(
 			'Champ invalide.'
+		);
+	});
+
+	// #44: the server always speaks canonical millilitres; the copy quotes the
+	// household's unit.
+	it('quotes the volume bounds in ounces when the household is on oz', () => {
+		expect(fieldMessage({ path: 'volumeMl', code: 'too_small', message: 'x' }, 'oz')).toBe(
+			'Le volume doit être d’au moins 0,1 oz.'
+		);
+		expect(fieldMessage({ path: 'details.volumeMl', code: 'too_big', message: 'x' }, 'oz')).toBe(
+			'Le volume ne peut pas dépasser 33,8 oz.'
+		);
+		expect(fieldMessage({ path: 'volumeMl', code: 'invalid_type', message: 'x' }, 'oz')).toBe(
+			'Le volume doit être un nombre.'
+		);
+	});
+
+	it('keeps millilitres for every other field, whatever the unit', () => {
+		expect(fieldMessage({ path: 'name', code: 'too_small', message: 'x' }, 'oz')).toBe(
+			'Le nom est requis.'
 		);
 	});
 

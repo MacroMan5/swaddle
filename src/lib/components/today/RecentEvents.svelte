@@ -3,6 +3,7 @@
 	// are deliberately non-interactive so the tile names stay unambiguous for
 	// assistive tech (and Playwright's strict mode).
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import { formatTimeOfDay } from '$lib/client/format';
 	import { eventLabel } from '$lib/components/history/eventDisplay';
 	import type { SyncStore } from '$lib/client/sync.svelte';
@@ -19,6 +20,7 @@
 		sleep: 'bg-sleep-700'
 	};
 
+	const unit = $derived(page.data.volumeUnit);
 	const recent = $derived(store.events.slice(0, 3));
 
 	function caregiverColor(id: string | null): string | null {
@@ -29,7 +31,13 @@
 
 <section class="border-border bg-surface-raised -mx-1 flex flex-col gap-1 border-t-2 px-1 pt-3">
 	<h2 class="text-section text-ink-muted uppercase">Derniers événements</h2>
-	{#if recent.length === 0}
+	{#if store.eventsStatus === 'loading' || store.eventsStatus === 'idle'}
+		<p class="text-ink-muted text-body py-2">Chargement des activités…</p>
+	{:else if store.eventsStatus === 'error'}
+		<!-- Never claim the day is empty when the load failed (issue #47); the
+		     page-level alert carries the message and the retry button. -->
+		<p class="text-ink-muted text-body py-2">Activités indisponibles</p>
+	{:else if recent.length === 0}
 		<p class="text-ink-muted text-body py-2">Aucune activité — tout commence ici</p>
 	{:else}
 		<ul class="divide-border-hair divide-y">
@@ -41,7 +49,7 @@
 					>
 					<span class="h-5 w-1 shrink-0 {BAR[CATEGORY_OF[event.type]]}" aria-hidden="true"></span>
 					<span class="text-row text-ink min-w-0 flex-1 truncate"
-						>{eventLabel(event, store.nowMs)}</span
+						>{eventLabel(event, store.nowMs, unit)}</span
 					>
 					{#if color !== null}
 						<span

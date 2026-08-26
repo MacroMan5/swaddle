@@ -2,16 +2,17 @@
 	// Manual after-the-fact entry (FR-006): pick a type, then the same per-type
 	// form shape as EventEditSheet. Times are editable and default to now.
 	import { getContext, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
-	import { ApiError, createEvent } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
-	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
+	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import { parseVolumeEntry } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
 		CaregiverDTO,
 		Details,
-		EventDTO,
 		EventType,
 		MilkType,
 		NursingSegment,
@@ -22,20 +23,19 @@
 		open = $bindable(false),
 		babyId,
 		defaultAt,
-		caregivers,
-		onSaved
+		caregivers
 	}: {
 		open?: boolean;
 		babyId: string | null;
 		/** Local `datetime-local` default (e.g. noon of the day being viewed). */
 		defaultAt: Date;
 		caregivers: CaregiverDTO[];
-		// The confirmed create response is passed back so the caller can merge it
-		// directly into its own visible list (slice-3 pattern).
-		onSaved: (event: EventDTO) => void;
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
+
+	/** The household's volume unit (#44): entry only, storage stays in ml. */
+	const unit = $derived(page.data.volumeUnit);
 
 	const TYPES: { value: EventType; label: string; icon: typeof Milk }[] = [
 		{ value: 'nursing', label: 'Allaitement', icon: Baby },
@@ -151,11 +151,24 @@
 				details = { segments };
 				end = segments[segments.length - 1].endedAt;
 			} else if (selectedType === 'bottle') {
-				details = { milkType, volumeMl: Number(volumeMl) };
+				// Judged in the unit it was typed in, then converted once (#44).
+				const entry = parseVolumeEntry(volumeMl, unit);
+				if (entry.status === 'out-of-range') {
+					volumeError = entry.message;
+					pending = false;
+					return;
+				}
+				details = { milkType, volumeMl: entry.status === 'ok' ? entry.volumeMl : NaN };
 			} else if (selectedType === 'pump') {
+				const entry = parseVolumeEntry(volumeMl, unit);
+				if (entry.status === 'out-of-range') {
+					volumeError = entry.message;
+					pending = false;
+					return;
+				}
 				// '' -> null (issue #36), not Number('') === 0: same rule as
-				// EventEditSheet, see parsePumpVolumeMl.
-				details = { side: pumpSide, volumeMl: parsePumpVolumeMl(volumeMl) };
+				// EventEditSheet, see parseVolumeEntry.
+				details = { side: pumpSide, volumeMl: entry.status === 'ok' ? entry.volumeMl : null };
 				end = fromLocalInputValue(endedAt);
 			} else if (selectedType === 'diaper') {
 				details = { pee, poo };
@@ -164,7 +177,7 @@
 				end = fromLocalInputValue(endedAt);
 			}
 
-			const created = await createEvent({
+			await store.changes.create({
 				babyId,
 				caregiverId: caregiverId === '' ? null : caregiverId,
 				type: selectedType,
@@ -173,15 +186,13 @@
 				note: note.trim() === '' ? null : note,
 				details
 			});
-			store.applyServerEvent(created);
 			open = false;
-			onSaved(created);
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {
-					if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue);
-					else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
-					else formError = fieldMessage(issue);
+					if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue, unit);
+					else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue, unit);
+					else formError = fieldMessage(issue, unit);
 				}
 			} else {
 				formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
@@ -264,7 +275,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="add-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="add-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="add-volume"
 							inputmode="decimal"
@@ -298,7 +309,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="add-pump-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="add-pump-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="add-pump-volume"
 							inputmode="decimal"

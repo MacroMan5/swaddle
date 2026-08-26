@@ -1,3 +1,6 @@
+import { MAX_BODY_LABEL } from '$lib/limits';
+import { volumeTooBigMessage, volumeTooSmallMessage, type VolumeUnit } from '$lib/client/volume';
+
 export type ApiErrorBody = {
 	error?: { code?: string; message?: string; issues?: { path: string; message: string }[] };
 } | null;
@@ -17,7 +20,8 @@ export type ApiErrorCode =
 	| 'in_use'
 	| 'forbidden'
 	| 'too_many_attempts'
-	| 'pin_required';
+	| 'pin_required'
+	| 'payload_too_large';
 
 /**
  * The stable API contract is error.code (docs/api/settings-api.md), never
@@ -48,6 +52,8 @@ export function userMessage(code: string | undefined, issues?: { path: string }[
 			return 'Type de minuteur inconnu.';
 		case 'pin_required':
 			return 'Session expirée. Entrez le code.';
+		case 'payload_too_large':
+			return `Fichier trop volumineux (${MAX_BODY_LABEL} maximum).`;
 		default:
 			return 'Une erreur est survenue.';
 	}
@@ -82,7 +88,8 @@ const DOMAIN_CODE_MESSAGES: Record<string, string> = {
  */
 const CUSTOM_ISSUE_MESSAGES: Record<string, string> = {
 	'a diaper needs at least pee or poo': 'Cochez au moins pipi ou caca.',
-	'birthdate cannot be in the future': 'La date de naissance ne peut pas être dans le futur.'
+	'birthdate cannot be in the future': 'La date de naissance ne peut pas être dans le futur.',
+	'birthdate is not a valid calendar date': 'Cette date n’existe pas.'
 };
 
 /**
@@ -95,11 +102,6 @@ const FIELD_MESSAGES: Record<
 	string,
 	Partial<Record<'too_small' | 'too_big' | 'invalid_type' | 'invalid_format' | 'invalid_value', string>>
 > = {
-	volumeMl: {
-		too_small: 'Le volume doit être d’au moins 1 ml.',
-		too_big: 'Le volume ne peut pas dépasser 1000 ml.',
-		invalid_type: 'Le volume doit être un nombre.'
-	},
 	name: {
 		too_small: 'Le nom est requis.',
 		too_big: 'Le nom est trop long (100 caractères maximum).',
@@ -121,6 +123,25 @@ const FIELD_MESSAGES: Record<
 	milkType: { invalid_value: 'Choisissez un type de lait valide.' }
 };
 
+/**
+ * `volumeMl` is the one field whose bounds are stated in a unit (issue #44):
+ * the server always speaks canonical millilitres, but the copy must quote the
+ * household's unit. The ounce bounds are the canonical range narrowed to what
+ * one decimal can express, so every number named here is also acceptable.
+ */
+function volumeFieldMessage(code: string, unit: VolumeUnit): string | undefined {
+	switch (code) {
+		case 'too_small':
+			return volumeTooSmallMessage(unit);
+		case 'too_big':
+			return volumeTooBigMessage(unit);
+		case 'invalid_type':
+			return 'Le volume doit être un nombre.';
+		default:
+			return undefined;
+	}
+}
+
 /** "details.segments.2.startedAt" / "segments.2.startedAt" -> "startedAt". */
 function lastPathSegment(path: string): string {
 	const parts = path.split('.').filter((p) => p !== '' && p !== 'details' && !/^\d+$/.test(p));
@@ -133,7 +154,10 @@ function lastPathSegment(path: string): string {
  * The API contract itself stays English — this is presentation only. Never
  * falls through to the raw `message`.
  */
-export function fieldMessage(issue: { path: string; code: string; message: string }): string {
+export function fieldMessage(
+	issue: { path: string; code: string; message: string },
+	unit: VolumeUnit = 'ml'
+): string {
 	const { path, code, message } = issue;
 
 	if (code === 'segment_still_open')
@@ -145,7 +169,14 @@ export function fieldMessage(issue: { path: string; code: string; message: strin
 
 	if (code === 'custom') return CUSTOM_ISSUE_MESSAGES[message] ?? 'Champ invalide.';
 
-	const field = FIELD_MESSAGES[lastPathSegment(path)];
+	const segment = lastPathSegment(path);
+	if (segment === 'volumeMl') {
+		const volume = volumeFieldMessage(code, unit);
+		if (volume) return volume;
+		return 'Champ invalide.';
+	}
+
+	const field = FIELD_MESSAGES[segment];
 	const structural = field?.[code as keyof (typeof FIELD_MESSAGES)[string]];
 	if (structural) return structural;
 

@@ -10,6 +10,7 @@ import {
 	getPinHash,
 	listCaregivers,
 	setPinHash,
+	updateBaby,
 	updateCaregiver,
 	updateHousehold
 } from './repo';
@@ -53,6 +54,32 @@ describe('baby', () => {
 		const baby = createBaby(db, { name: 'Léa', birthdate: '2026-08-01', timezone: 'America/Toronto' });
 		expect(baby.name).toBe('Léa');
 		expect(listBabies(db)).toEqual([baby]);
+	});
+
+	it('#46: corrects name and birthdate, leaving id and timezone unchanged', () => {
+		const db = openDb(':memory:');
+		const baby = createBaby(db, { name: 'Léa', birthdate: '2026-08-01', timezone: 'America/Toronto' });
+		const corrected = updateBaby(db, baby.id, { name: 'Léa-Rose', birthdate: '2026-07-28' });
+		expect(corrected).toEqual({
+			id: baby.id,
+			name: 'Léa-Rose',
+			birthdate: '2026-07-28',
+			timezone: 'America/Toronto'
+		});
+		expect(listBabies(db)).toEqual([corrected]);
+	});
+
+	it('#46: a partial patch keeps the field left out', () => {
+		const db = openDb(':memory:');
+		const baby = createBaby(db, { name: 'Léa', birthdate: '2026-08-01', timezone: 'America/Toronto' });
+		const corrected = updateBaby(db, baby.id, { name: 'Léa-Rose' });
+		expect(corrected.name).toBe('Léa-Rose');
+		expect(corrected.birthdate).toBe('2026-08-01');
+	});
+
+	it('#46: throws not_found for an unknown baby', () => {
+		const db = openDb(':memory:');
+		expect(() => updateBaby(db, 'nope', { name: 'x' })).toThrow(RepoError);
 	});
 });
 

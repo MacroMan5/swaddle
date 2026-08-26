@@ -15,6 +15,26 @@ uniquement). Un corps JSON malformé, comme un `babyId` ou un `caregiverId`
 inconnu, renvoie lui aussi `400 validation_failed` — jamais une erreur SQLite
 brute.
 
+## En-têtes de sécurité (toutes les réponses)
+
+Posés par `hooks.server.ts` (`src/lib/server/securityHeaders.ts`) sur tout ce
+que l'application sert — pages, JSON, SSE, téléchargements :
+`x-content-type-options: nosniff`, `referrer-policy: same-origin`,
+`x-frame-options: DENY`, `cross-origin-opener-policy: same-origin`,
+`cross-origin-resource-policy: same-origin`, et `cache-control: no-store`
+sauf si la réponse a déjà choisi sa politique (`/api/stream` garde
+`no-cache`). Les fichiers statiques (`/_app/immutable/`, `static/`) sont
+servis par adapter-node avant le hook : c'est `server.js`, le point d'entrée
+de production (`node server.js`, et non `node build`), qui leur pose les mêmes
+en-têtes — leur cache long, lui, reste intact.
+
+Les pages HTML portent en plus une `content-security-policy` same-origin
+(configurée dans `vite.config.ts`) : `script-src 'self' 'nonce-…'` — le nonce
+par requête couvre l'amorce de thème inline de `src/app.html` —,
+`style-src 'self' 'unsafe-inline'` (attributs `style` du SSR et `<style>` des
+transitions Svelte), `frame-ancestors 'none'`, `object-src 'none'`,
+`connect-src 'self'` (SSE compris).
+
 ## EventDTO
 
 ```ts
@@ -77,7 +97,7 @@ pause est donc exclu par construction.
 
 → `200 { babies: { id, name, birthdate, timezone }[] }`
 
-### `GET /api/events?babyId=&from=&to=&overlap=`
+### `GET /api/events?babyId=&from=&to=&overlap=&deleted=`
 
 Événements non supprimés d'un bébé, `startedAt` décroissant. `from` est inclusif,
 `to` est exclusif. `babyId` est obligatoire.
@@ -92,6 +112,12 @@ s'il a commencé la veille. En mode chevauchement, un minuteur actif
 cours et chevauche toute fenêtre à partir de son début ; les événements
 ponctuels (`bottle`, `diaper`), qui ont toujours `endedAt: null` par nature,
 continuent de suivre la règle « `startedAt` dans la fenêtre ».
+
+Avec `deleted=1`, la requête bascule vers la vue « Supprimés récemment »
+(issue #50) : uniquement les événements supprimés en douceur (`deletedAt`
+renseigné) de ce bébé, triés par `deletedAt` décroissant (le plus récemment
+supprimé en premier). `from`, `to` et `overlap` sont ignorés dans ce mode — la
+liste des supprimés n'est pas une fenêtre temporelle.
 
 → `200 { events: EventDTO[] }` · `400 validation_failed` si `babyId` manque.
 
@@ -194,7 +220,7 @@ tourne, session sans aucun segment).
 
 ## SSE — `GET /api/stream`
 
-`content-type: text/event-stream`. Deux événements nommés :
+`content-type: text/event-stream`. Événements nommés :
 
 ```
 event: snapshot
@@ -205,6 +231,9 @@ data: { "kind": "created" | "updated" | "deleted" | "restored", "event": EventDT
 
 event: reset
 data: { "serverTime": "…" }
+
+event: baby
+data: { "baby": BabyDTO, "serverTime": "…" }
 ```
 
 - `snapshot` est envoyé une fois à la connexion — une reconnexion produit un
@@ -218,5 +247,9 @@ data: { "serverTime": "…" }
   les clients connectés, sans qu'un `EventDTO` unique puisse décrire le
   changement. Les clients doivent recharger `/api/timers` **et**
   `/api/events` — pas seulement appliquer une synchronisation incrémentale.
+- `baby` est diffusé après une correction réussie du profil du bébé (#46,
+  `PATCH /api/babies/[id]`) : les clients qui suivent ce bébé (« Aujourd'hui »)
+  remplacent leur copie locale par le `BabyDTO` reçu au lieu d'attendre un
+  rechargement.
 - Un battement de cœur `:ping` (commentaire SSE) est envoyé toutes les 25 s pour
   maintenir la connexion.

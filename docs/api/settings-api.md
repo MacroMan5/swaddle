@@ -33,6 +33,24 @@ futur), timezone? }`. `timezone` par défaut le fuseau du serveur
 
 → `201 BabyDTO` · `400 validation_failed`.
 
+### `PATCH /api/babies/[id]` (#46)
+
+Corrects the current baby's name and/or birthdate after onboarding. Corps
+(champs optionnels, inconnus rejetés) : `{ name? (1–100 caractères),
+birthdate? (YYYY-MM-DD, pas dans le futur, doit être une date calendaire
+réelle) }`. Même contrat de validation que `POST /api/babies` (module
+partagé `$lib/server/settings/babySchema.ts`) : nom vide, date future, date
+calendaire impossible (ex. 30 février) ou mal formée sont toutes rejetées, en
+une seule écriture (aucune écriture partielle en cas d'échec). `id` et
+`timezone` ne changent jamais ; les événements existants gardent leurs
+identifiants et leur rattachement.
+
+→ `200 BabyDTO` · `400 validation_failed` · `404 not_found`.
+
+Diffuse aussi un événement SSE `baby` (voir `docs/api/events-api.md` § SSE)
+pour qu'un appareil déjà ouvert sur « Aujourd'hui » reflète la correction sans
+recharger.
+
 ### `GET /api/caregivers`
 
 → `200 { caregivers: CaregiverDTO[] }`.
@@ -139,7 +157,11 @@ virgule, un guillemet, ou un retour chariot/saut de ligne (`\r` seul inclus),
 
 Télécharge un instantané SQLite cohérent, produit par `VACUUM INTO` (jamais
 une copie à chaud du fichier — RISK-002) dans
-`DATA_DIR/backups/backup-<date ISO, ':' remplacés par '-'>.sqlite`.
+`DATA_DIR/backups/backup-<date ISO, ':' remplacés par '-'>.sqlite`. Une fois
+l'instantané écrit, seuls les 10 fichiers `backup-*.sqlite` les plus récents
+sont conservés — les plus anciens sont supprimés (#57). L'échec de cet élagage
+n'affecte jamais la sauvegarde qui vient d'être créée ni ne supprime les
+instantanés déjà conservés.
 
 → `200 application/octet-stream`, `content-disposition: attachment`.
 
@@ -151,12 +173,25 @@ point d'entrée web — cela garde l'échange de fichier de base de données hor
 de la surface exposée). Un instantané automatique de l'état courant est
 toujours pris en premier (`VACUUM INTO`,
 `DATA_DIR/backups/pre-restore-<date ISO>.sqlite`), avant de vider et
-réimporter les données en une seule transaction. En cas de payload invalide,
-rien n'est écrit (ni l'instantané préalable n'est perdu : il reste sur disque
-même si la restauration échoue ensuite).
+réimporter les données en une seule transaction. Comme pour `/api/backup`,
+seuls les 10 fichiers `pre-restore-*.sqlite` les plus récents sont conservés
+juste après cet instantané, avant que le remplacement des données ne se
+poursuive (#57). En cas de payload invalide, rien n'est écrit (ni l'instantané
+préalable n'est perdu : il reste sur disque même si la restauration échoue
+ensuite).
+
+Taille : le corps est borné à 10 Mo (`MAX_BODY_BYTES`, `src/lib/limits.ts`).
+Au-delà, la requête est refusée **avant** l'instantané et avant tout parsing —
+sur le `content-length` annoncé, ou en cours de flux par l'adaptateur
+(`BODY_SIZE_LIMIT=10M`, déclaré dans le `Dockerfile`, `deploy/docker-compose.yml`
+et par défaut dans `server.js`). Un export volumineux mais valide n'est donc
+jamais signalé comme JSON invalide (#45).
 
 → `200 { restored: { babies: number; caregivers: number; events: number };
-snapshot: string }` · `400 validation_failed`.
+snapshot: string }` · `400 validation_failed` · `413 payload_too_large`.
+
+`413 payload_too_large` s'applique en réalité à toute route `/api` qui lit un
+corps JSON ; seule la restauration peut l'atteindre en pratique.
 
 ## Portes serveur — `hooks.server.ts` (FR-015, FR-016)
 

@@ -106,6 +106,25 @@ export function listEvents(
 	return (db.prepare(sql).all(...params) as EventRow[]).map(rowToDto);
 }
 
+/**
+ * Soft-deleted events for a baby, most recently deleted first — the untimed
+ * "Recently deleted" recovery path (issue #50), distinct from `listEvents`
+ * which always excludes them. Unbounded by design: deletions are not tied to
+ * a viewing window the way ordinary events are.
+ */
+export function listDeletedEvents(db: DB, babyId: string): EventDTO[] {
+	// rowid DESC breaks ties within the same millisecond (two deletes in quick
+	// succession share a `deleted_at`), keeping the "most recent first" order
+	// deterministic instead of at the mercy of SQLite's unspecified tie order.
+	return (
+		db
+			.prepare(
+				'SELECT * FROM event WHERE deleted_at IS NOT NULL AND baby_id = ? ORDER BY deleted_at DESC, rowid DESC'
+			)
+			.all(babyId) as EventRow[]
+	).map(rowToDto);
+}
+
 function requireEvent(db: DB, id: string): EventDTO {
 	const event = getEvent(db, id);
 	if (!event) throw new RepoError('not_found', `no event ${id}`);

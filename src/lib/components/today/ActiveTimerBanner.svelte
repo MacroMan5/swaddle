@@ -5,8 +5,10 @@
 	// validation. The per-breast detail lives in NursingSheet ("Changer" opens
 	// it); the banner only carries what a half-asleep parent needs.
 	import { getContext } from 'svelte';
-	import { nursingAction, stopTimer, ApiError } from '$lib/client/api';
+	import { page } from '$app/state';
+	import { ApiError } from '$lib/client/api';
 	import { formatClock, formatTimeOfDay, nursingDurationMs } from '$lib/client/format';
+	import { parseVolumeEntry, volumeRangeLabel } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { detailsOf, isType } from '$lib/client/types';
 	import type { CaregiverDTO, EventDTO, Side } from '$lib/client/types';
@@ -22,6 +24,9 @@
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
+
+	/** The household's unit (#44): the field is typed in it, `volumeMl` is sent. */
+	const unit = $derived(page.data.volumeUnit);
 
 	let pending = $state<Record<string, boolean>>({});
 	let error = $state<string | null>(null);
@@ -70,15 +75,13 @@
 		return caregivers.find((c) => c.id === id)?.name ?? null;
 	}
 
-	/** Runs a mutation and merges its confirmed event immediately (item 6): the
-	 * banner stays correct even if the SSE `sync` for it is slow or never arrives. */
+	/** Runs a mutation while keeping presentation state local to the banner. */
 	async function run(id: string, action: () => Promise<EventDTO>): Promise<void> {
 		if (babyId === null || isPending(id)) return;
 		pending = { ...pending, [id]: true };
 		error = null;
 		try {
-			const event = await action();
-			store.applyServerEvent(event);
+			await action();
 		} catch (e) {
 			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {
@@ -89,7 +92,7 @@
 	function togglePause(event: EventDTO): Promise<void> {
 		const paused = isPaused(event);
 		return run(event.id, () =>
-			nursingAction({
+			store.changes.nursingAction({
 				babyId: babyId as string,
 				action: paused ? 'resume' : 'pause',
 				...(paused ? { side: currentSide(event) } : {})
@@ -98,27 +101,32 @@
 	}
 
 	function finishNursing(event: EventDTO): Promise<void> {
-		return run(event.id, () => stopTimer('nursing', { babyId: babyId as string }));
+		return run(event.id, () =>
+			store.changes.stopTimer('nursing', { babyId: babyId as string })
+		);
 	}
 
 	function finishSleep(event: EventDTO): Promise<void> {
-		return run(event.id, () => stopTimer('sleep', { babyId: babyId as string }));
+		return run(event.id, () => store.changes.stopTimer('sleep', { babyId: babyId as string }));
 	}
 
 	/** Client-side 1–1000 ml check (FR-017) before hitting the API — the server
-	 * stays the backstop of record (item 7). */
+	 * stays the backstop of record (item 7). The typed value is converted to
+	 * canonical millilitres first, and the message quotes the household's unit. */
 	function finishPump(event: EventDTO): Promise<void> {
-		const raw = pumpVolumes[event.id] ?? '';
-		const volumeMl = Number(raw);
-		if (raw.trim() === '' || !Number.isFinite(volumeMl) || volumeMl < 1 || volumeMl > 1000) {
+		const entry = parseVolumeEntry(pumpVolumes[event.id] ?? '', unit);
+		if (entry.status !== 'ok') {
 			pumpVolumeErrors = {
 				...pumpVolumeErrors,
-				[event.id]: 'Le volume doit être entre 1 et 1000 ml.'
+				[event.id]: `Le volume doit être ${volumeRangeLabel(unit)}.`
 			};
 			return Promise.resolve();
 		}
+		const { volumeMl } = entry;
 		pumpVolumeErrors = { ...pumpVolumeErrors, [event.id]: '' };
-		return run(event.id, () => stopTimer('pump', { babyId: babyId as string, volumeMl }));
+		return run(event.id, () =>
+			store.changes.stopTimer('pump', { babyId: babyId as string, volumeMl })
+		);
 	}
 
 	const outlineButton =
@@ -180,7 +188,7 @@
 					</div>
 				{:else if event.type === 'pump'}
 					<div class="flex items-center gap-2">
-						<label for={`pump-volume-${event.id}`} class="text-tile-hint">Volume (ml)</label>
+						<label for={`pump-volume-${event.id}`} class="text-tile-hint">Volume ({unit})</label>
 						<input
 							id={`pump-volume-${event.id}`}
 							inputmode="decimal"

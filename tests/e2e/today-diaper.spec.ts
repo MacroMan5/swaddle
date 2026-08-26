@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 
 test('AC-001: one-touch diaper is recorded and undoable for 5 s', async ({ page, request }) => {
+	// Frozen clock: the two API round-trips below eat real time, and on a busy
+	// runner the 5 s expiry could dismiss the toast before the Annuler click
+	// (#82). Expiry timing itself is covered by the next test.
+	await page.clock.install();
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Pipi', exact: true }).click();
 
@@ -23,10 +27,12 @@ test('AC-001: one-touch diaper is recorded and undoable for 5 s', async ({ page,
 });
 
 test('the toast disappears by itself after 5 s', async ({ page }) => {
+	await page.clock.install();
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Caca', exact: true }).click();
 	await expect(page.getByRole('status')).toBeVisible();
-	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
+	await page.clock.runFor(5000);
+	await expect(page.getByRole('status')).toBeHidden();
 });
 
 test('a failed undo keeps the toast open with an error and allows retry (FR-018)', async ({
@@ -85,5 +91,8 @@ test('a slow undo spanning the 5 s deadline is not dismissed by the expiry timer
 	await page.waitForTimeout(5500); // past the original 5 s deadline, undo still in flight
 	await expect(toast).toBeVisible();
 	// The delayed DELETE eventually resolves and dismisses the toast on success.
-	await expect(toast).toBeHidden({ timeout: 5000 });
+	// 10 s: the route already burned 8 s before continuing, and a busy runner
+	// (#82) can add seconds on top — later is fine, dismissed-early would have
+	// failed the toBeVisible above.
+	await expect(toast).toBeHidden({ timeout: 10_000 });
 });

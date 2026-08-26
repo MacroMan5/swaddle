@@ -4,7 +4,11 @@ declare global {
 	namespace App {
 		// interface Error {}
 		// interface Locals {}
-		// interface PageData {}
+		// The root layout load puts the household's volume unit (issue #44) on
+		// every page's data, so components can read `page.data.volumeUnit`.
+		interface PageData {
+			volumeUnit: import('$lib/client/volume').VolumeUnit;
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}

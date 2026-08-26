@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { expect, test } from '@playwright/test';
 
@@ -14,6 +16,67 @@ test('household defaults, patch, caregiver CRUD', async ({ request }) => {
 	const renamed = await request.patch(`/api/caregivers/${id}`, { data: { name: 'Papou' } });
 	expect((await renamed.json()).name).toBe('Papou');
 	expect((await request.delete(`/api/caregivers/${id}`)).status()).toBe(204);
+});
+
+test('PATCH /api/babies/:id (#46): corrects the baby, rejects invalid input, survives reload and exports', async ({
+	request
+}) => {
+	const created = await (
+		await request.post('/api/babies', { data: { name: 'Corrigible', birthdate: '2026-08-01' } })
+	).json();
+
+	// Correction persists and is reflected on a fresh GET (reload).
+	const patched = await request.patch(`/api/babies/${created.id}`, {
+		data: { name: 'Corrigée', birthdate: '2026-07-28' }
+	});
+	expect(patched.status()).toBe(200);
+	expect(await patched.json()).toMatchObject({
+		id: created.id,
+		name: 'Corrigée',
+		birthdate: '2026-07-28',
+		timezone: created.timezone
+	});
+	const { babies } = await (await request.get('/api/babies')).json();
+	expect(babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
+
+	// Validation: blank name, future date, impossible calendar date, malformed input.
+	const blankName = await request.patch(`/api/babies/${created.id}`, { data: { name: '' } });
+	expect(blankName.status()).toBe(400);
+	expect((await blankName.json()).error.code).toBe('validation_failed');
+
+	const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+	const futureDate = await request.patch(`/api/babies/${created.id}`, { data: { birthdate: future } });
+	expect(futureDate.status()).toBe(400);
+
+	const impossibleDate = await request.patch(`/api/babies/${created.id}`, {
+		data: { birthdate: '2024-02-30' }
+	});
+	expect(impossibleDate.status()).toBe(400);
+
+	const malformed = await request.patch(`/api/babies/${created.id}`, { data: { birthdate: 'not-a-date' } });
+	expect(malformed.status()).toBe(400);
+
+	// None of the rejected patches wrote anything (no partial writes).
+	const afterFailures = await (await request.get('/api/babies')).json();
+	expect(afterFailures.babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
+
+	// Unknown baby.
+	const unknown = await request.patch('/api/babies/no-such-baby', { data: { name: 'x' } });
+	expect(unknown.status()).toBe(404);
+	expect((await unknown.json()).error.code).toBe('not_found');
+
+	// The correction round-trips through export.
+	const exported = await (await request.get('/api/export/json')).json();
+	expect(exported.babies.find((b: { id: string }) => b.id === created.id)).toMatchObject({
+		name: 'Corrigée',
+		birthdate: '2026-07-28'
+	});
 });
 
 test('caregiver referenced by an event cannot be deleted', async ({ request }) => {
@@ -75,6 +138,59 @@ test('restore rejects a corrupted export before writing anything', async ({ requ
 	void _before;
 	void _after;
 	expect(restAfter).toEqual(restBefore);
+});
+
+test('#45: a restore above 512 KiB succeeds, one above 10 MiB is refused untouched', async ({
+	request
+}) => {
+	const original = await (await request.get('/api/export/json')).json();
+	const [{ id: babyId }] = original.babies;
+	const [{ id: caregiverId }] = original.caregivers;
+	const now = new Date().toISOString();
+
+	// Bigger than adapter-node's 512 KiB default, which used to report a valid
+	// export as malformed JSON: ~4000 events is a couple of years of tracking.
+	const many = Array.from({ length: 4000 }, (_, i) => ({
+		id: `bulk-${i}`,
+		babyId,
+		caregiverId,
+		type: 'diaper',
+		startedAt: new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString(),
+		endedAt: null,
+		note: 'x'.repeat(120),
+		details: { pee: true, poo: false },
+		createdAt: now,
+		updatedAt: now,
+		deletedAt: null
+	}));
+	const large = JSON.stringify({ ...original, events: many });
+	expect(large.length).toBeGreaterThan(512 * 1024);
+
+	const restored = await request.post('/api/restore', {
+		headers: { 'content-type': 'application/json' },
+		data: large
+	});
+	expect(restored.status()).toBe(200);
+	const { snapshot } = await restored.json();
+	expect((await (await request.get('/api/export/json')).json()).events).toHaveLength(many.length);
+
+	// Above the bound: a distinct 413 envelope, no snapshot, data untouched.
+	const backupsDir = dirname(snapshot);
+	const snapshotsBefore = readdirSync(backupsDir).length;
+	const oversized = `{"format":"swaddle-export","version":1,"exportedAt":"${now}","household":{"volumeUnit":"ml","theme":"auto"},"babies":[],"caregivers":[],"events":[],"pad":"${'x'.repeat(11 * 1024 * 1024)}"}`;
+	const refused = await request.post('/api/restore', {
+		headers: { 'content-type': 'application/json' },
+		data: oversized
+	});
+	expect(refused.status()).toBe(413);
+	expect((await refused.json()).error.code).toBe('payload_too_large');
+	expect(readdirSync(backupsDir)).toHaveLength(snapshotsBefore);
+	expect((await (await request.get('/api/export/json')).json()).events).toHaveLength(many.length);
+
+	// Put the household back the way the other specs expect it.
+	expect((await request.post('/api/restore', { data: original })).status()).toBe(200);
+	const after = await (await request.get('/api/export/json')).json();
+	expect(after.events).toEqual(original.events);
 });
 
 test('csv export has a header and one line per event', async ({ request }) => {

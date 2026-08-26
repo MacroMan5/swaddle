@@ -52,7 +52,9 @@ test('FR-018: a failed bottle write keeps the input, lets the user retry, and on
 			),
 			page.getByRole('button', { name: 'Enregistrer' }).click()
 		]);
-		await expect(page.getByRole('status')).toContainText('Biberon');
+		// A generous timeout: the save toast's render lands slightly after the API
+		// response settles, and that margin is tighter under WebKit than Chromium.
+		await expect(page.getByRole('status')).toContainText('Biberon', { timeout: 10_000 });
 
 		bottleId = (await response.json()).id;
 		expect(bottleId).toBeTruthy();

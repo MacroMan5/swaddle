@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-const B = 'http://localhost:3001';
+import { BASE_B, HOST_A, HOST_B } from './ports';
+
+const B = BASE_B;
 
 // NFR-006: the app must never phone home. Every request — and every
 // WebSocket connection, in case one is ever added alongside SSE — the page
@@ -29,7 +31,7 @@ test('/ makes no third-party requests, including opening the bottle sheet', asyn
 	page,
 	context
 }) => {
-	const check = trackContext(context, ['localhost:3000']);
+	const check = trackContext(context, [HOST_A]);
 
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
@@ -45,7 +47,7 @@ test('/history makes no third-party requests, including switching to Semaine', a
 	page,
 	context
 }) => {
-	const check = trackContext(context, ['localhost:3000']);
+	const check = trackContext(context, [HOST_A]);
 
 	await page.goto('/history');
 	await page.waitForLoadState('networkidle');
@@ -57,7 +59,7 @@ test('/history makes no third-party requests, including switching to Semaine', a
 });
 
 test('/settings makes no third-party requests', async ({ page, context }) => {
-	const check = trackContext(context, ['localhost:3000']);
+	const check = trackContext(context, [HOST_A]);
 
 	await page.goto('/settings');
 	await page.waitForLoadState('networkidle');
@@ -69,7 +71,7 @@ test('/setup (server B, empty install) makes no third-party requests', async ({
 	browser
 }) => {
 	const context = await browser.newContext({ baseURL: B });
-	const check = trackContext(context, ['localhost:3001']);
+	const check = trackContext(context, [HOST_B]);
 	const page = await context.newPage();
 
 	await page.goto(`${B}/setup`);
@@ -86,7 +88,7 @@ test('/pin (server B) makes no third-party requests', async ({ browser, request 
 	await request.put(`${B}/api/household/pin`, { data: { pin: '1234' } });
 	try {
 		const context = await browser.newContext({ baseURL: B });
-		const check = trackContext(context, ['localhost:3001']);
+		const check = trackContext(context, [HOST_B]);
 		const page = await context.newPage();
 
 		await page.goto(`${B}/pin`);

@@ -5,9 +5,11 @@
 // timer and the direct-merge path used after a confirmed write. The page keeps
 // only markup and purely presentational state (category chips, sheets, toasts).
 import { ApiError, listBabies, listCaregivers, listEvents } from '$lib/client/api';
-import { sortByStartedAtAsc, upsert } from '$lib/client/eventList';
+import { BufferedFetch } from '$lib/client/bufferedFetch';
+import { isDeletion, sortByStartedAtAsc, upsert } from '$lib/client/eventList';
 import { dayRangeIso, eventOverlapsDay, localDayKey } from '$lib/client/summaries';
-import type { SyncStore } from '$lib/client/sync.svelte';
+import type { RelayChange, SyncStore } from '$lib/client/sync.svelte';
+import type { ConfirmedActivityChange } from '$lib/client/activityChanges';
 import type { CaregiverDTO, EventDTO } from '$lib/client/types';
 
 const LOAD_ERROR = 'Impossible de charger l’historique.';
@@ -56,16 +58,16 @@ export class HistoryWindow {
 	#sync: SyncStore;
 	#unsubscribe: (() => void) | null = null;
 
-	// Tokens (mirroring SyncStore's #generation) discard a stale response: with
+	// Per-window overlapping-fetch guards (see `bufferedFetch.ts`): with
 	// manual-add/edit/delete, the SSE relay and every window change able to
 	// trigger overlapping fetches, an earlier-issued-but-slower one must never be
-	// allowed to resolve after and clobber a newer one's data (the CI race behind
-	// #19's history-edit flake — the direct merge in mergeEvent()/removeEvent()
-	// is the primary defense, these tokens are defense in depth against any other
-	// concurrent refetch still winning).
-	#dayFetchToken = 0;
-	#weekFetchToken = 0;
-	#prevWeekFetchToken = 0;
+	// allowed to resolve after and clobber a newer one's data. Incremental relay
+	// reconciliation is the primary defense; these guard concurrent loads.
+	#dayFetch = new BufferedFetch<ConfirmedActivityChange>();
+	#weekFetch = new BufferedFetch<ConfirmedActivityChange>();
+	#prevWeekFetch = new BufferedFetch<ConfirmedActivityChange>();
+	#weekLoaded = false;
+	#prevWeekLoaded = false;
 
 	constructor(sync: SyncStore) {
 		this.#sync = sync;
@@ -112,7 +114,7 @@ export class HistoryWindow {
 	 * registered before the baby id resolves survive that reset.
 	 */
 	start(): void {
-		this.#unsubscribe = this.#sync.subscribeChanges(() => this.refetchCurrentView());
+		this.#unsubscribe = this.#sync.subscribeChanges((change) => this.#receive(change));
 		void this.#loadContext();
 	}
 
@@ -128,7 +130,7 @@ export class HistoryWindow {
 			if (baby) {
 				this.babyId = baby.id;
 				this.#sync.start(baby.id);
-				this.refetchCurrentView();
+				this.#refetchCurrentView();
 			}
 			this.caregivers = await listCaregivers();
 		} catch (e) {
@@ -139,7 +141,7 @@ export class HistoryWindow {
 	setDayKey(next: string): void {
 		if (next === this.dayKey) return;
 		this.dayKey = next;
-		this.refetchCurrentView();
+		this.#refetchCurrentView();
 	}
 
 	/** Switching to 'week' loads the week windows; switching back to 'day' needs
@@ -161,7 +163,7 @@ export class HistoryWindow {
 		if (changed) void this.loadDay();
 	}
 
-	refetchCurrentView(): void {
+	#refetchCurrentView(): void {
 		void this.loadDay();
 		if (this.viewMode === 'week') {
 			void this.loadWeek();
@@ -171,7 +173,7 @@ export class HistoryWindow {
 
 	async loadDay(): Promise<void> {
 		if (this.babyId === null) return;
-		const token = ++this.#dayFetchToken;
+		const run = this.#dayFetch.begin();
 		this.loading = true;
 		this.loadError = null;
 		// A per-call timer (not a shared instance field): with two loadDay() calls
@@ -179,22 +181,24 @@ export class HistoryWindow {
 		// call's timeout, leaving the first one's orphaned and firing later —
 		// flipping showSkeleton back on for good and hiding an already up-to-date,
 		// correctly merged list behind the skeleton forever. The callback also
-		// re-checks the token, so a stale call's timer (even if it fires before
-		// being cleared) can never touch state a newer call already owns.
+		// re-checks `run.current`, so a stale call's timer (even if it fires
+		// before being cleared) can never touch state a newer call already owns.
 		const skeletonTimer = setTimeout(() => {
-			if (token === this.#dayFetchToken) this.showSkeleton = true;
+			if (run.current) this.showSkeleton = true;
 		}, SKELETON_DELAY_MS);
 		try {
 			const { from, to } = dayRangeIso(this.dayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
-			if (token !== this.#dayFetchToken) return; // superseded by a newer load
-			this.dayEvents = fetched;
+			if (!run.current) return; // superseded by a newer load
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of run.buffered) merged = this.#applyToDay(merged, change);
+			this.dayEvents = merged;
 		} catch (e) {
-			if (token !== this.#dayFetchToken) return;
+			if (!run.current) return;
 			this.loadError = messageOf(e);
 		} finally {
 			clearTimeout(skeletonTimer);
-			if (token === this.#dayFetchToken) {
+			if (run.end()) {
 				this.loading = false;
 				this.showSkeleton = false;
 			}
@@ -203,15 +207,20 @@ export class HistoryWindow {
 
 	async loadWeek(): Promise<void> {
 		if (this.babyId === null) return;
-		const token = ++this.#weekFetchToken;
+		const run = this.#weekFetch.begin();
 		try {
 			const { from, to } = weekRangeIso(this.mondayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
-			if (token !== this.#weekFetchToken) return; // superseded by a newer load
-			this.weekEvents = fetched;
+			if (!run.current) return; // superseded by a newer load
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of run.buffered) merged = this.#applyToWeek(merged, change, this.mondayKey);
+			this.weekEvents = merged;
+			this.#weekLoaded = true;
 		} catch (e) {
-			if (token !== this.#weekFetchToken) return;
+			if (!run.current) return;
 			this.loadError = messageOf(e);
+		} finally {
+			run.end();
 		}
 	}
 
@@ -219,41 +228,94 @@ export class HistoryWindow {
 	 * the comparison is an extra, not the screen. */
 	async loadPrevWeek(): Promise<void> {
 		if (this.babyId === null) return;
-		const token = ++this.#prevWeekFetchToken;
+		const run = this.#prevWeekFetch.begin();
+		this.#prevWeekLoaded = false;
 		// Hide the comparison while the new window loads: keeping the old week's
 		// events would summarize them against the new date range (stale deltas).
 		this.prevWeekEvents = null;
 		try {
 			const { from, to } = weekRangeIso(this.prevMondayKey);
 			const fetched = await listEvents(this.babyId, from, to, true);
-			if (token !== this.#prevWeekFetchToken) return; // superseded by a newer load
-			this.prevWeekEvents = fetched;
+			if (!run.current) return; // superseded by a newer load
+			let merged = sortByStartedAtAsc(fetched);
+			for (const change of run.buffered)
+				merged = this.#applyToWeek(merged, change, this.prevMondayKey);
+			this.prevWeekEvents = merged;
+			this.#prevWeekLoaded = true;
 		} catch {
-			if (token !== this.#prevWeekFetchToken) return;
+			if (!run.current) return;
 			this.prevWeekEvents = null;
+		} finally {
+			run.end();
 		}
 	}
 
-	/**
-	 * Direct-merge path (slice-3 pattern): a confirmed HTTP response is applied to
-	 * the visible windows synchronously, the moment the write is confirmed — never
-	 * presented as saved only once a background refetch happens to land (FR-018).
-	 * `refetchCurrentView()` still runs afterward as reinforcement (e.g. to pick up
-	 * whether an edit moved an event out of the window), but it is not the only
-	 * path to a correct list. Goes through the shared `upsert`, so a response that
-	 * is stale by `updatedAt` can never regress a newer version already displayed.
-	 */
-	mergeEvent(event: EventDTO): void {
-		this.dayEvents = upsert(this.dayEvents, event, true, sortByStartedAtAsc);
-		if (this.weekEvents.length > 0) {
-			this.weekEvents = upsert(this.weekEvents, event, true, sortByStartedAtAsc);
+	// Incremental application is always sufficient for a single change (decided
+	// for issue #88, finding 2): every relayed change carries the full
+	// authoritative event, one write touches exactly one event (the server
+	// rejects timer conflicts rather than cascading onto other rows), and window
+	// membership is recomputed locally from that event by the same overlap
+	// predicates the loads use — so no incremental change can require a refetch.
+	// Only `reset` (snapshot/restore: no single event to apply) refetches.
+	#receive(change: RelayChange): void {
+		if (change.kind === 'reset') {
+			this.#refetchCurrentView();
+			return;
+		}
+		if (this.babyId !== null && change.event.babyId !== this.babyId) return;
+
+		this.dayEvents = this.#applyToDay(this.dayEvents, change);
+		this.#dayFetch.record(change);
+
+		if (this.viewMode === 'week' || this.#weekLoaded) {
+			this.weekEvents = this.#applyToWeek(this.weekEvents, change, this.mondayKey);
+			this.#weekFetch.record(change);
+		}
+
+		if (this.#prevWeekFetch.inFlight) {
+			this.#prevWeekFetch.record(change);
+		} else if (this.#prevWeekLoaded) {
+			// Only a successfully loaded baseline may be patched: after a failed
+			// load, prevWeekEvents stays null so the comparison stays hidden.
+			this.prevWeekEvents = this.#applyToWeek(
+				this.prevWeekEvents ?? [],
+				change,
+				this.prevMondayKey
+			);
 		}
 	}
 
-	/** Confirmed delete, ahead of any refetch. Takes the server's deleted event
-	 * (not a bare id) so the same `updatedAt` guard applies to removals. */
-	removeEvent(event: EventDTO): void {
-		this.dayEvents = upsert(this.dayEvents, event, false, sortByStartedAtAsc);
-		this.weekEvents = upsert(this.weekEvents, event, false, sortByStartedAtAsc);
+	#applyToDay(list: EventDTO[], change: ConfirmedActivityChange): EventDTO[] {
+		const gone = isDeletion(change);
+		return upsert(
+			list,
+			change.event,
+			!gone && eventOverlapsDay(change.event, this.dayKey, this.nowMs),
+			sortByStartedAtAsc
+		);
 	}
+
+	#applyToWeek(
+		list: EventDTO[],
+		change: ConfirmedActivityChange,
+		mondayKey: string
+	): EventDTO[] {
+		const gone = isDeletion(change);
+		return upsert(
+			list,
+			change.event,
+			!gone && this.#overlapsWeek(change.event, mondayKey),
+			sortByStartedAtAsc
+		);
+	}
+
+	#overlapsWeek(event: EventDTO, mondayKey: string): boolean {
+		const [year, month, day] = mondayKey.split('-').map(Number);
+		for (let offset = 0; offset < 7; offset++) {
+			const key = localDayKey(new Date(year, month - 1, day + offset));
+			if (eventOverlapsDay(event, key, this.nowMs)) return true;
+		}
+		return false;
+	}
+
 }

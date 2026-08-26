@@ -3,8 +3,10 @@
 	// page. Behaviors are transposed from the old FeedCard/DiaperCard/SleepCard:
 	// same API calls, same optimistic merge, same undo wiring.
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import { Droplets, Heart, Milk, Moon, Wind } from '@lucide/svelte';
-	import { createEvent, deleteEvent, startTimer, ApiError } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
+	import { formatVolume } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 	import { lastBottleVolumeMl } from './todayDerivations';
@@ -38,6 +40,8 @@
 	const pumpActive = $derived(store.timers.some((t) => t.type === 'pump'));
 	const sleepActive = $derived(store.timers.some((t) => t.type === 'sleep'));
 	const lastVolume = $derived(lastBottleVolumeMl(store.events));
+	// The hint mirrors the household's unit (#44); the stored value stays in ml.
+	const unit = $derived(page.data.volumeUnit);
 
 	function scrollToBanner(): void {
 		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -68,7 +72,7 @@
 		error = null;
 		let event: EventDTO;
 		try {
-			event = await createEvent({
+			event = await store.changes.create({
 				babyId,
 				caregiverId,
 				type: 'diaper',
@@ -81,12 +85,8 @@
 			return;
 		}
 		diaperPending = false;
-		// Merge the confirmed write immediately: the screen is correct even if the
-		// SSE `sync` for it never arrives or is slow.
-		store.applyServerEvent(event);
 		onSaved(event.id, 'Couche enregistrée', async () => {
-			const deleted = await deleteEvent(event.id);
-			store.applyServerEvent(deleted);
+			await store.changes.delete(event.id);
 		});
 	}
 
@@ -99,10 +99,7 @@
 		sleepPending = true;
 		error = null;
 		try {
-			// {created:false} adopts an already-running session started elsewhere:
-			// merge it in immediately either way, since that path emits no SSE event.
-			const result = await startTimer('sleep', { babyId, caregiverId });
-			store.applyServerEvent(result.event);
+			await store.changes.startTimer('sleep', { babyId, caregiverId });
 		} catch (e) {
 			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
 		} finally {
@@ -125,12 +122,13 @@
 			aria-label="Allaiter"
 			disabled={babyId === null}
 			onclick={handleNursingTap}
-			class="{tileBase} bg-feed-100 {nursingActive ? 'opacity-55' : ''}"
+			class="{tileBase} bg-feed-100"
+			class:is-running={nursingActive}
 		>
-			<span class="bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Heart size={26} class="text-feed-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Allaiter</span>
+				<span class="tile-label text-tile text-ink">Allaiter</span>
 				<span class="text-tile-hint text-ink-muted">{nursingActive ? 'En cours' : 'G · D'}</span>
 			</span>
 		</button>
@@ -142,12 +140,12 @@
 			onclick={onOpenBottle}
 			class="{tileBase} bg-feed-100"
 		>
-			<span class="bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-feed-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Milk size={26} class="text-feed-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Biberon</span>
+				<span class="tile-label text-tile text-ink">Biberon</span>
 				<span class="text-tile-hint text-ink-muted tabular-nums">
-					{lastVolume === null ? 'ml' : `${lastVolume} ml`}
+					{lastVolume === null ? unit : formatVolume(lastVolume, unit)}
 				</span>
 			</span>
 		</button>
@@ -160,10 +158,10 @@
 			onclick={() => (diaperPickerOpen = !diaperPickerOpen)}
 			class="{tileBase} bg-diaper-100"
 		>
-			<span class="bg-diaper-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
+			<span class="tile-bar bg-diaper-700 absolute inset-x-0 top-0 h-1.5" aria-hidden="true"></span>
 			<Droplets size={26} class="text-diaper-700" aria-hidden="true" />
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
-				<span class="text-tile text-ink">Couche</span>
+				<span class="tile-label text-tile text-ink">Couche</span>
 				<span class="text-tile-hint text-ink-muted">Pipi · Caca</span>
 			</span>
 		</button>
@@ -204,9 +202,8 @@
 			aria-label={sleepActive ? 'Sommeil en cours' : 'Commencer le sommeil'}
 			disabled={sleepPending || babyId === null}
 			onclick={startSleep}
-			class="bg-primary text-on-primary active:bg-primary-pressed col-span-2 flex h-14 items-center justify-start gap-2 rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 {sleepActive
-				? 'opacity-55'
-				: ''}"
+			class="bg-primary text-on-primary active:bg-primary-pressed col-span-2 flex h-14 items-center justify-start gap-2 rounded-control px-4 active:translate-y-px motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
+			class:is-running={sleepActive}
 		>
 			<Moon size={20} aria-hidden="true" />
 			<span class="text-tile" aria-hidden="true">{sleepActive ? 'En cours' : 'Sommeil'}</span>
@@ -216,9 +213,8 @@
 			aria-label="Tirage"
 			disabled={babyId === null}
 			onclick={handlePumpTap}
-			class="border-border bg-surface-raised text-ink flex h-14 items-center justify-center gap-2 rounded-control border-2 active:translate-y-px active:shadow-none motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 {pumpActive
-				? 'opacity-55'
-				: ''}"
+			class="border-border bg-surface-raised text-ink flex h-14 items-center justify-center gap-2 rounded-control border-2 active:translate-y-px active:shadow-none motion-reduce:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+			class:is-running={pumpActive}
 		>
 			<Wind size={20} aria-hidden="true" />
 			<span class="text-tile-hint" aria-hidden="true">{pumpActive ? 'En cours' : 'Tirage'}</span>

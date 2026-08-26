@@ -69,6 +69,26 @@ export function createBaby(
 	return { id, name: input.name, birthdate: input.birthdate, timezone: input.timezone };
 }
 
+function requireBaby(db: DB, id: string): BabyDTO {
+	const row = db.prepare('SELECT id, name, birthdate, timezone FROM baby WHERE id = ?').get(id) as
+		| BabyDTO
+		| undefined;
+	if (!row) throw new RepoError('not_found', `no baby ${id}`);
+	return row;
+}
+
+/** #46: lets a caregiver correct the name/birthdate captured at onboarding.
+ * `id` and `timezone` — and every event referencing this baby — are untouched. */
+export function updateBaby(db: DB, id: string, patch: { name?: string; birthdate?: string }): BabyDTO {
+	const current = requireBaby(db, id);
+	db.prepare('UPDATE baby SET name = ?, birthdate = ? WHERE id = ?').run(
+		patch.name ?? current.name,
+		patch.birthdate ?? current.birthdate,
+		id
+	);
+	return requireBaby(db, id);
+}
+
 function rowToCaregiver(row: { id: string; name: string; color: string }): CaregiverDTO {
 	return { id: row.id, name: row.name, color: row.color };
 }

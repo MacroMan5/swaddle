@@ -3,8 +3,13 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { errorMessage } from '$lib/errors';
+	import { errorMessage, userMessage } from '$lib/errors';
+	import { MAX_BODY_BYTES } from '$lib/limits';
+	import { pageTitle } from '$lib/meta';
+	import { applyForcedThemeColor } from '$lib/client/themeColor';
+	import { reconcileStoredCaregiverId, setStoredCaregiverId } from '$lib/client/caregiverSelection';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
+	import LiveMessage from '$lib/components/LiveMessage.svelte';
 
 	let { data } = $props();
 
@@ -27,33 +32,107 @@
 		}
 	}
 
+	// --- Bébé (#46) ---
+	let editingBabyId = $state<string | null>(null);
+	let editBabyName = $state('');
+	let editBabyBirthdate = $state('');
+	let babyError = $state<string | null>(null);
+	// The id of the baby the last successful save applied to, so the
+	// confirmation only appears next to that baby (there is normally just
+	// one, but nothing here should assume it).
+	let babySuccessId = $state<string | null>(null);
+	let babyPending = $state(false);
+	// Bumped on every (re)set of babyError/babySuccessId so a repeated identical
+	// outcome — e.g. saving twice in a row and getting the same success or error
+	// message — is announced again (see LiveMessage.svelte).
+	let babyErrorNonce = $state(0);
+	let babySuccessNonce = $state(0);
+
+	function startEditBaby(baby: { id: string; name: string; birthdate: string }) {
+		editingBabyId = baby.id;
+		editBabyName = baby.name;
+		editBabyBirthdate = baby.birthdate;
+		babyError = null;
+		babySuccessId = null;
+	}
+
+	function cancelEditBaby() {
+		editingBabyId = null;
+	}
+
+	async function saveBaby(event: SubmitEvent, id: string) {
+		event.preventDefault();
+		babyError = null;
+		babySuccessId = null;
+		babyPending = true;
+		const { ok, value } = await postJson(`/api/babies/${id}`, 'PATCH', {
+			name: editBabyName,
+			birthdate: editBabyBirthdate
+		});
+		babyPending = false;
+		if (!ok) {
+			babyError = errorMessage(value);
+			babyErrorNonce++;
+			return;
+		}
+		editingBabyId = null;
+		babySuccessId = id;
+		babySuccessNonce++;
+		await invalidateAll();
+	}
+
 	// --- Aidants ---
 	let newCaregiverName = $state('');
 	let newCaregiverColor = $state(CAREGIVER_COLORS[0]);
 	let caregiverError = $state<string | null>(null);
+	// Which operation the current caregiverError belongs to, so only the
+	// input that actually caused it gets aria-invalid/aria-describedby: a
+	// rejected edit or delete must not also mark the unrelated "add" name
+	// field invalid, and vice-versa (issue #52). Delete has no input of its
+	// own — its failure is announced through the alert region only.
+	let caregiverErrorSource = $state<'add' | 'edit' | 'delete' | null>(null);
+	// sr-only confirmation (add/edit/delete give no visible confirmation text —
+	// the list update is itself the visual feedback) so successes are still
+	// announced (issue #52).
+	let caregiverStatus = $state<string | null>(null);
+	let caregiverErrorNonce = $state(0);
+	let caregiverStatusNonce = $state(0);
 
 	async function addCaregiver(event: SubmitEvent) {
 		event.preventDefault();
 		caregiverError = null;
+		caregiverErrorSource = null;
+		const addedName = newCaregiverName;
 		const { ok, value } = await postJson('/api/caregivers', 'POST', {
-			name: newCaregiverName,
+			name: addedName,
 			color: newCaregiverColor
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'add';
+			caregiverErrorNonce++;
 			return;
 		}
 		newCaregiverName = '';
+		caregiverStatus = `Aidant ${addedName} ajouté.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
 	}
 
-	async function deleteCaregiver(id: string) {
+	async function deleteCaregiver(id: string, name: string) {
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'DELETE');
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'delete';
+			caregiverErrorNonce++;
 			return;
 		}
+		caregiverStatus = `Aidant ${name} supprimé.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
+		// Reconcile immediately (issue #48): deleting this device's own selection
+		// must not leave it pointing at a caregiver that no longer exists.
+		deviceCaregiverId = reconcileStoredCaregiverId(data.caregivers);
 	}
 
 	let editingCaregiverId = $state<string | null>(null);
@@ -65,6 +144,7 @@
 		editCaregiverName = cg.name;
 		editCaregiverColor = cg.color;
 		caregiverError = null;
+		caregiverErrorSource = null;
 	}
 
 	function cancelEditCaregiver() {
@@ -74,60 +154,105 @@
 	async function saveCaregiver(event: SubmitEvent, id: string) {
 		event.preventDefault();
 		caregiverError = null;
+		caregiverErrorSource = null;
 		const { ok, value } = await postJson(`/api/caregivers/${id}`, 'PATCH', {
 			name: editCaregiverName,
 			color: editCaregiverColor
 		});
 		if (!ok) {
 			caregiverError = errorMessage(value);
+			caregiverErrorSource = 'edit';
+			caregiverErrorNonce++;
 			return;
 		}
 		editingCaregiverId = null;
+		caregiverStatus = `Aidant ${editCaregiverName} mis à jour.`;
+		caregiverStatusNonce++;
 		await invalidateAll();
 	}
 
 	// --- Cet appareil ---
-	let deviceCaregiverId = $state(
-		typeof window !== 'undefined' ? localStorage.getItem('swaddle.caregiverId') : null
-	);
+	// Reconciled against the authoritative list on load (issue #48): a
+	// caregiver deleted here or on another device must not linger as this
+	// device's selection.
+	let deviceCaregiverId = $state(reconcileStoredCaregiverId(data.caregivers));
 
 	function selectDeviceCaregiver(id: string) {
 		deviceCaregiverId = id;
-		localStorage.setItem('swaddle.caregiverId', id);
+		setStoredCaregiverId(id);
 	}
 
 	// --- Unité ---
-	let volumeUnit = $state(data.household.volumeUnit);
+	// Sourced from data.household (authoritative, refreshed by invalidateAll —
+	// including after a restore) with a local override applied only while a
+	// save of our own is in flight; deriving instead of copying data.household
+	// into a separately-initialized $state avoids the
+	// `state_referenced_locally` trap where that copy would never notice a
+	// later authoritative change (issue #49).
+	let volumeUnitOverride = $state<'ml' | 'oz' | null>(null);
+	let volumeUnit = $derived(volumeUnitOverride ?? data.household.volumeUnit);
 	let volumeUnitError = $state<string | null>(null);
 	let volumeUnitPending = $state(false);
+	// sr-only confirmation (the visual feedback is the pressed-button styling)
+	// so a successful unit change is still announced (issue #52).
+	let volumeUnitStatus = $state<string | null>(null);
+	let volumeUnitErrorNonce = $state(0);
+	let volumeUnitStatusNonce = $state(0);
 
 	async function setVolumeUnit(unit: 'ml' | 'oz') {
 		volumeUnitError = null;
-		const previousUnit = volumeUnit;
 		// Applied immediately for instant feedback (design-system.md § Mouvement);
-		// rolled back below if the save turns out to have failed, instead of
-		// presenting an unsaved change as persistent. Both buttons are disabled
-		// meanwhile so a second click can't start a concurrent save whose
-		// rollback would race this one's.
-		volumeUnit = unit;
+		// dropped below if the save turns out to have failed, instead of
+		// presenting an unsaved change as persistent — the control then reverts
+		// to the untouched authoritative value. On success it is kept until
+		// invalidateAll has refreshed data.household to match, so it never
+		// flickers back to the pre-save value in between. Both buttons are
+		// disabled meanwhile so a second click can't start a concurrent save
+		// whose rollback would race this one's.
+		volumeUnitOverride = unit;
 		volumeUnitPending = true;
 
 		const { ok, value } = await postJson('/api/household', 'PATCH', { volumeUnit: unit });
-		volumeUnitPending = false;
 		if (!ok) {
-			volumeUnit = previousUnit;
+			volumeUnitOverride = null;
+			volumeUnitPending = false;
 			volumeUnitError = errorMessage(value);
+			volumeUnitErrorNonce++;
+			return;
 		}
+		volumeUnitStatus = `Unité mise à jour : ${unit}.`;
+		volumeUnitStatusNonce++;
+		// invalidateAll also refreshes the layout data every other screen reads
+		// its volume unit from (#44), so a change here reaches Today and History
+		// without a reload.
+		await invalidateAll();
+		volumeUnitOverride = null;
+		volumeUnitPending = false;
 	}
 
 	// --- Thème ---
-	let theme = $state(data.household.theme);
+	// Same override-over-authoritative-derivation pattern as volumeUnit above.
+	let themeOverride = $state<'light' | 'dark' | 'auto' | null>(null);
+	let theme = $derived(themeOverride ?? data.household.theme);
 	let themeError = $state<string | null>(null);
+	// sr-only confirmation (the visual feedback is the pressed-button styling
+	// plus the document's own class/color change) so a successful theme change
+	// is still announced (issue #52).
+	let themeStatus = $state<string | null>(null);
+	let themeErrorNonce = $state(0);
+	let themeStatusNonce = $state(0);
+
+	const THEME_LABELS: Record<'light' | 'dark' | 'auto', string> = {
+		light: 'Clair',
+		dark: 'Sombre',
+		auto: 'Auto'
+	};
 
 	function applyTheme(t: 'light' | 'dark' | 'auto') {
 		const dark =
 			t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 		document.documentElement.classList.toggle('dark', dark);
+		applyForcedThemeColor(t);
 	}
 
 	async function setTheme(t: 'light' | 'dark' | 'auto') {
@@ -139,25 +264,37 @@
 		// presenting an unsaved change as persistent.
 		applyTheme(t);
 		localStorage.setItem('swaddle.theme', t);
+		themeOverride = t;
 
 		const { ok, value } = await postJson('/api/household', 'PATCH', { theme: t });
 		if (!ok) {
+			themeOverride = null;
 			applyTheme(previousTheme);
 			if (previousStoredTheme === null) localStorage.removeItem('swaddle.theme');
 			else localStorage.setItem('swaddle.theme', previousStoredTheme);
 			themeError = errorMessage(value);
+			themeErrorNonce++;
 			return;
 		}
-		theme = t;
+		themeStatus = `Thème mis à jour : ${THEME_LABELS[t]}.`;
+		themeStatusNonce++;
+		// Kept until invalidateAll refreshes data.household.theme to match, for
+		// the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		themeOverride = null;
 	}
 
 	// --- Code PIN ---
-	let pinEnabled = $state(data.household.pinEnabled);
+	// Same override-over-authoritative-derivation pattern as volumeUnit above.
+	let pinEnabledOverride = $state<boolean | null>(null);
+	let pinEnabled = $derived(pinEnabledOverride ?? data.household.pinEnabled);
 	let newPin = $state('');
 	let newPinConfirm = $state('');
 	let currentPin = $state('');
 	let pinError = $state<string | null>(null);
 	let pinMessage = $state<string | null>(null);
+	let pinErrorNonce = $state(0);
+	let pinMessageNonce = $state(0);
 
 	async function enablePin(event: SubmitEvent) {
 		event.preventDefault();
@@ -165,6 +302,7 @@
 		pinMessage = null;
 		if (newPin !== newPinConfirm) {
 			pinError = 'Les deux codes ne correspondent pas.';
+			pinErrorNonce++;
 			return;
 		}
 		const { ok, value } = await postJson('/api/household/pin', 'PUT', {
@@ -173,13 +311,19 @@
 		});
 		if (!ok) {
 			pinError = errorMessage(value);
+			pinErrorNonce++;
 			return;
 		}
-		pinEnabled = true;
+		pinEnabledOverride = true;
 		newPin = '';
 		newPinConfirm = '';
 		currentPin = '';
 		pinMessage = 'Code PIN mis à jour.';
+		pinMessageNonce++;
+		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
+		// for the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		pinEnabledOverride = null;
 	}
 
 	async function disablePin(event: SubmitEvent) {
@@ -189,17 +333,25 @@
 		const { ok, value } = await postJson('/api/household/pin', 'DELETE', { currentPin });
 		if (!ok) {
 			pinError = errorMessage(value);
+			pinErrorNonce++;
 			return;
 		}
-		pinEnabled = false;
+		pinEnabledOverride = false;
 		currentPin = '';
 		pinMessage = 'Code PIN désactivé.';
+		pinMessageNonce++;
+		// Kept until invalidateAll refreshes data.household.pinEnabled to match,
+		// for the same no-flicker reason as volumeUnit above.
+		await invalidateAll();
+		pinEnabledOverride = null;
 	}
 
 	// --- Données ---
 	let restoreMessage = $state<string | null>(null);
 	let restoreError = $state<string | null>(null);
 	let restoreInput: HTMLInputElement | null = null;
+	let restoreMessageNonce = $state(0);
+	let restoreErrorNonce = $state(0);
 
 	async function restoreFile(event: Event) {
 		restoreMessage = null;
@@ -207,12 +359,22 @@
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
+		// Checked before the file is read: a payload the server would reject with
+		// 413 shouldn't be loaded into memory and parsed first (issue #45), and
+		// nothing about the current data changes.
+		if (file.size > MAX_BODY_BYTES) {
+			restoreError = userMessage('payload_too_large');
+			restoreErrorNonce++;
+			input.value = '';
+			return;
+		}
 		const text = await file.text();
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(text);
 		} catch {
 			restoreError = 'Fichier JSON invalide.';
+			restoreErrorNonce++;
 			input.value = '';
 			return;
 		}
@@ -224,11 +386,20 @@
 		input.value = '';
 		if (!ok) {
 			restoreError = errorMessage(value);
+			restoreErrorNonce++;
 			return;
 		}
 		const { babies, caregivers, events } = value.restored;
 		restoreMessage = `Restauré : ${babies} bébé(s), ${caregivers} aidant(s), ${events} événement(s).`;
+		restoreMessageNonce++;
 		await invalidateAll();
+		// Unité and PIN above derive straight from data.household, refreshed by
+		// invalidateAll — the theme also needs applying to the document (dark
+		// class, forced theme-color meta) and to the persisted FOUC-avoidance
+		// choice read by app.html, which a data refresh alone doesn't do (#49,
+		// same applyTheme path as a manual theme change uses).
+		applyTheme(data.household.theme);
+		localStorage.setItem('swaddle.theme', data.household.theme);
 	}
 
 	// --- Sauvegarde ---
@@ -236,6 +407,12 @@
 	// refresh « Dernière sauvegarde » via invalidateAll once the response lands.
 	let backupPending = $state(false);
 	let backupError = $state<string | null>(null);
+	// sr-only confirmation (the visual feedback is the download itself, plus
+	// the refreshed « Dernière sauvegarde » timestamp) so a successful backup
+	// is still announced (issue #52).
+	let backupStatus = $state<string | null>(null);
+	let backupErrorNonce = $state(0);
+	let backupStatusNonce = $state(0);
 
 	async function downloadBackup() {
 		if (backupPending) return;
@@ -245,6 +422,7 @@
 			const res = await fetch('/api/backup');
 			if (!res.ok) {
 				backupError = 'Une erreur est survenue.';
+				backupErrorNonce++;
 				return;
 			}
 			const blob = await res.blob();
@@ -255,9 +433,12 @@
 			a.download = match?.[1] ?? 'swaddle-backup.sqlite';
 			a.click();
 			URL.revokeObjectURL(url);
+			backupStatus = 'Sauvegarde téléchargée.';
+			backupStatusNonce++;
 			await invalidateAll();
 		} catch {
 			backupError = 'Une erreur est survenue.';
+			backupErrorNonce++;
 		} finally {
 			backupPending = false;
 		}
@@ -271,6 +452,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>{pageTitle('Réglages')}</title>
+</svelte:head>
+
 <div class="mx-auto flex max-w-lg flex-col gap-4 p-4">
 	<div class="border-border enter border-b-2 pb-3">
 		<h1 class="text-screen-title text-ink">Réglages</h1>
@@ -283,9 +468,63 @@
 
 			<div class="divide-border-hair divide-y">
 				{#each data.babies as baby (baby.id)}
-					<div class="flex items-baseline justify-between gap-4 py-2">
-						<span class="text-label text-ink-label">Bébé</span>
-						<span class="text-value text-ink tabular-nums">{baby.name} · {baby.birthdate}</span>
+					<div class="flex flex-col gap-2 py-2">
+						{#if editingBabyId === baby.id}
+							<form class="flex flex-col gap-2" onsubmit={(e) => saveBaby(e, baby.id)}>
+								<Label for={`edit-baby-name-${baby.id}`}>Prénom</Label>
+								<Input
+									id={`edit-baby-name-${baby.id}`}
+									class="min-h-12 text-base"
+									bind:value={editBabyName}
+									required
+									maxlength={100}
+									aria-invalid={babyError !== null}
+									aria-describedby={babyError !== null ? `baby-error-${baby.id}` : undefined}
+								/>
+								<Label for={`edit-baby-birthdate-${baby.id}`}>Date de naissance</Label>
+								<Input
+									id={`edit-baby-birthdate-${baby.id}`}
+									type="date"
+									class="min-h-12 text-base"
+									bind:value={editBabyBirthdate}
+									required
+									aria-invalid={babyError !== null}
+									aria-describedby={babyError !== null ? `baby-error-${baby.id}` : undefined}
+								/>
+								<LiveMessage
+									id={`baby-error-${baby.id}`}
+									text={babyError}
+									kind="alert"
+									nonce={babyErrorNonce}
+									class="text-danger text-sm"
+								/>
+								<div class="flex gap-2">
+									<Button type="submit" class="min-h-12" disabled={babyPending}
+										>{babyPending ? 'Enregistrement…' : 'Enregistrer'}</Button
+									>
+									<Button type="button" variant="outline" class="min-h-12" onclick={cancelEditBaby}
+										>Annuler</Button
+									>
+								</div>
+							</form>
+						{:else}
+							<div class="flex items-baseline justify-between gap-4">
+								<span class="text-label text-ink-label">Bébé</span>
+								<span class="text-value text-ink tabular-nums">{baby.name} · {baby.birthdate}</span>
+								<Button
+									variant="outline"
+									class="min-h-12"
+									aria-label={`Modifier ${baby.name}`}
+									onclick={() => startEditBaby(baby)}>Modifier</Button
+								>
+							</div>
+							<LiveMessage
+								text={babySuccessId === baby.id ? 'Profil du bébé mis à jour.' : null}
+								kind="status"
+								nonce={babySuccessNonce}
+								class="text-ink-muted text-sm"
+							/>
+						{/if}
 					</div>
 				{:else}
 					<p class="text-ink-muted py-2">Aucun bébé enregistré.</p>
@@ -299,6 +538,7 @@
 							class="min-h-12 flex-1"
 							disabled={volumeUnitPending}
 							variant={volumeUnit === 'ml' ? 'default' : 'outline'}
+							aria-describedby={volumeUnitError !== null ? 'volume-unit-error' : undefined}
 							onclick={() => setVolumeUnit('ml')}>ml</Button
 						>
 						<Button
@@ -306,10 +546,18 @@
 							class="min-h-12 flex-1"
 							disabled={volumeUnitPending}
 							variant={volumeUnit === 'oz' ? 'default' : 'outline'}
+							aria-describedby={volumeUnitError !== null ? 'volume-unit-error' : undefined}
 							onclick={() => setVolumeUnit('oz')}>oz</Button
 						>
 					</div>
-					{#if volumeUnitError}<p class="text-danger text-sm">{volumeUnitError}</p>{/if}
+					<LiveMessage
+						id="volume-unit-error"
+						text={volumeUnitError}
+						kind="alert"
+						nonce={volumeUnitErrorNonce}
+						class="text-danger text-sm"
+					/>
+					<LiveMessage text={volumeUnitStatus} kind="status" nonce={volumeUnitStatusNonce} class="sr-only" />
 				</div>
 
 				<div class="flex flex-col gap-2 py-2">
@@ -319,22 +567,32 @@
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'light' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('light')}>Clair</Button
 						>
 						<Button
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'dark' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('dark')}>Sombre</Button
 						>
 						<Button
 							type="button"
 							class="min-h-12 flex-1"
 							variant={theme === 'auto' ? 'default' : 'outline'}
+							aria-describedby={themeError !== null ? 'theme-error' : undefined}
 							onclick={() => setTheme('auto')}>Auto</Button
 						>
 					</div>
-					{#if themeError}<p class="text-danger text-sm">{themeError}</p>{/if}
+					<LiveMessage
+						id="theme-error"
+						text={themeError}
+						kind="alert"
+						nonce={themeErrorNonce}
+						class="text-danger text-sm"
+					/>
+					<LiveMessage text={themeStatus} kind="status" nonce={themeStatusNonce} class="sr-only" />
 				</div>
 			</div>
 		</section>
@@ -353,6 +611,8 @@
 									class="min-h-12 text-base"
 									bind:value={editCaregiverName}
 									required
+									aria-invalid={caregiverErrorSource === 'edit'}
+									aria-describedby={caregiverErrorSource === 'edit' ? 'caregiver-error' : undefined}
 								/>
 								<div class="flex flex-wrap gap-2">
 									{#each CAREGIVER_COLORS as color (color)}
@@ -378,9 +638,15 @@
 								</div>
 							</form>
 						{:else}
-							<div class="flex items-center gap-3">
+							<!-- flex-wrap + a shrinkable name: at the 320 px floor the row's
+							     fixed parts (colour dot, Modifier, Supprimer) need more width
+							     than the card offers, and an unshrinkable `flex-1` name pushed
+							     Supprimer ~3 px past the viewport — a horizontal scrollbar and a
+							     partly off-screen control (WCAG 1.4.10). Wider viewports keep the
+							     single-line layout unchanged. -->
+							<div class="flex flex-wrap items-center gap-3">
 								<span class="size-3 shrink-0" style:background-color={cg.color}></span>
-								<span class="text-value text-ink flex-1">{cg.name}</span>
+								<span class="text-value text-ink min-w-0 flex-1 truncate">{cg.name}</span>
 								<Button
 									variant="outline"
 									class="min-h-12"
@@ -391,7 +657,7 @@
 									variant="ghost"
 									class="text-danger min-h-12"
 									aria-label={`Supprimer ${cg.name}`}
-									onclick={() => deleteCaregiver(cg.id)}>Supprimer</Button
+									onclick={() => deleteCaregiver(cg.id, cg.name)}>Supprimer</Button
 								>
 							</div>
 						{/if}
@@ -401,7 +667,14 @@
 
 			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={addCaregiver}>
 				<Label for="new-caregiver-name">Nom de l’aidant</Label>
-				<Input id="new-caregiver-name" class="min-h-12 text-base" bind:value={newCaregiverName} required />
+				<Input
+					id="new-caregiver-name"
+					class="min-h-12 text-base"
+					bind:value={newCaregiverName}
+					required
+					aria-invalid={caregiverErrorSource === 'add'}
+					aria-describedby={caregiverErrorSource === 'add' ? 'caregiver-error' : undefined}
+				/>
 				<div class="flex flex-wrap gap-2">
 					{#each CAREGIVER_COLORS as color (color)}
 						<button
@@ -415,7 +688,14 @@
 						></button>
 					{/each}
 				</div>
-				{#if caregiverError}<p class="text-danger text-sm">{caregiverError}</p>{/if}
+				<LiveMessage
+					id="caregiver-error"
+					text={caregiverError}
+					kind="alert"
+					nonce={caregiverErrorNonce}
+					class="text-danger text-sm"
+				/>
+				<LiveMessage text={caregiverStatus} kind="status" nonce={caregiverStatusNonce} class="sr-only" />
 				<Button type="submit" class="min-h-12">Ajouter un aidant</Button>
 			</form>
 
@@ -468,6 +748,8 @@
 						class="min-h-12 text-base"
 						bind:value={currentPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin">Nouveau code (4 à 8 chiffres)</Label>
 					<Input
@@ -477,6 +759,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin-confirm">Confirmer le nouveau code</Label>
 					<Input
@@ -486,6 +770,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPinConfirm}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" class="min-h-12">Changer le code</Button>
 				</form>
@@ -498,6 +784,8 @@
 						class="min-h-12 text-base"
 						bind:value={currentPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" variant="destructive" class="min-h-12">Désactiver le code PIN</Button>
 				</form>
@@ -511,6 +799,8 @@
 						class="min-h-12 text-base"
 						bind:value={newPin}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Label for="new-pin-confirm">Confirmer le code</Label>
 					<Input
@@ -520,12 +810,20 @@
 						class="min-h-12 text-base"
 						bind:value={newPinConfirm}
 						required
+						aria-invalid={pinError !== null}
+						aria-describedby={pinError !== null ? 'pin-error' : undefined}
 					/>
 					<Button type="submit" class="min-h-12">Activer le code PIN</Button>
 				</form>
 			{/if}
-			{#if pinError}<p class="text-danger text-sm">{pinError}</p>{/if}
-			{#if pinMessage}<p class="text-ink-muted text-sm">{pinMessage}</p>{/if}
+			<LiveMessage id="pin-error" text={pinError} kind="alert" nonce={pinErrorNonce} class="text-danger text-sm" />
+			<LiveMessage
+				id="pin-message"
+				text={pinMessage}
+				kind="status"
+				nonce={pinMessageNonce}
+				class="text-ink-muted text-sm"
+			/>
 		</section>
 
 		<section class="flex flex-col gap-3 p-4">
@@ -541,6 +839,7 @@
 					variant="outline"
 					disabled={backupPending}
 					onclick={downloadBackup}
+					aria-describedby={backupError !== null ? 'backup-error' : undefined}
 					class="h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
 					>Télécharger une sauvegarde</Button
 				>
@@ -559,12 +858,31 @@
 				<Button
 					variant="outline"
 					class="text-primary-text h-auto min-h-13 justify-start whitespace-normal py-2 text-left"
+					aria-describedby={restoreError !== null ? 'restore-error' : undefined}
 					onclick={() => restoreInput?.click()}>Restaurer depuis un fichier…</Button
 				>
 			</div>
-			{#if backupError}<p class="text-danger text-sm">{backupError}</p>{/if}
-			{#if restoreError}<p class="text-danger text-sm">{restoreError}</p>{/if}
-			{#if restoreMessage}<p class="text-ink-muted text-sm">{restoreMessage}</p>{/if}
+			<LiveMessage
+				id="backup-error"
+				text={backupError}
+				kind="alert"
+				nonce={backupErrorNonce}
+				class="text-danger text-sm"
+			/>
+			<LiveMessage text={backupStatus} kind="status" nonce={backupStatusNonce} class="sr-only" />
+			<LiveMessage
+				id="restore-error"
+				text={restoreError}
+				kind="alert"
+				nonce={restoreErrorNonce}
+				class="text-danger text-sm"
+			/>
+			<LiveMessage
+				text={restoreMessage}
+				kind="status"
+				nonce={restoreMessageNonce}
+				class="text-ink-muted text-sm"
+			/>
 		</section>
 
 		<section class="flex flex-col gap-1 p-4">

@@ -2,7 +2,7 @@
 	import { getContext } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Pause, Play } from '@lucide/svelte';
-	import { startTimer, stopTimer, nursingAction, ApiError } from '$lib/client/api';
+	import { ApiError } from '$lib/client/api';
 	import { formatClock, formatElapsed, nursingDurationMs } from '$lib/client/format';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
@@ -65,14 +65,13 @@
 		return `En pause · ${lastSide === null ? '' : sideLabel(lastSide).toLowerCase()}`.trim();
 	});
 
-	/** Runs a mutation and merges its confirmed event immediately: the sheet
-	 * stays correct even if the SSE `sync` for it is slow or never arrives. */
+	/** Runs a mutation while keeping presentation state local to the sheet. */
 	async function run(action: () => Promise<EventDTO>): Promise<boolean> {
 		if (babyId === null || pending) return false;
 		pending = true;
 		error = null;
 		try {
-			store.applyServerEvent(await action());
+			await action();
 			return true;
 		} catch (e) {
 			error = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
@@ -87,22 +86,29 @@
 		// session paused, other side running.
 		if (session === null)
 			return run(async () => {
-				// {created:false} adopts an already-running session started elsewhere.
-				const result = await startTimer('nursing', { babyId: babyId as string, caregiverId, side });
-				return result.event;
+				return store.changes.startTimer('nursing', {
+					babyId: babyId as string,
+					caregiverId,
+					side
+				});
 			});
 		if (runningSide === side)
-			return run(() => nursingAction({ babyId: babyId as string, action: 'pause' }));
+			return run(() => store.changes.nursingAction({ babyId: babyId as string, action: 'pause' }));
 		if (runningSide === null)
-			return run(() => nursingAction({ babyId: babyId as string, action: 'resume', side }));
+			return run(() =>
+				store.changes.nursingAction({ babyId: babyId as string, action: 'resume', side })
+			);
 		// The explicit target keeps the tap idempotent when this view is stale:
 		// if another device already switched to `side`, the server no-ops
 		// instead of flipping the session back.
-		return run(() => nursingAction({ babyId: babyId as string, action: 'switch-side', side }));
+		return run(() =>
+			store.changes.nursingAction({ babyId: babyId as string, action: 'switch-side', side })
+		);
 	}
 
 	async function finish(): Promise<void> {
-		if (await run(() => stopTimer('nursing', { babyId: babyId as string }))) open = false;
+		if (await run(() => store.changes.stopTimer('nursing', { babyId: babyId as string })))
+			open = false;
 	}
 </script>
 

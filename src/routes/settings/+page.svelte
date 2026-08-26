@@ -6,6 +6,7 @@
 	import { errorMessage } from '$lib/errors';
 	import { pageTitle } from '$lib/meta';
 	import { applyForcedThemeColor } from '$lib/client/themeColor';
+	import { reconcileStoredCaregiverId, setStoredCaregiverId } from '$lib/client/caregiverSelection';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
@@ -56,6 +57,9 @@
 			return;
 		}
 		await invalidateAll();
+		// Reconcile immediately (issue #48): deleting this device's own selection
+		// must not leave it pointing at a caregiver that no longer exists.
+		deviceCaregiverId = reconcileStoredCaregiverId(data.caregivers);
 	}
 
 	let editingCaregiverId = $state<string | null>(null);
@@ -89,13 +93,14 @@
 	}
 
 	// --- Cet appareil ---
-	let deviceCaregiverId = $state(
-		typeof window !== 'undefined' ? localStorage.getItem('swaddle.caregiverId') : null
-	);
+	// Reconciled against the authoritative list on load (issue #48): a
+	// caregiver deleted here or on another device must not linger as this
+	// device's selection.
+	let deviceCaregiverId = $state(reconcileStoredCaregiverId(data.caregivers));
 
 	function selectDeviceCaregiver(id: string) {
 		deviceCaregiverId = id;
-		localStorage.setItem('swaddle.caregiverId', id);
+		setStoredCaregiverId(id);
 	}
 
 	// --- Unité ---

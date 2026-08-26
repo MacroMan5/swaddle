@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount } from 'svelte';
 	import { listBabies, listCaregivers, ApiError } from '$lib/client/api';
+	import { reconcileStoredCaregiverId } from '$lib/client/caregiverSelection';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { BabyDTO, CaregiverDTO } from '$lib/client/types';
 	import { pageTitle } from '$lib/meta';
@@ -52,9 +53,11 @@
 	async function loadBaby(): Promise<void> {
 		loadError = null;
 		try {
-			caregiverId = localStorage.getItem('swaddle.caregiverId');
 			const [babies, caregiverList] = await Promise.all([listBabies(), listCaregivers()]);
 			caregivers = caregiverList;
+			// Reconcile against the authoritative list (issue #48): a caregiver
+			// deleted here or on another device must never be sent in a new write.
+			caregiverId = reconcileStoredCaregiverId(caregiverList);
 			const first = babies[0];
 			if (first) {
 				baby = first;

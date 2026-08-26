@@ -21,7 +21,8 @@ export type ApiErrorCode =
 	| 'forbidden'
 	| 'too_many_attempts'
 	| 'pin_required'
-	| 'payload_too_large';
+	| 'payload_too_large'
+	| 'duplicate_word';
 
 /**
  * The stable API contract is error.code (docs/api/settings-api.md), never
@@ -34,6 +35,8 @@ export function userMessage(code: string | undefined, issues?: { path: string }[
 			return 'Impossible : des activités y sont liées.';
 		case 'not_found':
 			return 'Introuvable.';
+		case 'duplicate_word':
+			return 'Ce mot est déjà utilisé.';
 		case 'forbidden':
 			return 'Code actuel incorrect.';
 		case 'too_many_attempts':

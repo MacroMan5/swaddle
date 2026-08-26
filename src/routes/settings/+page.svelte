@@ -420,6 +420,74 @@
 		await invalidateAll();
 	}
 
+	// --- Mots vocaux (#99) ---
+	// One entry per intent a word can stand for: the label the section groups by,
+	// and the template it posts. A word never carries a modifier — how much is in
+	// the bottle comes from the sentence that was dictated.
+	const QUICK_INTENTS = [
+		{ key: 'bottle', label: 'Biberon', intent: { action: 'bottle' } },
+		{ key: 'diaper:wet', label: 'Couche pipi', intent: { action: 'diaper', kind: 'wet' } },
+		{ key: 'diaper:dirty', label: 'Couche caca', intent: { action: 'diaper', kind: 'dirty' } },
+		{
+			key: 'diaper:both',
+			label: 'Couche pipi et caca',
+			intent: { action: 'diaper', kind: 'both' }
+		},
+		{ key: 'sleep', label: 'Dodo', intent: { action: 'sleep' } },
+		{ key: 'nursing', label: 'Tétée', intent: { action: 'nursing' } }
+	] as const;
+
+	function quickIntentKey(intent: { action: string; kind?: string }): string {
+		return intent.action === 'diaper' ? `diaper:${intent.kind}` : intent.action;
+	}
+
+	let newWord = $state('');
+	let newWordIntentKey = $state<string>(QUICK_INTENTS[0].key);
+	let wordError = $state<string | null>(null);
+	let wordStatus = $state<string | null>(null);
+	let wordPending = $state(false);
+	let wordErrorNonce = $state(0);
+	let wordStatusNonce = $state(0);
+
+	async function addQuickWord(event: SubmitEvent) {
+		event.preventDefault();
+		wordError = null;
+		wordStatus = null;
+		const chosen = QUICK_INTENTS.find((i) => i.key === newWordIntentKey);
+		if (!chosen) return;
+		wordPending = true;
+		const added = newWord;
+		const { ok, value } = await postJson('/api/quick/words', 'POST', {
+			word: added,
+			intent: chosen.intent
+		});
+		wordPending = false;
+		if (!ok) {
+			wordError = errorMessage(value);
+			wordErrorNonce++;
+			return;
+		}
+		newWord = '';
+		wordStatus = `Mot ${added} ajouté.`;
+		wordStatusNonce++;
+		await invalidateAll();
+	}
+
+	async function deleteQuickWord(id: string, word: string) {
+		if (!confirm(`Supprimer le mot « ${word} » ?`)) return;
+		wordError = null;
+		wordStatus = null;
+		const { ok, value } = await postJson(`/api/quick/words/${id}`, 'DELETE');
+		if (!ok) {
+			wordError = errorMessage(value);
+			wordErrorNonce++;
+			return;
+		}
+		wordStatus = `Mot ${word} supprimé.`;
+		wordStatusNonce++;
+		await invalidateAll();
+	}
+
 	// --- Données ---
 	let restoreMessage = $state<string | null>(null);
 	let restoreError = $state<string | null>(null);
@@ -981,6 +1049,72 @@
 				<LiveMessage text={tokenStatus} kind="status" nonce={tokenStatusNonce} class="sr-only" />
 				<Button type="submit" class="min-h-12" disabled={tokenPending}
 					>{tokenPending ? 'Création…' : 'Créer un jeton'}</Button
+				>
+			</form>
+		</section>
+
+		<section class="flex flex-col gap-3 p-4" data-testid="quick-words">
+			<h2 class="text-section text-ink-muted uppercase">Mots vocaux</h2>
+			<p class="text-ink-muted text-body">
+				Les mots qu’une phrase dictée peut contenir. « Biberon 120 », « néné droite », « caca » :
+				le premier mot reconnu décide de l’activité. Un mot ajouté ici marche à la dictée
+				suivante, sans rien changer sur le téléphone.
+			</p>
+
+			{#each QUICK_INTENTS as option (option.key)}
+				{@const words = data.quickWords.filter((w) => quickIntentKey(w.intent) === option.key)}
+				<div class="border-border-hair flex flex-col gap-1 border-t pt-3">
+					<h3 class="text-section text-ink-muted uppercase">{option.label}</h3>
+					<ul class="divide-border-hair flex flex-col divide-y">
+						{#each words as w (w.id)}
+							<li class="flex flex-wrap items-center gap-3 py-2">
+								<span class="text-value text-ink min-w-0 flex-1 truncate">{w.word}</span>
+								<Button
+									variant="ghost"
+									class="text-danger min-h-12"
+									aria-label={`Supprimer le mot ${w.word}`}
+									onclick={() => deleteQuickWord(w.id, w.word)}>Supprimer</Button
+								>
+							</li>
+						{:else}
+							<li class="text-ink-muted py-2">Aucun mot.</li>
+						{/each}
+					</ul>
+				</div>
+			{/each}
+
+			<form class="border-border-hair flex flex-col gap-2 border-t pt-3" onsubmit={addQuickWord}>
+				<Label for="new-quick-word">Nouveau mot</Label>
+				<Input
+					id="new-quick-word"
+					class="min-h-12 text-base"
+					placeholder="nini"
+					bind:value={newWord}
+					required
+					maxlength={50}
+					aria-invalid={wordError !== null}
+					aria-describedby={wordError !== null ? 'quick-word-error' : undefined}
+				/>
+				<Label for="new-quick-word-intent">Activité</Label>
+				<select
+					id="new-quick-word-intent"
+					class="border-border bg-surface text-ink min-h-12 border-2 px-2 text-base"
+					bind:value={newWordIntentKey}
+				>
+					{#each QUICK_INTENTS as option (option.key)}
+						<option value={option.key}>{option.label}</option>
+					{/each}
+				</select>
+				<LiveMessage
+					id="quick-word-error"
+					text={wordError}
+					kind="alert"
+					nonce={wordErrorNonce}
+					class="text-danger text-sm"
+				/>
+				<LiveMessage text={wordStatus} kind="status" nonce={wordStatusNonce} class="sr-only" />
+				<Button type="submit" class="min-h-12" disabled={wordPending}
+					>{wordPending ? 'Ajout…' : 'Ajouter un mot'}</Button
 				>
 			</form>
 		</section>

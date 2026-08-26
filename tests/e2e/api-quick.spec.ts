@@ -78,3 +78,64 @@ test('AC: a headless client logs and toggles through /api/quick with a Bearer al
 		await request.delete(`${A}/api/tokens/${token.id}`);
 	}
 });
+
+// #99: the shortcut a parent actually uses says one sentence and lets the
+// server work out what it meant — including a word added minutes earlier.
+test('AC: a dictated phrase is resolved against the vocabulary, which the household can extend', async ({
+	request
+}) => {
+	const created = await request.post(`${A}/api/tokens`, { data: { name: 'Dictée e2e' } });
+	const { plaintext, token } = await created.json();
+
+	const phrase = (text: string) =>
+		fetch(`${A}/api/quick`, {
+			method: 'POST',
+			headers: { authorization: `Bearer ${plaintext}`, 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'phrase', text })
+		});
+
+	let addedWordId: string | null = null;
+	const logged: string[] = [];
+	try {
+		const started = await phrase('néné droite');
+		expect(started.status).toBe(200);
+		const startedBody = await started.json();
+		expect(startedBody.did).toBe('started');
+		expect(startedBody.speech).toBe('Tétée côté droit démarrée');
+
+		const stopped = await (await phrase('Néné !')).json();
+		expect(stopped.did).toBe('stopped');
+		expect(stopped.event.id).toBe(startedBody.event.id);
+		logged.push(stopped.event.id);
+
+		// A refusal still gives the assistant something to say.
+		const unknown = await phrase('bonjour');
+		expect(unknown.status).toBe(422);
+		const unknownBody = await unknown.json();
+		expect(unknownBody.error.code).toBe('unrecognized_phrase');
+		expect(unknownBody.speech).toContain("Je n'ai pas compris");
+
+		// The same word, added through the API, works on the very next sentence.
+		const word = await request.post(`${A}/api/quick/words`, {
+			data: { word: 'Bonjour', intent: { action: 'diaper', kind: 'wet' } }
+		});
+		expect(word.status()).toBe(201);
+		addedWordId = (await word.json()).id;
+
+		const duplicate = await request.post(`${A}/api/quick/words`, {
+			data: { word: 'bonjour', intent: { action: 'sleep' } }
+		});
+		expect(duplicate.status()).toBe(409);
+		expect((await duplicate.json()).error.code).toBe('duplicate_word');
+
+		const recognised = await phrase('bonjour');
+		expect(recognised.status).toBe(200);
+		const recognisedBody = await recognised.json();
+		expect(recognisedBody.speech).toBe('Couche pipi enregistrée');
+		logged.push(recognisedBody.event.id);
+	} finally {
+		for (const id of logged) await request.delete(`${A}/api/events/${id}`);
+		if (addedWordId !== null) await request.delete(`${A}/api/quick/words/${addedWordId}`);
+		await request.delete(`${A}/api/tokens/${token.id}`);
+	}
+});

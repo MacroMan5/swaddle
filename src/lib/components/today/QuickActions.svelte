@@ -4,7 +4,7 @@
 	// same API calls, same optimistic merge, same undo wiring.
 	import { getContext } from 'svelte';
 	import { Droplets, Heart, Milk, Moon, Wind } from '@lucide/svelte';
-	import { createEvent, deleteEvent, startTimer, ApiError } from '$lib/client/api';
+	import { startTimer, ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 	import { lastBottleVolumeMl } from './todayDerivations';
@@ -68,7 +68,7 @@
 		error = null;
 		let event: EventDTO;
 		try {
-			event = await createEvent({
+			event = await store.changes.create({
 				babyId,
 				caregiverId,
 				type: 'diaper',
@@ -81,12 +81,8 @@
 			return;
 		}
 		diaperPending = false;
-		// Merge the confirmed write immediately: the screen is correct even if the
-		// SSE `sync` for it never arrives or is slow.
-		store.applyServerEvent(event);
 		onSaved(event.id, 'Couche enregistrée', async () => {
-			const deleted = await deleteEvent(event.id);
-			store.applyServerEvent(deleted);
+			await store.changes.delete(event.id);
 		});
 	}
 

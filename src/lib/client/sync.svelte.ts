@@ -1,4 +1,10 @@
 import { ApiError, getTimers, listTodayEvents } from './api';
+import {
+	ActivityChanges,
+	httpActivityChangeTransport,
+	type ActivityChangeTransport,
+	type ConfirmedActivityChange
+} from './activityChanges';
 import { sortByStartedAtDesc, upsert } from './eventList';
 import { isNewLocalDay } from './format';
 import { eventOverlapsDay, localDayKey } from './summaries';
@@ -44,6 +50,7 @@ function loadErrorMessage(error: unknown): string {
  * stays behind `browser`, so the state transitions below are unit-testable.
  */
 export class SyncStore {
+	readonly changes: ActivityChanges;
 	events = $state<EventDTO[]>([]);
 	timers = $state<EventDTO[]>([]);
 	/** 'connecting' until the first open/error, then tracks the live SSE link. */
@@ -95,6 +102,10 @@ export class SyncStore {
 	/** Listeners for non-today views (history) that need to react to changes
 	 * outside today's window, which `events`/`timers` never carry. */
 	#changeListeners = new Set<(change: RelayChange) => void>();
+
+	constructor(transport: ActivityChangeTransport = httpActivityChangeTransport) {
+		this.changes = new ActivityChanges(transport, (change) => this.#applyConfirmedChange(change));
+	}
 
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
 	start(babyId: string): void {
@@ -324,8 +335,12 @@ export class SyncStore {
 
 	applyChange(message: SyncMessage): void {
 		this.#setServerTime(message.serverTime);
-		this.applyServerEvent(message.event, message.kind === 'deleted');
-		this.#emitChange({ kind: message.kind, event: message.event });
+		this.changes.receive({ kind: message.kind, event: message.event });
+	}
+
+	#applyConfirmedChange(change: ConfirmedActivityChange): void {
+		this.applyServerEvent(change.event, change.kind === 'deleted');
+		this.#emitChange(change);
 	}
 
 	/**

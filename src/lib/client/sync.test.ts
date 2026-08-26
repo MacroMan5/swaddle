@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ApiError, listTodayEvents, getTimers } from './api';
 import { SyncStore } from './sync.svelte';
+import type { ActivityChangeTransport } from './activityChanges';
 import type { EventDTO, SyncKind } from './types';
 
 vi.mock('./api', async () => {
@@ -280,6 +281,35 @@ describe('idempotent upserts across HTTP/SSE races (item 5)', () => {
 });
 
 describe('refreshEvents buffers a concurrent change onto the fetched baseline (item 1, round 2)', () => {
+	it('replays an HTTP-confirmed Activity change onto a refresh already in flight', async () => {
+		let resolveFetch!: (events: EventDTO[]) => void;
+		vi.mocked(listTodayEvents).mockReturnValueOnce(
+			new Promise<EventDTO[]>((resolve) => {
+				resolveFetch = resolve;
+			})
+		);
+		const confirmed = makeEvent({ id: 'confirmed' });
+		const writes: ActivityChangeTransport = {
+			create: vi.fn().mockResolvedValue(confirmed),
+			delete: vi.fn()
+		};
+		store.stop();
+		store = new SyncStore(writes);
+		store.babyId = 'baby-1';
+
+		const refresh = store.refreshEvents();
+		await store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		resolveFetch([makeEvent({ id: 'baseline' })]);
+		await refresh;
+
+		expect(store.events.map((event) => event.id).sort()).toEqual(['baseline', 'confirmed']);
+	});
+
 	it('keeps both the baseline and a change that arrived mid-flight, instead of discarding one', async () => {
 		let resolveFetch!: (events: EventDTO[]) => void;
 		const deferred = new Promise<EventDTO[]>((resolve) => {

@@ -79,3 +79,5 @@ export type NursingActionBody = {
 export type SyncKind = 'created' | 'updated' | 'deleted' | 'restored';
 export type SyncMessage = { kind: SyncKind; event: EventDTO; serverTime: string };
 export type SnapshotMessage = { serverTime: string; activeTimers: EventDTO[] };
+/** #46: a baby's name/birthdate was corrected on another device. */
+export type BabyUpdateMessage = { baby: BabyDTO; serverTime: string };

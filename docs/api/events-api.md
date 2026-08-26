@@ -220,7 +220,7 @@ tourne, session sans aucun segment).
 
 ## SSE — `GET /api/stream`
 
-`content-type: text/event-stream`. Deux événements nommés :
+`content-type: text/event-stream`. Événements nommés :
 
 ```
 event: snapshot
@@ -231,6 +231,9 @@ data: { "kind": "created" | "updated" | "deleted" | "restored", "event": EventDT
 
 event: reset
 data: { "serverTime": "…" }
+
+event: baby
+data: { "baby": BabyDTO, "serverTime": "…" }
 ```
 
 - `snapshot` est envoyé une fois à la connexion — une reconnexion produit un
@@ -244,5 +247,9 @@ data: { "serverTime": "…" }
   les clients connectés, sans qu'un `EventDTO` unique puisse décrire le
   changement. Les clients doivent recharger `/api/timers` **et**
   `/api/events` — pas seulement appliquer une synchronisation incrémentale.
+- `baby` est diffusé après une correction réussie du profil du bébé (#46,
+  `PATCH /api/babies/[id]`) : les clients qui suivent ce bébé (« Aujourd'hui »)
+  remplacent leur copie locale par le `BabyDTO` reçu au lieu d'attendre un
+  rechargement.
 - Un battement de cœur `:ping` (commentaire SSE) est envoyé toutes les 25 s pour
   maintenir la connexion.

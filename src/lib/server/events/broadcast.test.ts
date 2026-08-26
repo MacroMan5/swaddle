@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { publishReset, subscribe, publish, type Change } from './broadcast';
-import type { EventDTO } from './types';
+import { publishBabyUpdated, publishReset, subscribe, publish, type Change } from './broadcast';
+import type { BabyDTO, EventDTO } from './types';
 
 const change: Change = { kind: 'created', event: { id: 'e1' } as EventDTO };
 
@@ -32,5 +32,19 @@ describe('broadcast', () => {
 		publishReset();
 		unsubscribe();
 		expect(seen).toEqual([{ kind: 'reset' }]);
+	});
+
+	it('#46: publishBabyUpdated delivers a {kind: "baby"} change carrying the updated baby', () => {
+		const baby: BabyDTO = {
+			id: 'baby-1',
+			name: 'Corrigée',
+			birthdate: '2026-07-28',
+			timezone: 'America/Toronto'
+		};
+		const seen: Change[] = [];
+		const unsubscribe = subscribe((c) => seen.push(c));
+		publishBabyUpdated(baby);
+		unsubscribe();
+		expect(seen).toEqual([{ kind: 'baby', baby }]);
 	});
 });

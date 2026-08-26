@@ -82,7 +82,8 @@ const DOMAIN_CODE_MESSAGES: Record<string, string> = {
  */
 const CUSTOM_ISSUE_MESSAGES: Record<string, string> = {
 	'a diaper needs at least pee or poo': 'Cochez au moins pipi ou caca.',
-	'birthdate cannot be in the future': 'La date de naissance ne peut pas être dans le futur.'
+	'birthdate cannot be in the future': 'La date de naissance ne peut pas être dans le futur.',
+	'birthdate is not a valid calendar date': 'Cette date n’existe pas.'
 };
 
 /**

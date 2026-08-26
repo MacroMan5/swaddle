@@ -125,6 +125,16 @@ describe('fieldMessage', () => {
 		).toBe('La date de naissance ne peut pas être dans le futur.');
 	});
 
+	it('maps the impossible-calendar-date custom refine by its exact message', () => {
+		expect(
+			fieldMessage({
+				path: 'birthdate',
+				code: 'custom',
+				message: 'birthdate is not a valid calendar date'
+			})
+		).toBe('Cette date n’existe pas.');
+	});
+
 	it('falls back for an unrecognised custom message', () => {
 		expect(fieldMessage({ path: 'x', code: 'custom', message: 'something else entirely' })).toBe(
 			'Champ invalide.'

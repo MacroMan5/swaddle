@@ -33,6 +33,24 @@ futur), timezone? }`. `timezone` par défaut le fuseau du serveur
 
 → `201 BabyDTO` · `400 validation_failed`.
 
+### `PATCH /api/babies/[id]` (#46)
+
+Corrects the current baby's name and/or birthdate after onboarding. Corps
+(champs optionnels, inconnus rejetés) : `{ name? (1–100 caractères),
+birthdate? (YYYY-MM-DD, pas dans le futur, doit être une date calendaire
+réelle) }`. Même contrat de validation que `POST /api/babies` (module
+partagé `$lib/server/settings/babySchema.ts`) : nom vide, date future, date
+calendaire impossible (ex. 30 février) ou mal formée sont toutes rejetées, en
+une seule écriture (aucune écriture partielle en cas d'échec). `id` et
+`timezone` ne changent jamais ; les événements existants gardent leurs
+identifiants et leur rattachement.
+
+→ `200 BabyDTO` · `400 validation_failed` · `404 not_found`.
+
+Diffuse aussi un événement SSE `baby` (voir `docs/api/events-api.md` § SSE)
+pour qu'un appareil déjà ouvert sur « Aujourd'hui » reflète la correction sans
+recharger.
+
 ### `GET /api/caregivers`
 
 → `200 { caregivers: CaregiverDTO[] }`.

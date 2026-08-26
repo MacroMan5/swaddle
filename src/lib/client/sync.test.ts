@@ -207,6 +207,40 @@ describe('applyReset (slice 5 data restore)', () => {
 	});
 });
 
+describe('setBaby / applyBabyUpdate (#46 correction pushed live)', () => {
+	function baby(over: Partial<{ id: string; name: string; birthdate: string; timezone: string }> = {}) {
+		return {
+			id: 'baby-1',
+			name: 'Testine',
+			birthdate: '2026-08-01',
+			timezone: 'America/Toronto',
+			...over
+		};
+	}
+
+	it('setBaby stores the profile the caller resolved', () => {
+		store.setBaby(baby());
+		expect(store.baby).toEqual(baby());
+	});
+
+	it('applyBabyUpdate replaces the stored baby and re-derives the offset', () => {
+		store.setBaby(baby());
+		const serverTime = new Date(NOW.getTime() + 5000).toISOString();
+		store.applyBabyUpdate({ baby: baby({ name: 'Corrigée', birthdate: '2026-07-28' }), serverTime });
+		expect(store.baby).toEqual(baby({ name: 'Corrigée', birthdate: '2026-07-28' }));
+		expect(store.serverOffsetMs).toBe(5000);
+	});
+
+	it('ignores an update for a different baby than the one this store is tracking', () => {
+		store.setBaby(baby());
+		store.applyBabyUpdate({
+			baby: baby({ id: 'baby-2', name: 'Autre' }),
+			serverTime: NOW.toISOString()
+		});
+		expect(store.baby).toEqual(baby());
+	});
+});
+
 describe('applyServerEvent (HTTP-response merge, item 6)', () => {
 	it('merges a confirmed write immediately, independent of SSE', () => {
 		store.applyServerEvent(makeEvent({ id: 'from-http' }));

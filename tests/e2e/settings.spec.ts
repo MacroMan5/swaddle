@@ -1,5 +1,48 @@
 import { expect, test } from '@playwright/test';
 
+test('#46: correcting the baby profile shows pending, success and error states', async ({ page }) => {
+	await page.goto('/settings');
+
+	await page.getByRole('button', { name: /^Modifier Testine$/ }).click();
+	await page.getByLabel('Prénom').fill('Testine Corrigée');
+	await page.getByLabel('Date de naissance').fill('2026-07-28');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByText('Profil du bébé mis à jour.')).toBeVisible();
+	await expect(page.getByText('Testine Corrigée · 2026-07-28')).toBeVisible();
+
+	// Survives a reload.
+	await page.reload();
+	await expect(page.getByText('Testine Corrigée · 2026-07-28')).toBeVisible();
+
+	// A rejected correction (server-side validation failure) shows the error
+	// and keeps the previous value on screen instead of losing it.
+	await page.route('**/api/babies/*', async (route) => {
+		if (route.request().method() === 'PATCH') {
+			await route.fulfill({
+				status: 400,
+				contentType: 'application/json',
+				body: '{"error":{"code":"validation_failed","issues":[{"path":"name","code":"too_small","message":"too small"}]}}'
+			});
+			return;
+		}
+		await route.continue();
+	});
+	await page.getByRole('button', { name: /^Modifier Testine Corrigée$/ }).click();
+	await page.getByLabel('Prénom').fill('Nom rejeté');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByText('Certains champs sont invalides : name')).toBeVisible();
+	await page.getByRole('button', { name: 'Annuler' }).click();
+	await expect(page.getByText('Testine Corrigée · 2026-07-28')).toBeVisible();
+	await page.unroute('**/api/babies/*');
+
+	// Restore the seeded baby's original name/birthdate for other specs.
+	await page.getByRole('button', { name: /^Modifier Testine Corrigée$/ }).click();
+	await page.getByLabel('Prénom').fill('Testine');
+	await page.getByLabel('Date de naissance').fill('2026-08-01');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByText('Testine · 2026-08-01')).toBeVisible();
+});
+
 test('FR-011: caregivers, device, unit, theme and data controls', async ({ page }) => {
 	await page.goto('/settings');
 

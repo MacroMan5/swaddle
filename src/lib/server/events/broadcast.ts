@@ -1,8 +1,9 @@
-import type { EventDTO } from './types';
+import type { BabyDTO, EventDTO } from './types';
 
 export type Change =
 	| { kind: 'created' | 'updated' | 'deleted' | 'restored'; event: EventDTO }
-	| { kind: 'reset' };
+	| { kind: 'reset' }
+	| { kind: 'baby'; baby: BabyDTO };
 
 type Listener = (change: Change) => void;
 
@@ -35,4 +36,11 @@ export function publish(change: Change): void {
  */
 export function publishReset(): void {
 	publish({ kind: 'reset' });
+}
+
+/** #46: a baby's name/birthdate was corrected — connected clients (e.g. a
+ * Today screen already open on another device) must refresh what they show
+ * for it instead of waiting for a reload. */
+export function publishBabyUpdated(baby: BabyDTO): void {
+	publish({ kind: 'baby', baby });
 }

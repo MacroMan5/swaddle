@@ -35,6 +35,14 @@
 	let restoringId = $state<string | null>(null);
 	let rowErrors = $state<Record<string, string>>({});
 
+	// Anti-race token (same pattern as historyWindow.svelte.ts's fetch tokens):
+	// the open effect, the change-relay subscription and a re-open can all
+	// trigger overlapping loads. Only the response matching the latest call is
+	// ever committed, so a slower, earlier-issued fetch can't land after a
+	// newer one and either drop a just-deleted event or resurrect one already
+	// restored (P2 review item 1).
+	let loadToken = 0;
+
 	function deletedAtLabel(event: EventDTO): string {
 		const ms = Date.parse(event.deletedAt ?? event.updatedAt);
 		const date = new Date(ms);
@@ -45,15 +53,19 @@
 
 	async function load(): Promise<void> {
 		if (babyId === null) return;
+		const token = ++loadToken;
 		loading = true;
 		error = null;
 		try {
-			events = await listDeletedEvents(babyId);
+			const fetched = await listDeletedEvents(babyId);
+			if (token !== loadToken) return; // superseded by a newer load
+			events = fetched;
 		} catch (e) {
+			if (token !== loadToken) return;
 			error =
 				e instanceof ApiError ? e.userMessage : 'Impossible de charger les éléments supprimés.';
 		} finally {
-			loading = false;
+			if (token === loadToken) loading = false;
 		}
 	}
 
@@ -110,7 +122,7 @@
 					{#each events as event (event.id)}
 						<li data-testid="recently-deleted-row" class="flex items-center justify-between gap-2 px-2 py-2">
 							<div class="min-w-0 flex-1">
-								<span class="text-row text-ink block truncate">{eventLabel(event, Date.now())}</span>
+								<span class="text-row text-ink block truncate">{eventLabel(event, store.nowMs)}</span>
 								<span class="text-ink-muted block text-xs">{deletedAtLabel(event)}</span>
 								{#if rowErrors[event.id]}
 									<p class="text-danger text-base" role="alert">{rowErrors[event.id]}</p>

@@ -3,8 +3,10 @@
 	// page. Behaviors are transposed from the old FeedCard/DiaperCard/SleepCard:
 	// same API calls, same optimistic merge, same undo wiring.
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import { Droplets, Heart, Milk, Moon, Wind } from '@lucide/svelte';
 	import { ApiError } from '$lib/client/api';
+	import { formatVolume } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { EventDTO } from '$lib/client/types';
 	import { lastBottleVolumeMl } from './todayDerivations';
@@ -38,6 +40,8 @@
 	const pumpActive = $derived(store.timers.some((t) => t.type === 'pump'));
 	const sleepActive = $derived(store.timers.some((t) => t.type === 'sleep'));
 	const lastVolume = $derived(lastBottleVolumeMl(store.events));
+	// The hint mirrors the household's unit (#44); the stored value stays in ml.
+	const unit = $derived(page.data.volumeUnit);
 
 	function scrollToBanner(): void {
 		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -140,7 +144,7 @@
 			<span class="flex flex-col gap-0.5" aria-hidden="true">
 				<span class="text-tile text-ink">Biberon</span>
 				<span class="text-tile-hint text-ink-muted tabular-nums">
-					{lastVolume === null ? 'ml' : `${lastVolume} ml`}
+					{lastVolume === null ? unit : formatVolume(lastVolume, unit)}
 				</span>
 			</span>
 		</button>

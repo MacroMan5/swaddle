@@ -6,6 +6,7 @@
 	// endpoint the toast uses, so both paths share one source of truth and the
 	// same active-timer conflict handling (FR-013).
 	import { getContext, onDestroy, onMount } from 'svelte';
+	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { LoaderCircle, RotateCcw } from '@lucide/svelte';
 	import { ApiError, listDeletedEvents } from '$lib/client/api';
@@ -25,6 +26,9 @@
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
+	// The household's volume unit (#44) decorates stored millilitres only.
+	const unit = $derived(page.data.volumeUnit);
+
 
 	let events = $state<EventDTO[]>([]);
 	let loading = $state(false);
@@ -142,7 +146,7 @@
 					{#each events as event (event.id)}
 						<li data-testid="recently-deleted-row" class="flex items-center justify-between gap-2 px-2 py-2">
 							<div class="min-w-0 flex-1">
-								<span class="text-row text-ink block truncate">{eventLabel(event, store.nowMs)}</span>
+								<span class="text-row text-ink block truncate">{eventLabel(event, store.nowMs, unit)}</span>
 								<span class="text-ink-muted block text-xs">{deletedAtLabel(event)}</span>
 								{#if rowErrors[event.id]}
 									<p class="text-danger text-base" role="alert">{rowErrors[event.id]}</p>

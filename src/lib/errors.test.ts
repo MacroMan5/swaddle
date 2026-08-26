@@ -195,6 +195,26 @@ describe('fieldMessage', () => {
 		);
 	});
 
+	// #44: the server always speaks canonical millilitres; the copy quotes the
+	// household's unit.
+	it('quotes the volume bounds in ounces when the household is on oz', () => {
+		expect(fieldMessage({ path: 'volumeMl', code: 'too_small', message: 'x' }, 'oz')).toBe(
+			'Le volume doit être d’au moins 0,1 oz.'
+		);
+		expect(fieldMessage({ path: 'details.volumeMl', code: 'too_big', message: 'x' }, 'oz')).toBe(
+			'Le volume ne peut pas dépasser 33,8 oz.'
+		);
+		expect(fieldMessage({ path: 'volumeMl', code: 'invalid_type', message: 'x' }, 'oz')).toBe(
+			'Le volume doit être un nombre.'
+		);
+	});
+
+	it('keeps millilitres for every other field, whatever the unit', () => {
+		expect(fieldMessage({ path: 'name', code: 'too_small', message: 'x' }, 'oz')).toBe(
+			'Le nom est requis.'
+		);
+	});
+
 	it('never leaks the raw English message', () => {
 		const issue = { path: 'volumeMl', code: 'too_big', message: 'Too big: expected number to be <=1000' };
 		expect(fieldMessage(issue)).not.toContain('Too big');

@@ -3,9 +3,6 @@ import { expect, test, type Page } from '@playwright/test';
 // Must match dayCalendarLayout.ts — the point of asserting in minutes rather
 // than pixels is that a scale change stays a one-line edit here.
 const PX_PER_MIN = 20 / 60;
-const FIXTURE_DATE = new Date();
-FIXTURE_DATE.setDate(FIXTURE_DATE.getDate() - 1);
-FIXTURE_DATE.setHours(12, 0, 0, 0);
 
 /**
  * Where a block sits on the grid and how tall it is, in minutes since local
@@ -23,28 +20,45 @@ async function spanMinutesOf(page: Page, eventId: string): Promise<{ start: numb
 	return { start: box.top / PX_PER_MIN, length: box.height / PX_PER_MIN };
 }
 
-/** A stable completed day, as ISO, plus its minutes-since-midnight. */
-function fixtureAt(hour: number, minute: number): { iso: string; minutes: number } {
-	const d = new Date(FIXTURE_DATE);
+/**
+ * A wall-clock time on *yesterday's* date, as ISO, plus its minutes-since-midnight.
+ *
+ * Seeding "today" at a fixed clock hour is a landmine: between local midnight
+ * and that hour, the time is still in the future and the server rejects it
+ * (FR-017). Anchoring to yesterday instead is always safely in the past no
+ * matter what time the suite runs, with no branching on the current hour —
+ * the tests below navigate the day selector back one day to see it.
+ */
+function yesterdayAt(hour: number, minute: number): { iso: string; minutes: number } {
+	const d = new Date();
+	d.setDate(d.getDate() - 1);
 	d.setHours(hour, minute, 0, 0);
 	return { iso: d.toISOString(), minutes: hour * 60 + minute };
 }
 
-async function openFixtureDay(page: Page): Promise<void> {
+/** Navigate `/history` to yesterday via the day selector's previous-day chevron. */
+async function goToYesterday(page: Page): Promise<void> {
 	await page.goto('/history');
-	const today = new Date();
-	const daysBack =
-		(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
-			Date.UTC(FIXTURE_DATE.getFullYear(), FIXTURE_DATE.getMonth(), FIXTURE_DATE.getDate())) /
-		86_400_000;
-	for (let day = 0; day < daysBack; day++) {
-		await page.getByRole('button', { name: 'Jour précédent' }).click();
-	}
+	await page.getByRole('button', { name: 'Jour précédent' }).click();
+}
+
+/** POST an event and fail fast (with the server's actual error) instead of an `undefined` id. */
+async function expectCreated(response: {
+	ok(): boolean;
+	status(): number;
+	json(): Promise<unknown>;
+}): Promise<{ id: string }> {
+	const body = (await response.json()) as { id?: string; error?: unknown };
+	expect(response.ok(), `event creation failed (${response.status()}): ${JSON.stringify(body)}`).toBe(
+		true
+	);
+	expect(body.id).toBeTruthy();
+	return { id: body.id as string };
 }
 
 test('a durational event lands on its true hour and its true height', async ({ page, request }) => {
-	const start = fixtureAt(3, 15);
-	const end = fixtureAt(4, 45);
+	const start = yesterdayAt(3, 15);
+	const end = yesterdayAt(4, 45);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
@@ -54,9 +68,9 @@ test('a durational event lands on its true hour and its true height', async ({ p
 			details: {}
 		}
 	});
-	const { id } = await created.json();
+	const { id } = await expectCreated(created);
 
-	await openFixtureDay(page);
+	await goToYesterday(page);
 	const block = page.locator(`[data-testid="calendar-block"][data-event-id="${id}"]`);
 	await expect(block).toBeAttached();
 
@@ -68,7 +82,7 @@ test('a durational event lands on its true hour and its true height', async ({ p
 });
 
 test('touching a block opens that event in the edit sheet', async ({ page, request }) => {
-	const start = fixtureAt(2, 0);
+	const start = yesterdayAt(2, 0);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
@@ -77,9 +91,9 @@ test('touching a block opens that event in the edit sheet', async ({ page, reque
 			details: { milkType: 'formula', volumeMl: 123 }
 		}
 	});
-	const { id } = await created.json();
+	const { id } = await expectCreated(created);
 
-	await openFixtureDay(page);
+	await goToYesterday(page);
 	// A bottle has no duration: it rides the point rail, not a block.
 	await page.locator(`[data-testid="calendar-point"][data-event-id="${id}"]`).click();
 	await expect(page.getByRole('dialog')).toBeVisible();
@@ -93,19 +107,19 @@ test('a category chip hides its blocks from the grid, not just its rows', async 
 	page,
 	request
 }) => {
-	const start = fixtureAt(5, 0);
+	const start = yesterdayAt(5, 0);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
 			type: 'sleep',
 			startedAt: start.iso,
-			endedAt: fixtureAt(6, 0).iso,
+			endedAt: yesterdayAt(6, 0).iso,
 			details: {}
 		}
 	});
-	const { id } = await created.json();
+	const { id } = await expectCreated(created);
 
-	await openFixtureDay(page);
+	await goToYesterday(page);
 	const block = page.locator(`[data-testid="calendar-block"][data-event-id="${id}"]`);
 	await expect(block).toBeVisible();
 
@@ -118,18 +132,35 @@ test('a category chip hides its blocks from the grid, not just its rows', async 
 
 test('a running timer is drawn open and bounded by the current time', async ({ page, request }) => {
 	// Started 90 minutes ago, so the block's real height dominates the
-	// minimum-height floor and "ends at now" is what is actually measured.
-	const startedAt = new Date(Date.now() - 90 * 60_000).toISOString();
-	await request.post('/api/timers/sleep/start', { data: { babyId: 'baby-1', startedAt } });
+	// minimum-height floor and "ends at now" is what is actually measured —
+	// except right after local midnight: a start 90 minutes ago is clipped to
+	// the top of today's grid (dayCalendarLayout's `clippedTop`), so the
+	// visible span becomes "midnight to now", which can be under the grid's
+	// own 15-minute minimum-block floor (MIN_BLOCK_MIN in dayCalendarLayout.ts)
+	// in the first ~15 minutes of a new day. The extra tolerance below is only
+	// granted in that clipped case, so a real drift bug still fails tightly
+	// outside the midnight window.
+	const startDate = new Date(Date.now() - 90 * 60_000);
+	const startedAt = startDate.toISOString();
+	const started = await request.post('/api/timers/sleep/start', {
+		data: { babyId: 'baby-1', startedAt }
+	});
+	expect(started.ok(), `timer start failed (${started.status()})`).toBe(true);
 	try {
 		await page.goto('/history');
 		const open = page.locator('[data-testid="calendar-block"][data-open="true"]');
 		await expect(open).toBeAttached();
 		const id = (await open.getAttribute('data-event-id')) as string;
 		const span = await spanMinutesOf(page, id);
-		// It must stop at "now", never run to the bottom of the day.
-		const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-		expect(span.start + span.length).toBeLessThanOrEqual(nowMin + 2);
+		// It must stop at "now" (plus the grid's own 15-minute floor, but only
+		// when the timer's true start fell on the previous day and got clipped
+		// to the top of today's grid), never run to the bottom of the day.
+		const MIN_BLOCK_MIN = 15;
+		const now = new Date();
+		const clippedAtMidnight = startDate.toDateString() !== now.toDateString();
+		const nowMin = now.getHours() * 60 + now.getMinutes();
+		const tolerance = clippedAtMidnight ? MIN_BLOCK_MIN + 2 : 2;
+		expect(span.start + span.length).toBeLessThanOrEqual(nowMin + tolerance);
 	} finally {
 		// Stopping turns the timer into a completed sleep event; leaving it
 		// behind would make it the earliest row of the day for every later spec.
@@ -145,8 +176,8 @@ for (const width of [320, 375]) {
 			data: {
 				babyId: 'baby-1',
 				type: 'sleep',
-				startedAt: fixtureAt(1, 0).iso,
-				endedAt: fixtureAt(3, 0).iso,
+				startedAt: yesterdayAt(1, 0).iso,
+				endedAt: yesterdayAt(3, 0).iso,
 				details: {}
 			}
 		});
@@ -154,16 +185,20 @@ for (const width of [320, 375]) {
 			data: {
 				babyId: 'baby-1',
 				type: 'nursing',
-				startedAt: fixtureAt(1, 30).iso,
-				endedAt: fixtureAt(1, 50).iso,
+				startedAt: yesterdayAt(1, 30).iso,
+				endedAt: yesterdayAt(1, 50).iso,
 				details: {
-					segments: [{ side: 'left', startedAt: fixtureAt(1, 30).iso, endedAt: fixtureAt(1, 50).iso }]
+					segments: [
+						{ side: 'left', startedAt: yesterdayAt(1, 30).iso, endedAt: yesterdayAt(1, 50).iso }
+					]
 				}
 			}
 		});
+		const { id: napId } = await expectCreated(nap);
+		const { id: feedId } = await expectCreated(feed);
 
 		await page.setViewportSize({ width, height: 800 });
-		await openFixtureDay(page);
+		await goToYesterday(page);
 		await expect(page.getByTestId('calendar-track')).toBeAttached();
 
 		const overflow = await page.evaluate(() => {
@@ -180,7 +215,7 @@ for (const width of [320, 375]) {
 		expect(overflow.grid).toBeLessThanOrEqual(0);
 		expect(overflow.height).toBe(480);
 
-		await request.delete(`/api/events/${(await nap.json()).id}`);
-		await request.delete(`/api/events/${(await feed.json()).id}`);
+		await request.delete(`/api/events/${napId}`);
+		await request.delete(`/api/events/${feedId}`);
 	});
 }

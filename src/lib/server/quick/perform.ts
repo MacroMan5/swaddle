@@ -17,8 +17,8 @@ import {
 	stopTimer
 } from '../events/repo';
 import { publish, type Change } from '../events/broadcast';
-import { QuickError } from './errors';
-import { isPhraseFailure, parsePhrase } from './phrase';
+import { QuickError, type QuickErrorCode } from './errors';
+import { isPhraseFailure, parsePhrase, type PhraseFailure } from './phrase';
 import { SPOKEN_DIAPER, SPOKEN_SIDE, spokenDuration } from './speech';
 import { listQuickWords } from './words';
 import type { QuickIntent, StructuredQuickIntent } from './types';
@@ -82,25 +82,42 @@ type Outcome = { event: EventDTO; did: QuickResult['did']; speech: string };
  * vocabulary is read on every call, so a word added in the settings works on
  * the very next sentence, with no cache to invalidate and no phone to touch.
  *
- * Both refusals carry the French sentence the assistant reads back — the parent
- * is holding a phone they did not want to look at.
+ * Every refusal carries the French sentence the assistant reads back — the
+ * parent is holding a phone they did not want to look at.
  */
+const PHRASE_REFUSALS: Record<PhraseFailure['error'], { code: QuickErrorCode; message: string }> = {
+	missing_volume: {
+		code: 'missing_volume',
+		message: 'the phrase names a bottle but no volume'
+	},
+	invalid_volume: {
+		code: 'invalid_volume',
+		message: 'the phrase names a bottle with a fractional volume'
+	},
+	unrecognized: {
+		code: 'unrecognized_phrase',
+		message: 'no vocabulary word was found in the phrase'
+	}
+};
+
+function refusalSpeech(error: PhraseFailure['error'], text: string): string {
+	switch (error) {
+		case 'missing_volume':
+			return 'Il me faut le volume du biberon';
+		case 'invalid_volume':
+			return 'Le volume doit être un nombre entier de millilitres';
+		case 'unrecognized':
+			return `Je n'ai pas compris “${text.trim()}”`;
+	}
+}
+
 function resolveIntent(db: DB, intent: QuickIntent): StructuredQuickIntent {
 	if (intent.action !== 'phrase') return intent;
 
 	const parsed = parsePhrase(intent.text, listQuickWords(db));
 	if (isPhraseFailure(parsed)) {
-		if (parsed.error === 'missing_volume')
-			throw new QuickError(
-				'missing_volume',
-				'the phrase names a bottle but no volume',
-				'Il me faut le volume du biberon'
-			);
-		throw new QuickError(
-			'unrecognized_phrase',
-			'no vocabulary word was found in the phrase',
-			`Je n'ai pas compris “${intent.text.trim()}”`
-		);
+		const { code, message } = PHRASE_REFUSALS[parsed.error];
+		throw new QuickError(code, message, refusalSpeech(parsed.error, intent.text));
 	}
 	// The caller's explicit baby wins: a phrase never names one.
 	return { ...parsed, babyId: intent.babyId };

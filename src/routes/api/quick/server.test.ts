@@ -113,6 +113,15 @@ describe('POST /api/quick — phrase', () => {
 		expect(body.speech).toBe('Il me faut le volume du biberon');
 	});
 
+	it('answers 422 invalid_volume for a decimal volume', async () => {
+		const response = await post({ action: 'phrase', text: 'biberon 120,5' });
+
+		expect(response.status).toBe(422);
+		const body = await response.json();
+		expect(body.error.code).toBe('invalid_volume');
+		expect(body.speech).toBe('Le volume doit être un nombre entier de millilitres');
+	});
+
 	it('refuses a phrase that is not a string with 400', async () => {
 		const response = await post({ action: 'phrase' });
 

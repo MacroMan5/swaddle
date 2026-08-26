@@ -6,7 +6,7 @@ import type { QuickWord, StructuredQuickIntent } from './types';
  * phrasings a parent may say is testable in one file.
  */
 
-export type PhraseFailure = { error: 'unrecognized' | 'missing_volume' };
+export type PhraseFailure = { error: 'unrecognized' | 'missing_volume' | 'invalid_volume' };
 export type ParsedPhrase = StructuredQuickIntent | PhraseFailure;
 
 export function isPhraseFailure(parsed: ParsedPhrase): parsed is PhraseFailure {
@@ -48,6 +48,17 @@ const SIDE_WORDS: Record<string, 'left' | 'right'> = {
 	droit: 'right'
 };
 
+/**
+ * The first number of a sentence, decimal part included, or undefined for none.
+ *
+ * A number counts only when it stands on its own: "8h30" holds no number the
+ * parent meant as a quantity, and neither half of it is one. What follows the
+ * digits is therefore checked as much as the digits themselves.
+ */
+function firstNumberOf(normalized: string): string | undefined {
+	return normalized.match(/(?<![0-9a-z.,])\d+(?:[.,]\d+)?(?![0-9a-z])/)?.[0];
+}
+
 export function parsePhrase(text: string, words: QuickWord[]): ParsedPhrase {
 	const tokens = tokenize(text);
 
@@ -59,11 +70,20 @@ export function parsePhrase(text: string, words: QuickWord[]): ParsedPhrase {
 
 	switch (trigger.intent.action) {
 		case 'bottle': {
-			const volume = tokens.find((t) => /^\d+$/.test(t));
+			// Read off the normalised text rather than the tokens: tokenising cuts
+			// "120,5" into "120" and "5", which is indistinguishable from a whole
+			// volume followed by another number.
+			const spoken = firstNumberOf(normalizeWord(text));
 			// "Biberon" alone says nothing about how much was drunk, and guessing a
 			// volume is worse than asking for one.
-			if (volume === undefined) return { error: 'missing_volume' };
-			return { action: 'bottle', volumeMl: Number(volume) };
+			if (spoken === undefined) return { error: 'missing_volume' };
+			// The volume is the first number said, here as everywhere else in this
+			// parser — so a first number that is fractional is a fractional volume.
+			// Volumes are whole millilitres throughout the domain (FR-017): asking
+			// again beats recording 120 for a dictated "120,5". A decimal further
+			// along (a clock time, "a 8.30") is not the volume and is ignored.
+			if (/[.,]/.test(spoken)) return { error: 'invalid_volume' };
+			return { action: 'bottle', volumeMl: Number(spoken) };
 		}
 		case 'diaper':
 			return { action: 'diaper', kind: trigger.intent.kind };

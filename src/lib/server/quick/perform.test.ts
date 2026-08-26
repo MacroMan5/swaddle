@@ -259,6 +259,18 @@ describe('phrase', () => {
 		}
 	});
 
+	it('refuses a decimal volume rather than recording the truncated one', () => {
+		try {
+			performQuick(db, { action: 'phrase', text: 'biberon 120,5' }, ctx);
+			expect.unreachable('should have thrown');
+		} catch (e) {
+			expect((e as QuickError).code).toBe('invalid_volume');
+			expect((e as QuickError).speech).toBe(
+				'Le volume doit etre un nombre entier de millilitres'.replace('etre', 'être')
+			);
+		}
+	});
+
 	it('refuses a sentence holding no vocabulary word, echoing what it heard', () => {
 		try {
 			performQuick(db, { action: 'phrase', text: 'bonjour ' }, ctx);

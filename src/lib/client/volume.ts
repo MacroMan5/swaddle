@@ -96,7 +96,15 @@ export function parseVolumeValue(raw: string): number | null {
 	return Number.isFinite(value) ? value : null;
 }
 
-/** A typed field value → canonical millilitres, or null when it isn't a number. */
+/**
+ * A typed field value → canonical millilitres, or null when it isn't a number.
+ *
+ * Null on an empty field is load-bearing (issue #36): `pump.volumeMl` is
+ * nullable server-side because the volume isn't known until the session ends,
+ * so an empty field must send `null`, not `Number('') === 0` — a phantom zero
+ * that trips the generic `min(1)` rule instead of letting the server's own
+ * "volume required to close a pump session" rule apply.
+ */
 export function parseVolumeMl(raw: string, unit: VolumeUnit): number | null {
 	const value = parseVolumeValue(raw);
 	if (value === null) return null;

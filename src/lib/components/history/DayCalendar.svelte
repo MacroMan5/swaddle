@@ -4,6 +4,7 @@
 	// between feeds, the long nap — not for detail. Detail lives in the
 	// chronological list right below, which is also the reading that never
 	// depends on colour perception (NFR-005).
+	import { page } from '$app/state';
 	import { ChevronDown, ChevronUp } from '@lucide/svelte';
 	import { formatElapsed, formatTimeOfDay } from '$lib/client/format';
 	import { wallClockMinutesOf } from './timelinePosition';
@@ -41,6 +42,9 @@
 		nowMs: number;
 		onSelect: (event: EventDTO) => void;
 	} = $props();
+
+	// The household's volume unit (#44) decorates stored millilitres only.
+	const unit = $derived(page.data.volumeUnit);
 
 	/** A block only carries text once it is tall enough to hold a line without
 	 * clipping it — about an hour here (11 px label, tile-hint role). Everything
@@ -88,7 +92,7 @@
 	}
 
 	function pointAriaLabel(point: PlacedPoint): string {
-		return `${eventLabel(point.event, nowMs)}, à ${formatTimeOfDay(Date.parse(point.event.startedAt))}.`;
+		return `${eventLabel(point.event, nowMs, unit)}, à ${formatTimeOfDay(Date.parse(point.event.startedAt))}.`;
 	}
 </script>
 
@@ -153,7 +157,7 @@
 							{#if p.clippedTop}<ChevronUp size={12} class="shrink-0" aria-hidden="true" />{/if}
 							<span class="truncate">
 								{formatTimeOfDay(Date.parse(p.event.startedAt))} · {p.heightPx >= TWO_LINE_PX
-									? eventLabel(p.event, nowMs)
+									? eventLabel(p.event, nowMs, unit)
 									: typeLabel(p.event)}
 							</span>
 							{#if p.clippedBottom}<ChevronDown size={12} class="shrink-0" aria-hidden="true" />{/if}

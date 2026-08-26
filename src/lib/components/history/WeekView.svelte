@@ -2,8 +2,10 @@
 	// 7-column Mon–Sun week summary (FR-009/FR-010): direct labels on the bars
 	// (no detached legend), a week-over-week comparison and 7-day averages, and
 	// an accessible text summary carrying everything the visuals do.
+	import { page } from '$app/state';
 	import { signedDeltaLabel, weeklySummary, weekTotals } from '$lib/client/summaries';
 	import { formatElapsed } from '$lib/client/format';
+	import { formatVolume } from '$lib/client/volume';
 	import type { EventDTO } from '$lib/client/types';
 
 	let {
@@ -27,6 +29,9 @@
 	} = $props();
 
 	const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+	// Totals are summed in canonical millilitres; only the labels change (#44).
+	const unit = $derived(page.data.volumeUnit);
 
 	const week = $derived(weeklySummary(events, mondayKey, nowMs));
 	const totals = $derived(weekTotals(week));
@@ -66,7 +71,7 @@
 					const s = d.summary;
 					return (
 						`${d.dayKey} — allaitement ${formatElapsed(s.nursing.totalMs)}, sommeil ${formatElapsed(s.sleep.totalMs)}, ` +
-						`${s.bottle.count} biberon(s) (${s.bottle.totalMl} ml), ${s.pump.count} tire-lait(s) (${s.pump.totalMl} ml), ${s.diaper.count} couche(s)`
+						`${s.bottle.count} biberon(s) (${formatVolume(s.bottle.totalMl, unit)}), ${s.pump.count} tire-lait(s) (${formatVolume(s.pump.totalMl, unit)}), ${s.diaper.count} couche(s)`
 					);
 				})
 				.join(' ; ')
@@ -82,7 +87,7 @@
 		{
 			label: 'Biberons / jour',
 			bar: 'bg-feed-700',
-			value: `${Math.round(totals.bottleMl / 7)} ml`
+			value: formatVolume(Math.round(totals.bottleMl / 7), unit)
 		},
 		{
 			label: 'Couches / jour',
@@ -124,7 +129,7 @@
 						<span>{formatElapsed(day.summary.nursing.totalMs + day.summary.sleep.totalMs)}</span>
 					{/if}
 					{#if day.summary.bottle.count > 0}
-						<span>{day.summary.bottle.totalMl} ml</span>
+						<span>{formatVolume(day.summary.bottle.totalMl, unit)}</span>
 					{/if}
 					{#if day.summary.diaper.count > 0}
 						<span class="text-ink-muted">{day.summary.diaper.count} c.</span>

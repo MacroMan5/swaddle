@@ -2,11 +2,13 @@
 	// Manual after-the-fact entry (FR-006): pick a type, then the same per-type
 	// form shape as EventEditSheet. Times are editable and default to now.
 	import { getContext, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Baby, Droplets, LoaderCircle, Milk, Moon, Wind } from '@lucide/svelte';
 	import { ApiError, createEvent } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
-	import { fromLocalInputValue, parsePumpVolumeMl, toLocalInputValue } from './eventForm';
+	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import { parseVolumeMl } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type {
 		CaregiverDTO,
@@ -36,6 +38,9 @@
 	} = $props();
 
 	const store = getContext<SyncStore>('sync');
+
+	/** The household's volume unit (#44): entry only, storage stays in ml. */
+	const unit = $derived(page.data.volumeUnit);
 
 	const TYPES: { value: EventType; label: string; icon: typeof Milk }[] = [
 		{ value: 'nursing', label: 'Allaitement', icon: Baby },
@@ -151,11 +156,12 @@
 				details = { segments };
 				end = segments[segments.length - 1].endedAt;
 			} else if (selectedType === 'bottle') {
-				details = { milkType, volumeMl: Number(volumeMl) };
+				// Converted to canonical millilitres exactly once, here (#44).
+				details = { milkType, volumeMl: parseVolumeMl(volumeMl, unit) ?? NaN };
 			} else if (selectedType === 'pump') {
 				// '' -> null (issue #36), not Number('') === 0: same rule as
-				// EventEditSheet, see parsePumpVolumeMl.
-				details = { side: pumpSide, volumeMl: parsePumpVolumeMl(volumeMl) };
+				// EventEditSheet, see parseVolumeMl.
+				details = { side: pumpSide, volumeMl: parseVolumeMl(volumeMl, unit) };
 				end = fromLocalInputValue(endedAt);
 			} else if (selectedType === 'diaper') {
 				details = { pee, poo };
@@ -179,9 +185,9 @@
 		} catch (e) {
 			if (e instanceof ApiError && e.issues.length > 0) {
 				for (const issue of e.issues) {
-					if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue);
-					else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue);
-					else formError = fieldMessage(issue);
+					if (issue.path.endsWith('startedAt')) startedAtError = fieldMessage(issue, unit);
+					else if (issue.path.endsWith('volumeMl')) volumeError = fieldMessage(issue, unit);
+					else formError = fieldMessage(issue, unit);
 				}
 			} else {
 				formError = e instanceof ApiError ? e.userMessage : 'Une erreur est survenue.';
@@ -264,7 +270,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="add-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="add-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="add-volume"
 							inputmode="decimal"
@@ -298,7 +304,7 @@
 						</div>
 					</div>
 					<div class="flex flex-col gap-2">
-						<label for="add-pump-volume" class="text-ink text-base font-medium">Volume (ml)</label>
+						<label for="add-pump-volume" class="text-ink text-base font-medium">Volume ({unit})</label>
 						<input
 							id="add-pump-volume"
 							inputmode="decimal"

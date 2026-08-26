@@ -3,6 +3,7 @@
 	// are deliberately non-interactive so the tile names stay unambiguous for
 	// assistive tech (and Playwright's strict mode).
 	import { getContext } from 'svelte';
+	import { page } from '$app/state';
 	import { formatTimeOfDay } from '$lib/client/format';
 	import { eventLabel } from '$lib/components/history/eventDisplay';
 	import type { SyncStore } from '$lib/client/sync.svelte';
@@ -19,6 +20,7 @@
 		sleep: 'bg-sleep-700'
 	};
 
+	const unit = $derived(page.data.volumeUnit);
 	const recent = $derived(store.events.slice(0, 3));
 
 	function caregiverColor(id: string | null): string | null {
@@ -47,7 +49,7 @@
 					>
 					<span class="h-5 w-1 shrink-0 {BAR[CATEGORY_OF[event.type]]}" aria-hidden="true"></span>
 					<span class="text-row text-ink min-w-0 flex-1 truncate"
-						>{eventLabel(event, store.nowMs)}</span
+						>{eventLabel(event, store.nowMs, unit)}</span
 					>
 					{#if color !== null}
 						<span

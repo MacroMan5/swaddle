@@ -178,6 +178,9 @@
 			volumeUnitError = errorMessage(value);
 			return;
 		}
+		// invalidateAll also refreshes the layout data every other screen reads
+		// its volume unit from (#44), so a change here reaches Today and History
+		// without a reload.
 		await invalidateAll();
 		volumeUnitOverride = null;
 		volumeUnitPending = false;

@@ -3,6 +3,7 @@
 	// buttons opening the edit sheet; category is never color-only (the label
 	// names the type). Display rules live in ./eventDisplay so this list and the
 	// calendar grid describe the same event the same way.
+	import { page } from '$app/state';
 	import { formatElapsed, formatTimeOfDay } from '$lib/client/format';
 	import {
 		BLOCK_BARS,
@@ -29,6 +30,10 @@
 		caregivers: CaregiverDTO[];
 		onSelect: (event: EventDTO) => void;
 	} = $props();
+
+	// The household's volume unit (#44) decorates stored millilitres only.
+	const unit = $derived(page.data.volumeUnit);
+
 
 	/** Stacked start/end reads as two bare times; the accessible name spells the
 	 * span out so it is never heard as an ambiguous pair. */
@@ -93,7 +98,7 @@
 						{#if startsBeforeDay(event, dayKey)}
 							<span class="text-ink-muted">Depuis la veille · </span>
 						{/if}
-						{eventLabel(event, nowMs)}
+						{eventLabel(event, nowMs, unit)}
 						{#if endsAfterDay(event, dayKey)}
 							<span class="text-ink-muted"> · → lendemain</span>
 						{/if}

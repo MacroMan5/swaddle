@@ -7,6 +7,7 @@
 import { Baby, Droplets, Milk, Moon, Wind } from '@lucide/svelte';
 import { localDayKey } from '$lib/client/summaries';
 import { formatElapsed, nursingDurationMs } from '$lib/client/format';
+import { formatVolume, type VolumeUnit } from '$lib/client/volume';
 import { detailsOf, isPointType, isType } from '$lib/client/types';
 import type { DiaperDetails, EventDTO, NursingDetails } from '$lib/client/types';
 
@@ -100,20 +101,22 @@ export function durationMs(event: EventDTO, nowMs: number): number {
 	return Math.max(0, effectiveEndMs(event, nowMs) - Date.parse(event.startedAt));
 }
 
-/** One-line description, without the time — the time is rendered separately. */
-export function eventLabel(event: EventDTO, nowMs: number): string {
+/** One-line description, without the time — the time is rendered separately.
+ * `unit` is the household's volume unit (#44): the stored millilitres are
+ * converted for display only. */
+export function eventLabel(event: EventDTO, nowMs: number, unit: VolumeUnit): string {
 	// Kept as a switch on `type`: it is the only shape TypeScript checks for
 	// exhaustiveness, so a sixth event type breaks the build here instead of
 	// silently rendering nothing. Inside a case the type is settled, which is
 	// exactly `detailsOf`'s precondition.
 	switch (event.type) {
 		case 'bottle':
-			return `Biberon · ${detailsOf(event, 'bottle').volumeMl} ml`;
+			return `Biberon · ${formatVolume(detailsOf(event, 'bottle').volumeMl, unit)}`;
 		case 'nursing':
 			return `Allaitement · ${formatElapsed(durationMs(event, nowMs))} · ${nursingSides(detailsOf(event, 'nursing'))}`;
 		case 'pump': {
 			const { volumeMl } = detailsOf(event, 'pump');
-			return volumeMl === null ? 'Tire-lait · en cours' : `Tire-lait · ${volumeMl} ml`;
+			return volumeMl === null ? 'Tire-lait · en cours' : `Tire-lait · ${formatVolume(volumeMl, unit)}`;
 		}
 		case 'diaper':
 			return `Couche · ${diaperLabel(detailsOf(event, 'diaper'))}`;

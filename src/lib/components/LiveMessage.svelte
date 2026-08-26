@@ -1,10 +1,17 @@
 <script lang="ts">
-	// Shared status/alert live region (issue #52). `nonce` must be bumped by the
-	// caller every time `text` is (re)set — including to a value identical to
-	// the one already shown — because a live region only announces on DOM
-	// change; keying the paragraph on `nonce` forces Svelte to recreate the
-	// element so assistive tech re-announces it every time, not just when the
-	// text differs from what was already there.
+	// Shared status/alert live region (issue #52). The role container itself is
+	// always mounted, even with no message: many screen-reader/browser
+	// combinations only announce a *change inside* a live region they have
+	// already registered, not a region inserted into the DOM after the fact —
+	// so an `{#if text}`-gated element would risk the first (and any freshly
+	// mounted) outcome going unannounced. `displayed` mirrors `text` but is
+	// blanked and reset a frame later whenever `nonce` bumps, which mutates the
+	// already-registered region and forces a re-announcement even when the new
+	// text is identical to what was already shown.
+	//
+	// While empty, the element falls back to `sr-only` so it never affects
+	// layout (its caller's `class` — spacing, color — only applies once there
+	// is text to show).
 	let {
 		text,
 		kind,
@@ -18,10 +25,22 @@
 		id?: string;
 		class?: string;
 	} = $props();
+
+	let displayed = $state<string | null>(null);
+
+	$effect(() => {
+		const value = text;
+		nonce; // re-run (and re-announce) even when value is unchanged
+		if (value === null) {
+			displayed = null;
+			return;
+		}
+		displayed = null;
+		const frame = requestAnimationFrame(() => {
+			displayed = value;
+		});
+		return () => cancelAnimationFrame(frame);
+	});
 </script>
 
-{#if text}
-	{#key nonce}
-		<p {id} role={kind} class={className}>{text}</p>
-	{/key}
-{/if}
+<p {id} role={kind} class={displayed !== null ? className : 'sr-only'}>{displayed ?? ''}</p>

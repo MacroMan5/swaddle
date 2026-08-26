@@ -37,7 +37,9 @@ l'utilisateur d'abord.
 - `npm run test:e2e` — e2e Playwright (fait un build de prod ; nécessite
   `npx playwright install chromium` une première fois ; les ports 3000 et 3001
   doivent être libres). Un seul spec : `npx playwright test e2e/<nom>.spec.ts`.
-- `npm run build` — build de production (adapter-node → `build/`).
+- `npm run build` — build de production (adapter-node → `build/`) ; démarrage
+  avec `node server.js` (point d'entrée maison qui pose les en-têtes de
+  sécurité sur les fichiers statiques), jamais `node build`.
 - `docker build -t swaddle .` — image de production (`node:22-slim`, jamais Alpine).
 - CI : runner self-hosted **Windows** (`swaddle-win`) — rien de Linux-only dans
   `ci.yml` (pas de `setup-qemu-action`, pas de `--with-deps`).
@@ -69,7 +71,12 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
   `gateDecision`. Pages : `/setup` (assistant premier lancement), `/pin`
-  (déverrouillage), `/settings` (réglages complets, FR-011).
+  (déverrouillage), `/settings` (réglages complets, FR-011). Le hook applique
+  aussi `applySecurityHeaders` (`src/lib/server/securityHeaders.ts`) à toute
+  réponse ; la CSP same-origin (mode nonce, pour l'amorce de thème inline de
+  `app.html`) est configurée dans `vite.config.ts`, et `server.js` répète les
+  en-têtes de base sur les fichiers statiques servis avant le hook — contrat
+  dans `docs/api/events-api.md` § En-têtes de sécurité.
 - `src/app.css` — design tokens Tailwind v4 (`@theme`) + variables shadcn
   re-mappées ; mode sombre par classe `.dark` sur `<html>`. Toute couleur/rayon
   passe par un token (NFR-008) ; échelle typographique en tokens `--text-*`

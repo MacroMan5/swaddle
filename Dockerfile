@@ -13,11 +13,13 @@ WORKDIR /app
 ENV NODE_ENV=production DATA_DIR=/app/data PORT=3000
 COPY --from=build /app/build build
 COPY --from=build /app/node_modules node_modules
-COPY package.json .
+COPY package.json server.js ./
 # node:22-slim ships a built-in "node" user (uid 1000, gid 1000). Run as that
 # fixed identity instead of root; the mounted data volume must be owned by the
 # same uid/gid on the host (see deploy/README.md).
 RUN mkdir -p "$DATA_DIR" && chown -R node:node /app
 USER node
 EXPOSE 3000
-CMD ["node", "build"]
+# Custom entrypoint (not `node build`): it adds the security headers to the
+# static assets adapter-node serves ahead of SvelteKit (issue #55).
+CMD ["node", "server.js"]

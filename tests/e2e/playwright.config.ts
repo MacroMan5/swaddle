@@ -10,7 +10,7 @@ export default defineConfig({
 			// before Playwright starts: both servers boot concurrently, so
 			// building here would race the second server against the adapter
 			// clearing `build/` mid-write.
-			command: 'node build',
+			command: 'node server.js',
 			cwd: '../..',
 			port: 3000,
 			env: { DATA_DIR: '.playwright-data' },
@@ -19,7 +19,7 @@ export default defineConfig({
 		{
 			// Same prebuilt output; starts on an empty
 			// data dir so the onboarding wizard (AC-008) sees a fresh install.
-			command: 'node build',
+			command: 'node server.js',
 			cwd: '../..',
 			port: 3001,
 			env: { DATA_DIR: '.playwright-data-empty', PORT: '3001' },

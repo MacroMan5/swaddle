@@ -15,6 +15,26 @@ uniquement). Un corps JSON malformé, comme un `babyId` ou un `caregiverId`
 inconnu, renvoie lui aussi `400 validation_failed` — jamais une erreur SQLite
 brute.
 
+## En-têtes de sécurité (toutes les réponses)
+
+Posés par `hooks.server.ts` (`src/lib/server/securityHeaders.ts`) sur tout ce
+que l'application sert — pages, JSON, SSE, téléchargements :
+`x-content-type-options: nosniff`, `referrer-policy: same-origin`,
+`x-frame-options: DENY`, `cross-origin-opener-policy: same-origin`,
+`cross-origin-resource-policy: same-origin`, et `cache-control: no-store`
+sauf si la réponse a déjà choisi sa politique (`/api/stream` garde
+`no-cache`). Les fichiers statiques (`/_app/immutable/`, `static/`) sont
+servis par adapter-node avant le hook : c'est `server.js`, le point d'entrée
+de production (`node server.js`, et non `node build`), qui leur pose les mêmes
+en-têtes — leur cache long, lui, reste intact.
+
+Les pages HTML portent en plus une `content-security-policy` same-origin
+(configurée dans `vite.config.ts`) : `script-src 'self' 'nonce-…'` — le nonce
+par requête couvre l'amorce de thème inline de `src/app.html` —,
+`style-src 'self' 'unsafe-inline'` (attributs `style` du SSR et `<style>` des
+transitions Svelte), `frame-ancestors 'none'`, `object-src 'none'`,
+`connect-src 'self'` (SSE compris).
+
 ## EventDTO
 
 ```ts

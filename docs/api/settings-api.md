@@ -148,8 +148,12 @@ une copie de celui-ci ; un foyer restauré les recrée depuis `/settings`.
 À l'import, `quickWords` est **facultatif** (la `version` reste `1`) : un
 export antérieur à #97 se restaure toujours et laisse le vocabulaire en place.
 Présent, il remplace intégralement la table. La table `api_token` n'est jamais
-touchée par une restauration : la vider couperait chaque appareil déjà appairé,
-y compris celui qui a déclenché la restauration.
+vidée par une restauration : cela couperait chaque appareil déjà appairé, y
+compris celui qui a déclenché la restauration. Le remplacement des aidants
+détacherait toutefois chaque jeton (`ON DELETE SET NULL`) : les liens
+`jeton → aidant` sont donc capturés avant la suppression et réappliqués aux
+aidants que le payload recrée. Un lien vers un aidant absent du payload reste
+`null` — le jeton continue de fonctionner, sans attribution.
 
 → `200` avec `content-disposition: attachment;
 filename="swaddle-export-<date>.json"`.

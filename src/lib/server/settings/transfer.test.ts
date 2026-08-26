@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDb } from '$lib/server/db';
 import { EVENT_COLUMNS } from '$lib/server/events/eventRow';
 import { RepoError } from '$lib/server/events/repo';
-import { createApiToken, verifyBearer } from './apiTokens';
-import { createBaby, createCaregiver, getPinHash, setPinHash } from './repo';
+import { createApiToken, listApiTokens, verifyBearer } from './apiTokens';
+import { createBaby, createCaregiver, getPinHash, listCaregivers, setPinHash } from './repo';
 import { exportCsv, exportJson, importJson, snapshotTo } from './transfer';
 
 function seed() {
@@ -272,6 +272,45 @@ describe('quick words and api tokens in the transfer (issue #97)', () => {
 		// Restoring into the same database must not cut the family's devices off.
 		importJson(a, exported);
 		expect(verifyBearer(a, `Bearer ${plaintext}`)?.tokenId).toBe(token.id);
+	});
+
+	it('keeps a token attached to its caregiver when the restore recreates that caregiver', () => {
+		const a = seed();
+		const caregiverId = listCaregivers(a)[0].id;
+		const { plaintext, token } = createApiToken(a, { name: 'iPhone', caregiverId });
+		expect(token.caregiverId).toBe(caregiverId);
+
+		// The restore wipes and recreates the caregiver table; ON DELETE SET NULL
+		// would otherwise silently detach every token on the way through, even
+		// though the payload puts the very same caregiver ids back.
+		importJson(a, exportJson(a));
+
+		expect(listApiTokens(a)[0].caregiverId).toBe(caregiverId);
+		expect(verifyBearer(a, `Bearer ${plaintext}`)).toEqual({
+			tokenId: token.id,
+			caregiverId
+		});
+	});
+
+	it('leaves a token detached when the restored payload no longer holds its caregiver', () => {
+		const a = seed();
+		const caregiverId = listCaregivers(a)[0].id;
+		const { plaintext, token } = createApiToken(a, { name: 'iPhone', caregiverId });
+
+		// A payload from a household that has since dropped that caregiver (and
+		// the events referencing it): the link has nothing to point at any more.
+		const exported = exportJson(a);
+		exported.caregivers = [];
+		exported.events = [];
+
+		importJson(a, exported);
+
+		expect(listApiTokens(a)[0].caregiverId).toBeNull();
+		// The token itself keeps working — it just attributes to nobody.
+		expect(verifyBearer(a, `Bearer ${plaintext}`)).toEqual({
+			tokenId: token.id,
+			caregiverId: null
+		});
 	});
 });
 

@@ -302,6 +302,15 @@ export function importJson(
 	const currentPinHash = getPinHash(db);
 
 	db.transaction(() => {
+		// `DELETE FROM caregiver` below trips api_token's ON DELETE SET NULL and
+		// detaches every device from its caregiver — even though the payload is
+		// about to put the very same caregiver ids back. The links are captured
+		// here and reapplied once the caregivers exist again; a link whose
+		// caregiver the payload no longer holds stays null, which is correct.
+		const tokenLinks = db
+			.prepare('SELECT id, caregiver_id FROM api_token WHERE caregiver_id IS NOT NULL')
+			.all() as { id: string; caregiver_id: string }[];
+
 		db.exec('DELETE FROM event');
 		db.exec('DELETE FROM caregiver');
 		db.exec('DELETE FROM baby');
@@ -320,6 +329,15 @@ export function importJson(
 			'INSERT INTO caregiver (id, name, color, created_at) VALUES (?, ?, ?, ?)'
 		);
 		for (const c of caregivers) insertCaregiver.run(c.id, c.name, c.color, new Date().toISOString());
+
+		// Reattach the devices the wipe just detached. Filtered on the restored
+		// ids rather than left to the database: an UPDATE towards a caregiver the
+		// payload dropped would violate the foreign key and fail the whole
+		// restore, where null is the honest answer.
+		const restoredCaregiverIds = new Set(caregivers.map((c) => c.id));
+		const relinkToken = db.prepare('UPDATE api_token SET caregiver_id = ? WHERE id = ?');
+		for (const link of tokenLinks)
+			if (restoredCaregiverIds.has(link.caregiver_id)) relinkToken.run(link.caregiver_id, link.id);
 
 		// Written verbatim (ids and timestamps included) so a restore reproduces
 		// the export exactly. The schema types `details` as `unknown`; it has

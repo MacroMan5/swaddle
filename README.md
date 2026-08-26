@@ -43,18 +43,30 @@ Les décisions structurantes sont consignées dans `docs/adr/`.
 
 ## Installation
 
-Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
+Sur un serveur Linux avec Docker (Raspberry Pi 4+ inclus — la cible de
+référence, ADR 0002) :
 
 ```sh
-mkdir swaddle && cd swaddle
+# Bloc rejouable : `-p` fait entrer un re-run dans swaddle/ (au lieu de
+# continuer dans le répertoire courant), et un `.env` déjà présent est conservé.
+mkdir -p swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
+# Premier lancement : SWADDLE_ORIGIN doit être l'URL exacte que vos
+# navigateurs utiliseront pour joindre l'app. La ligne ci-dessous prend la
+# première IPv4 LAN du serveur (Linux) ; si vous servez plutôt un nom de
+# domaine local (reverse proxy) ou un réseau IPv6, écrivez cette URL à la
+# place dans `.env`.
+[ -f .env ] || echo "SWADDLE_ORIGIN=http://$(hostname -I | tr ' ' '\n' | grep -m1 '\.'):3010" > .env
 mkdir -p data && sudo chown -R 1000:1000 data
 docker compose pull && docker compose up -d
 ```
 
-Le Compose fonctionne avec des valeurs publiques par défaut. Pour choisir une
-version, un port, un fuseau ou un emplacement de données propres au serveur,
-utilisez le fichier local `.env` décrit dans le
+Le Compose fonctionne avec des valeurs publiques par défaut, à une exception
+près : `SWADDLE_ORIGIN` n'a pas de défaut sûr et doit désigner l'URL réelle de
+votre serveur (sans elle, le cookie de session PIN serait marqué `Secure` et
+refusé en HTTP — issue #69 ; Compose s'arrête donc immédiatement si elle
+manque). Pour choisir une version, un port, un fuseau ou un emplacement de
+données propres au serveur, utilisez le fichier local `.env` décrit dans le
 [guide de déploiement](deploy/README.md). Le conteneur tourne sous un
 utilisateur non root fixe (uid/gid `1000`) : le `chown` ci-dessus est
 nécessaire pour que le premier démarrage puisse créer la base SQLite (détails

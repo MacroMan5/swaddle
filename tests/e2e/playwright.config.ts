@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { BASE_A, PORT_A, PORT_B } from './ports';
 
 export default defineConfig({
 	testDir: '.',
@@ -10,23 +11,23 @@ export default defineConfig({
 			// before Playwright starts: both servers boot concurrently, so
 			// building here would race the second server against the adapter
 			// clearing `build/` mid-write.
-			command: 'node build',
+			command: 'node server.js',
 			cwd: '../..',
-			port: 3000,
-			env: { DATA_DIR: '.playwright-data' },
+			port: PORT_A,
+			env: { DATA_DIR: '.playwright-data', PORT: String(PORT_A) },
 			reuseExistingServer: false
 		},
 		{
 			// Same prebuilt output; starts on an empty
 			// data dir so the onboarding wizard (AC-008) sees a fresh install.
-			command: 'node build',
+			command: 'node server.js',
 			cwd: '../..',
-			port: 3001,
-			env: { DATA_DIR: '.playwright-data-empty', PORT: '3001' },
+			port: PORT_B,
+			env: { DATA_DIR: '.playwright-data-empty', PORT: String(PORT_B) },
 			reuseExistingServer: false
 		}
 	],
 	// reducedMotion keeps the Registre entrance/pulse animations out of e2e
 	// timing — specs assert layout and behavior, not motion.
-	use: { baseURL: 'http://localhost:3000', reducedMotion: 'reduce' }
+	use: { baseURL: BASE_A, reducedMotion: 'reduce' }
 });

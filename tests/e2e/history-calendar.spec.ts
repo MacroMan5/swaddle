@@ -3,6 +3,9 @@ import { expect, test, type Page } from '@playwright/test';
 // Must match dayCalendarLayout.ts — the point of asserting in minutes rather
 // than pixels is that a scale change stays a one-line edit here.
 const PX_PER_MIN = 20 / 60;
+const FIXTURE_DATE = new Date();
+FIXTURE_DATE.setDate(FIXTURE_DATE.getDate() - 1);
+FIXTURE_DATE.setHours(12, 0, 0, 0);
 
 /**
  * Where a block sits on the grid and how tall it is, in minutes since local
@@ -20,16 +23,28 @@ async function spanMinutesOf(page: Page, eventId: string): Promise<{ start: numb
 	return { start: box.top / PX_PER_MIN, length: box.height / PX_PER_MIN };
 }
 
-/** A wall-clock time earlier today, as ISO, plus its minutes-since-midnight. */
-function todayAt(hour: number, minute: number): { iso: string; minutes: number } {
-	const d = new Date();
+/** A stable completed day, as ISO, plus its minutes-since-midnight. */
+function fixtureAt(hour: number, minute: number): { iso: string; minutes: number } {
+	const d = new Date(FIXTURE_DATE);
 	d.setHours(hour, minute, 0, 0);
 	return { iso: d.toISOString(), minutes: hour * 60 + minute };
 }
 
+async function openFixtureDay(page: Page): Promise<void> {
+	await page.goto('/history');
+	const today = new Date();
+	const daysBack =
+		(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
+			Date.UTC(FIXTURE_DATE.getFullYear(), FIXTURE_DATE.getMonth(), FIXTURE_DATE.getDate())) /
+		86_400_000;
+	for (let day = 0; day < daysBack; day++) {
+		await page.getByRole('button', { name: 'Jour précédent' }).click();
+	}
+}
+
 test('a durational event lands on its true hour and its true height', async ({ page, request }) => {
-	const start = todayAt(3, 15);
-	const end = todayAt(4, 45);
+	const start = fixtureAt(3, 15);
+	const end = fixtureAt(4, 45);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
@@ -41,7 +56,7 @@ test('a durational event lands on its true hour and its true height', async ({ p
 	});
 	const { id } = await created.json();
 
-	await page.goto('/history');
+	await openFixtureDay(page);
 	const block = page.locator(`[data-testid="calendar-block"][data-event-id="${id}"]`);
 	await expect(block).toBeAttached();
 
@@ -53,7 +68,7 @@ test('a durational event lands on its true hour and its true height', async ({ p
 });
 
 test('touching a block opens that event in the edit sheet', async ({ page, request }) => {
-	const start = todayAt(2, 0);
+	const start = fixtureAt(2, 0);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
@@ -64,7 +79,7 @@ test('touching a block opens that event in the edit sheet', async ({ page, reque
 	});
 	const { id } = await created.json();
 
-	await page.goto('/history');
+	await openFixtureDay(page);
 	// A bottle has no duration: it rides the point rail, not a block.
 	await page.locator(`[data-testid="calendar-point"][data-event-id="${id}"]`).click();
 	await expect(page.getByRole('dialog')).toBeVisible();
@@ -78,19 +93,19 @@ test('a category chip hides its blocks from the grid, not just its rows', async 
 	page,
 	request
 }) => {
-	const start = todayAt(5, 0);
+	const start = fixtureAt(5, 0);
 	const created = await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
 			type: 'sleep',
 			startedAt: start.iso,
-			endedAt: todayAt(6, 0).iso,
+			endedAt: fixtureAt(6, 0).iso,
 			details: {}
 		}
 	});
 	const { id } = await created.json();
 
-	await page.goto('/history');
+	await openFixtureDay(page);
 	const block = page.locator(`[data-testid="calendar-block"][data-event-id="${id}"]`);
 	await expect(block).toBeVisible();
 
@@ -130,8 +145,8 @@ for (const width of [320, 375]) {
 			data: {
 				babyId: 'baby-1',
 				type: 'sleep',
-				startedAt: todayAt(1, 0).iso,
-				endedAt: todayAt(3, 0).iso,
+				startedAt: fixtureAt(1, 0).iso,
+				endedAt: fixtureAt(3, 0).iso,
 				details: {}
 			}
 		});
@@ -139,14 +154,16 @@ for (const width of [320, 375]) {
 			data: {
 				babyId: 'baby-1',
 				type: 'nursing',
-				startedAt: todayAt(1, 30).iso,
-				endedAt: todayAt(1, 50).iso,
-				details: { segments: [{ side: 'left', startedAt: todayAt(1, 30).iso, endedAt: todayAt(1, 50).iso }] }
+				startedAt: fixtureAt(1, 30).iso,
+				endedAt: fixtureAt(1, 50).iso,
+				details: {
+					segments: [{ side: 'left', startedAt: fixtureAt(1, 30).iso, endedAt: fixtureAt(1, 50).iso }]
+				}
 			}
 		});
 
 		await page.setViewportSize({ width, height: 800 });
-		await page.goto('/history');
+		await openFixtureDay(page);
 		await expect(page.getByTestId('calendar-track')).toBeAttached();
 
 		const overflow = await page.evaluate(() => {

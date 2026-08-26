@@ -37,6 +37,11 @@ export type ActivityChangeTransport = {
 	nursingAction(body: NursingActionBody): Promise<EventDTO>;
 };
 
+export type ActivityChangeIntents = Pick<
+	ActivityChanges,
+	'create' | 'patch' | 'delete' | 'restore' | 'startTimer' | 'stopTimer' | 'nursingAction'
+>;
+
 export const httpActivityChangeTransport: ActivityChangeTransport = {
 	create: (input) => createEvent(input),
 	patch: (id, input) => patchEvent(id, input),
@@ -54,65 +59,91 @@ export const httpActivityChangeTransport: ActivityChangeTransport = {
  */
 export class ActivityChanges {
 	#sseSequence = 0;
+	#epoch = 0;
 
 	constructor(
 		private readonly transport: ActivityChangeTransport,
 		private readonly confirm: (
 			change: ConfirmedActivityChange,
 			delivery: ActivityChangeDelivery
-		) => void
+		) => void,
+		private readonly recover: () => void
 	) {}
 
 	async create(input: CreateEventInput): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.create(input);
-		this.confirm({ kind: 'created', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'created', event }, epochAtStart, sseSequenceAtStart);
 		return event;
 	}
 
 	async delete(id: string): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.delete(id);
-		this.confirm({ kind: 'deleted', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'deleted', event }, epochAtStart, sseSequenceAtStart);
 		return event;
 	}
 
 	async patch(id: string, input: PatchEventInput): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.patch(id, input);
-		this.confirm({ kind: 'updated', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'updated', event }, epochAtStart, sseSequenceAtStart);
 		return event;
 	}
 
 	async restore(id: string): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.restore(id);
-		this.confirm({ kind: 'restored', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'restored', event }, epochAtStart, sseSequenceAtStart);
 		return event;
 	}
 
 	async startTimer(type: TimerType, body: StartTimerBody): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const result = await this.transport.startTimer(type, body);
-		this.confirm(
+		this.#confirmHttp(
 			{ kind: result.created ? 'created' : 'adopted', event: result.event },
-			{ source: 'http', sseSequenceAtStart }
+			epochAtStart,
+			sseSequenceAtStart
 		);
 		return result.event;
 	}
 
 	async stopTimer(type: TimerType, body: StopTimerBody): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.stopTimer(type, body);
-		this.confirm({ kind: 'updated', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'updated', event }, epochAtStart, sseSequenceAtStart);
 		return event;
 	}
 
 	async nursingAction(body: NursingActionBody): Promise<EventDTO> {
+		const epochAtStart = this.#epoch;
 		const sseSequenceAtStart = this.#sseSequence;
 		const event = await this.transport.nursingAction(body);
-		this.confirm({ kind: 'updated', event }, { source: 'http', sseSequenceAtStart });
+		this.#confirmHttp({ kind: 'updated', event }, epochAtStart, sseSequenceAtStart);
 		return event;
+	}
+
+	#confirmHttp(change: ConfirmedActivityChange, epochAtStart: number, sseSequenceAtStart: number): void {
+		// The transport already committed successfully. Recovery owns state after
+		// an epoch change; skip the stale incremental projection without turning a
+		// confirmed write into a retryable failure that could duplicate a create.
+		if (epochAtStart !== this.#epoch) {
+			this.recover();
+			return;
+		}
+		this.confirm(change, { source: 'http', sseSequenceAtStart });
+	}
+
+	/** Invalidates confirmations from writes begun before an authoritative reset. */
+	invalidate(): void {
+		this.#epoch++;
 	}
 
 	/** Entry used by the owned SSE adapter after it receives a confirmed change. */

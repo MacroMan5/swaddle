@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { listBabies, listCaregivers, listEvents } from '$lib/client/api';
 import { localDayKey } from '$lib/client/summaries';
-import { SyncStore } from '$lib/client/sync.svelte';
+import { SyncStore, type ActivitySyncAdapter } from '$lib/client/sync.svelte';
 import type { EventDTO, SyncKind } from '$lib/client/types';
 import { HistoryWindow } from './historyWindow.svelte';
 
@@ -61,6 +61,7 @@ function sync(kind: SyncKind, event: EventDTO) {
 }
 
 let store: SyncStore;
+let adapter: ActivitySyncAdapter;
 let view: HistoryWindow;
 
 beforeEach(() => {
@@ -71,7 +72,9 @@ beforeEach(() => {
 	]);
 	vi.mocked(listCaregivers).mockResolvedValue([]);
 	vi.mocked(listEvents).mockResolvedValue([]);
-	store = new SyncStore();
+	store = new SyncStore(undefined, (ownedAdapter) => {
+		adapter = ownedAdapter;
+	});
 	view = new HistoryWindow(store);
 });
 
@@ -101,7 +104,7 @@ describe('initial window', () => {
 		await flush();
 		vi.mocked(listEvents).mockClear();
 
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
@@ -112,7 +115,7 @@ describe('initial window', () => {
 		view.stop();
 		vi.mocked(listEvents).mockClear();
 
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 });
@@ -212,11 +215,29 @@ describe('out-of-order day responses (the CI race behind #19)', () => {
 		view.start();
 		await flush();
 
-		store.applyChange(sync('created', makeEvent({ id: 'confirmed' })));
+		adapter.change(sync('created', makeEvent({ id: 'confirmed' })));
 		baseline.resolve([makeEvent({ id: 'baseline' })]);
 		await flush();
 
 		expect(view.dayEvents.map((event) => event.id).sort()).toEqual(['baseline', 'confirmed']);
+	});
+
+	it('keeps a newer fetched baseline when replaying a stale buffered change', async () => {
+		const baseline = deferred<EventDTO[]>();
+		vi.mocked(listEvents).mockReturnValueOnce(baseline.promise);
+		view.start();
+		await flush();
+		const stale = makeEvent({ note: 'stale' });
+		const newer = makeEvent({
+			note: 'newer baseline',
+			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+		});
+
+		adapter.change(sync('updated', stale));
+		baseline.resolve([newer]);
+		await flush();
+
+		expect(view.dayEvents).toEqual([newer]);
 	});
 
 	it('replays confirmed changes onto current and previous week baselines in flight', async () => {
@@ -229,8 +250,8 @@ describe('out-of-order day responses (the CI race behind #19)', () => {
 			.mockReturnValueOnce(previousBaseline.promise);
 
 		view.setViewMode('week');
-		store.applyChange(sync('created', makeEvent({ id: 'current' })));
-		store.applyChange(
+		adapter.change(sync('created', makeEvent({ id: 'current' })));
+		adapter.change(
 			sync(
 				'created',
 				makeEvent({ id: 'previous', startedAt: new Date(2026, 7, 18, 9).toISOString() })
@@ -289,68 +310,6 @@ describe('skeleton timer', () => {
 		await first;
 		expect(view.showSkeleton).toBe(false);
 		expect(view.loading).toBe(false);
-	});
-});
-
-describe('direct merge of a confirmed write (FR-018)', () => {
-	it('inserts a created event immediately, without waiting for a refetch', () => {
-		view.mergeEvent(makeEvent());
-		expect(view.dayEvents.map((e) => e.id)).toEqual(['ev-1']);
-	});
-
-	it('replaces by id instead of duplicating', () => {
-		view.mergeEvent(makeEvent());
-		view.mergeEvent(
-			makeEvent({ note: 'edited', updatedAt: new Date(NOW.getTime() + 1000).toISOString() })
-		);
-		expect(view.dayEvents).toHaveLength(1);
-		expect(view.dayEvents[0].note).toBe('edited');
-	});
-
-	it('a stale response never regresses a newer version already displayed (updatedAt guard)', () => {
-		const newer = makeEvent({
-			note: 'second',
-			updatedAt: new Date(NOW.getTime() + 1000).toISOString()
-		});
-		const older = makeEvent({ note: 'first', updatedAt: NOW.toISOString() });
-
-		view.mergeEvent(newer);
-		view.mergeEvent(older);
-
-		expect(view.dayEvents).toHaveLength(1);
-		expect(view.dayEvents[0].note).toBe('second');
-	});
-
-	it('a stale delete never removes a newer version already displayed', () => {
-		const newer = makeEvent({ updatedAt: new Date(NOW.getTime() + 1000).toISOString() });
-		view.mergeEvent(newer);
-		view.removeEvent(makeEvent({ deletedAt: NOW.toISOString(), updatedAt: NOW.toISOString() }));
-		expect(view.dayEvents.map((e) => e.id)).toEqual(['ev-1']);
-	});
-
-	it('removes a confirmed delete from both windows', () => {
-		view.weekEvents = [makeEvent()];
-		view.mergeEvent(makeEvent());
-		const deleted = makeEvent({
-			deletedAt: NOW.toISOString(),
-			updatedAt: new Date(NOW.getTime() + 1000).toISOString()
-		});
-		view.removeEvent(deleted);
-		expect(view.dayEvents).toHaveLength(0);
-		expect(view.weekEvents).toHaveLength(0);
-	});
-
-	it('leaves the week window alone while it has never been loaded', () => {
-		view.mergeEvent(makeEvent());
-		expect(view.weekEvents).toHaveLength(0);
-	});
-
-	it('keeps the day window in ascending order, unlike the Today screen', () => {
-		const morning = makeEvent({ id: 'morning', startedAt: new Date(2026, 7, 24, 8).toISOString() });
-		const evening = makeEvent({ id: 'evening', startedAt: new Date(2026, 7, 24, 20).toISOString() });
-		view.mergeEvent(evening);
-		view.mergeEvent(morning);
-		expect(view.dayEvents.map((e) => e.id)).toEqual(['morning', 'evening']);
 	});
 });
 
@@ -430,8 +389,31 @@ describe('relayed changes (SSE and data restore)', () => {
 	});
 
 	it('a sync message reconciles the day window without a refetch', () => {
-		store.applyChange(sync('updated', makeEvent()));
+		adapter.change(sync('updated', makeEvent()));
 		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('keeps the day window ordered by start time', () => {
+		const morning = makeEvent({ id: 'morning', startedAt: new Date(2026, 7, 24, 8).toISOString() });
+		const evening = makeEvent({ id: 'evening', startedAt: new Date(2026, 7, 24, 20).toISOString() });
+		adapter.change(sync('created', evening));
+		adapter.change(sync('created', morning));
+
+		expect(view.dayEvents.map((event) => event.id)).toEqual(['morning', 'evening']);
+		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
+	});
+
+	it('does not regress or delete a newer version when stale SSE arrives later', () => {
+		const newer = makeEvent({
+			note: 'second',
+			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
+		});
+		const olderDelete = makeEvent({ deletedAt: NOW.toISOString(), updatedAt: NOW.toISOString() });
+		adapter.change(sync('updated', newer));
+		adapter.change(sync('deleted', olderDelete));
+
+		expect(view.dayEvents).toEqual([newer]);
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
@@ -443,17 +425,17 @@ describe('relayed changes (SSE and data restore)', () => {
 		});
 		const restored = makeEvent({ updatedAt: new Date(NOW.getTime() + 2_000).toISOString() });
 
-		store.applyChange(sync('created', created));
-		store.applyChange(sync('deleted', deleted));
+		adapter.change(sync('created', created));
+		adapter.change(sync('deleted', deleted));
 		expect(view.dayEvents).toEqual([]);
-		store.applyChange(sync('restored', restored));
+		adapter.change(sync('restored', restored));
 
 		expect(view.dayEvents).toEqual([restored]);
 		expect(vi.mocked(listEvents)).not.toHaveBeenCalled();
 	});
 
 	it('a reset (reconnect or restore) refetches too', () => {
-		store.applyReset({ serverTime: NOW.toISOString() });
+		adapter.reset({ serverTime: NOW.toISOString() });
 		expect(vi.mocked(listEvents)).toHaveBeenCalledTimes(1);
 	});
 
@@ -461,12 +443,12 @@ describe('relayed changes (SSE and data restore)', () => {
 		view.setViewMode('week');
 		await flush();
 		vi.mocked(listEvents).mockClear();
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		const previousWeek = makeEvent({
 			id: 'previous',
 			startedAt: new Date(2026, 7, 18, 9).toISOString()
 		});
-		store.applyChange(sync('created', previousWeek));
+		adapter.change(sync('created', previousWeek));
 
 		expect(view.dayEvents.map((event) => event.id)).toEqual(['ev-1']);
 		expect(view.weekEvents.map((event) => event.id)).toEqual(['ev-1']);
@@ -477,10 +459,10 @@ describe('relayed changes (SSE and data restore)', () => {
 	it('removes an edited activity that moved outside every loaded window', async () => {
 		view.setViewMode('week');
 		await flush();
-		store.applyChange(sync('created', makeEvent()));
+		adapter.change(sync('created', makeEvent()));
 		vi.mocked(listEvents).mockClear();
 
-		store.applyChange(
+		adapter.change(
 			sync(
 				'updated',
 				makeEvent({

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SyncStore } from './sync.svelte';
+import { SyncStore, type ActivitySyncAdapter } from './sync.svelte';
 import type { ActivityChangeTransport } from './activityChanges';
 import type { CreateEventInput, EventDTO } from './types';
 
@@ -34,12 +34,20 @@ function transport(): ActivityChangeTransport {
 	};
 }
 
+let adapter: ActivitySyncAdapter;
+
+function syncStore(http: ActivityChangeTransport): SyncStore {
+	return new SyncStore(http, (ownedAdapter) => {
+		adapter = ownedAdapter;
+	});
+}
+
 describe('activity changes', () => {
 	it('records a confirmed diaper in authoritative local state', async () => {
 		const http = transport();
 		const confirmed = diaper();
 		vi.mocked(http.create).mockResolvedValue(confirmed);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 		const input: CreateEventInput = {
@@ -64,10 +72,10 @@ describe('activity changes', () => {
 			deletedAt: new Date(NOW.getTime() + 1_000).toISOString()
 		});
 		vi.mocked(http.delete).mockResolvedValue(deleted);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
-		store.applyServerEvent(existing);
+		adapter.change({ kind: 'created', event: existing, serverTime: NOW.toISOString() });
 		const changes: unknown[] = [];
 		store.subscribeChanges((change) => changes.push(change));
 
@@ -88,10 +96,10 @@ describe('activity changes', () => {
 		const restored = diaper({ updatedAt: new Date(NOW.getTime() + 2_000).toISOString() });
 		vi.mocked(http.patch).mockResolvedValue(edited);
 		vi.mocked(http.restore).mockResolvedValue(restored);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
-		store.applyServerEvent(existing);
+		adapter.change({ kind: 'created', event: existing, serverTime: NOW.toISOString() });
 		const changes: unknown[] = [];
 		store.subscribeChanges((change) => changes.push(change));
 
@@ -108,7 +116,7 @@ describe('activity changes', () => {
 	it('does not change or announce local state when the write fails', async () => {
 		const http = transport();
 		vi.mocked(http.create).mockRejectedValue(new Error('offline'));
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 		const changes: unknown[] = [];
@@ -127,11 +135,69 @@ describe('activity changes', () => {
 		expect(changes).toEqual([]);
 	});
 
+	it('resolves a confirmed transport result without incrementally reconciling across a restore reset', async () => {
+		const http = transport();
+		let resolveWrite!: (event: EventDTO) => void;
+		vi.mocked(http.create).mockReturnValue(
+			new Promise<EventDTO>((resolve) => {
+				resolveWrite = resolve;
+			})
+		);
+		const confirmed = diaper();
+		const store = syncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		const changes: unknown[] = [];
+		store.subscribeChanges((change) => changes.push(change));
+
+		const write = store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		adapter.reset({ serverTime: NOW.toISOString() });
+		resolveWrite(confirmed);
+		await expect(write).resolves.toEqual(confirmed);
+
+		expect(store.events).toEqual([]);
+		expect(changes).toEqual([{ kind: 'reset' }, { kind: 'reset' }]);
+	});
+
+	it('reconciles a write that confirms after a reconnect snapshot', async () => {
+		const http = transport();
+		let resolveWrite!: (event: EventDTO) => void;
+		vi.mocked(http.create).mockReturnValue(
+			new Promise<EventDTO>((resolve) => {
+				resolveWrite = resolve;
+			})
+		);
+		const confirmed = diaper();
+		const store = syncStore(http);
+		store.babyId = 'baby-1';
+		store.nowMs = NOW.getTime();
+		const changes: unknown[] = [];
+		store.subscribeChanges((change) => changes.push(change));
+
+		const write = store.changes.create({
+			babyId: 'baby-1',
+			type: 'diaper',
+			startedAt: NOW.toISOString(),
+			details: { pee: true, poo: false }
+		});
+		adapter.snapshot({ serverTime: NOW.toISOString(), activeTimers: [] });
+		resolveWrite(confirmed);
+		await write;
+
+		expect(store.events).toEqual([confirmed]);
+		expect(changes).toEqual([{ kind: 'reset' }, { kind: 'created', event: confirmed }]);
+	});
+
 	it('keeps one activity when SSE confirms the HTTP result again', async () => {
 		const http = transport();
 		const confirmed = diaper();
 		vi.mocked(http.create).mockResolvedValue(confirmed);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
@@ -141,7 +207,7 @@ describe('activity changes', () => {
 			startedAt: NOW.toISOString(),
 			details: { pee: true, poo: false }
 		});
-		store.applyChange({ kind: 'created', event: confirmed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'created', event: confirmed, serverTime: NOW.toISOString() });
 
 		expect(store.events).toEqual([confirmed]);
 	});
@@ -152,7 +218,7 @@ describe('activity changes', () => {
 		const deleted = diaper({ deletedAt: NOW.toISOString() });
 		vi.mocked(http.create).mockResolvedValue(confirmed);
 		vi.mocked(http.delete).mockResolvedValue(deleted);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
@@ -163,7 +229,7 @@ describe('activity changes', () => {
 			details: { pee: true, poo: false }
 		});
 		await store.changes.delete(confirmed.id);
-		store.applyChange({ kind: 'created', event: confirmed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'created', event: confirmed, serverTime: NOW.toISOString() });
 
 		expect(store.events).toEqual([]);
 	});
@@ -178,12 +244,12 @@ describe('activity changes', () => {
 			endedAt: NOW.toISOString()
 		});
 		vi.mocked(http.startTimer).mockResolvedValue({ created: true, event: running });
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
 		await store.changes.startTimer('sleep', { babyId: 'baby-1' });
-		store.applyChange({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
 
 		expect(store.timers).toEqual([]);
 		expect(store.events).toEqual([completed]);
@@ -195,7 +261,7 @@ describe('activity changes', () => {
 		const deleted = diaper({ deletedAt: NOW.toISOString() });
 		vi.mocked(http.create).mockResolvedValue(confirmed);
 		vi.mocked(http.delete).mockResolvedValue(deleted);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
@@ -206,7 +272,7 @@ describe('activity changes', () => {
 			details: { pee: true, poo: false }
 		});
 		await store.changes.delete(confirmed.id);
-		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
 
 		expect(store.events).toEqual([confirmed]);
 	});
@@ -216,12 +282,12 @@ describe('activity changes', () => {
 		const confirmed = diaper();
 		const deleted = diaper({ deletedAt: NOW.toISOString() });
 		vi.mocked(http.delete).mockResolvedValue(deleted);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
 		await store.changes.delete(confirmed.id);
-		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
 		await store.changes.delete(confirmed.id);
 
 		expect(store.events).toEqual([]);
@@ -232,12 +298,12 @@ describe('activity changes', () => {
 		const confirmed = diaper();
 		const deleted = diaper({ deletedAt: NOW.toISOString() });
 		vi.mocked(http.delete).mockResolvedValue(deleted);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
-		store.applyChange({ kind: 'deleted', event: deleted, serverTime: NOW.toISOString() });
-		store.applyChange({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'deleted', event: deleted, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'restored', event: confirmed, serverTime: NOW.toISOString() });
 		await store.changes.delete(confirmed.id);
 
 		expect(store.events).toEqual([]);
@@ -256,7 +322,7 @@ describe('activity changes', () => {
 			note: 'newer',
 			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
 		});
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
@@ -266,7 +332,7 @@ describe('activity changes', () => {
 			startedAt: NOW.toISOString(),
 			details: { pee: true, poo: false }
 		});
-		store.applyChange({ kind: 'updated', event: newer, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'updated', event: newer, serverTime: NOW.toISOString() });
 		resolveWrite(older);
 		await write;
 
@@ -288,13 +354,12 @@ describe('activity changes', () => {
 			details: {},
 			endedAt: NOW.toISOString()
 		});
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 
 		const start = store.changes.startTimer('sleep', { babyId: 'baby-1' });
-		store.applyChange({ kind: 'created', event: running, serverTime: NOW.toISOString() });
-		store.applyChange({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
+		adapter.change({ kind: 'updated', event: completed, serverTime: NOW.toISOString() });
 		resolveStart({ created: true, event: running });
 		await start;
 
@@ -311,7 +376,7 @@ describe('activity changes', () => {
 			endedAt: null
 		});
 		vi.mocked(http.startTimer).mockResolvedValue({ created: false, event: existing });
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 		const changes: unknown[] = [];
@@ -338,10 +403,10 @@ describe('activity changes', () => {
 			updatedAt: new Date(NOW.getTime() + 60_000).toISOString()
 		});
 		vi.mocked(http.stopTimer).mockResolvedValue(completed);
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
-		store.applyServerEvent(running);
+		adapter.change({ kind: 'created', event: running, serverTime: NOW.toISOString() });
 
 		const result = await store.changes.stopTimer('sleep', { babyId: 'baby-1' });
 
@@ -367,7 +432,7 @@ describe('activity changes', () => {
 			updatedAt: new Date(NOW.getTime() + 1_000).toISOString()
 		});
 		vi.mocked(http.nursingAction).mockResolvedValueOnce(updated).mockRejectedValueOnce(new Error('offline'));
-		const store = new SyncStore(http);
+		const store = syncStore(http);
 		store.babyId = 'baby-1';
 		store.nowMs = NOW.getTime();
 

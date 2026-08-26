@@ -60,10 +60,8 @@ export class HistoryWindow {
 	// Tokens (mirroring SyncStore's #generation) discard a stale response: with
 	// manual-add/edit/delete, the SSE relay and every window change able to
 	// trigger overlapping fetches, an earlier-issued-but-slower one must never be
-	// allowed to resolve after and clobber a newer one's data (the CI race behind
-	// #19's history-edit flake — the direct merge in mergeEvent()/removeEvent()
-	// is the primary defense, these tokens are defense in depth against any other
-	// concurrent refetch still winning).
+	// allowed to resolve after and clobber a newer one's data. Incremental relay
+	// reconciliation is the primary defense; these tokens guard concurrent loads.
 	#dayFetchToken = 0;
 	#weekFetchToken = 0;
 	#prevWeekFetchToken = 0;
@@ -137,7 +135,7 @@ export class HistoryWindow {
 			if (baby) {
 				this.babyId = baby.id;
 				this.#sync.start(baby.id);
-				this.refetchCurrentView();
+				this.#refetchCurrentView();
 			}
 			this.caregivers = await listCaregivers();
 		} catch (e) {
@@ -148,7 +146,7 @@ export class HistoryWindow {
 	setDayKey(next: string): void {
 		if (next === this.dayKey) return;
 		this.dayKey = next;
-		this.refetchCurrentView();
+		this.#refetchCurrentView();
 	}
 
 	/** Switching to 'week' loads the week windows; switching back to 'day' needs
@@ -170,7 +168,7 @@ export class HistoryWindow {
 		if (changed) void this.loadDay();
 	}
 
-	refetchCurrentView(): void {
+	#refetchCurrentView(): void {
 		void this.loadDay();
 		if (this.viewMode === 'week') {
 			void this.loadWeek();
@@ -273,7 +271,7 @@ export class HistoryWindow {
 
 	#receive(change: RelayChange): void {
 		if (change.kind === 'reset') {
-			this.refetchCurrentView();
+			this.#refetchCurrentView();
 			return;
 		}
 		if (this.babyId !== null && change.event.babyId !== this.babyId) return;
@@ -332,26 +330,4 @@ export class HistoryWindow {
 		return false;
 	}
 
-	/**
-	 * Direct-merge path (slice-3 pattern): a confirmed HTTP response is applied to
-	 * the visible windows synchronously, the moment the write is confirmed — never
-	 * presented as saved only once a background refetch happens to land (FR-018).
-	 * `refetchCurrentView()` still runs afterward as reinforcement (e.g. to pick up
-	 * whether an edit moved an event out of the window), but it is not the only
-	 * path to a correct list. Goes through the shared `upsert`, so a response that
-	 * is stale by `updatedAt` can never regress a newer version already displayed.
-	 */
-	mergeEvent(event: EventDTO): void {
-		this.dayEvents = upsert(this.dayEvents, event, true, sortByStartedAtAsc);
-		if (this.weekEvents.length > 0) {
-			this.weekEvents = upsert(this.weekEvents, event, true, sortByStartedAtAsc);
-		}
-	}
-
-	/** Confirmed delete, ahead of any refetch. Takes the server's deleted event
-	 * (not a bare id) so the same `updatedAt` guard applies to removals. */
-	removeEvent(event: EventDTO): void {
-		this.dayEvents = upsert(this.dayEvents, event, false, sortByStartedAtAsc);
-		this.weekEvents = upsert(this.weekEvents, event, false, sortByStartedAtAsc);
-	}
 }

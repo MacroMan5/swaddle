@@ -2,6 +2,7 @@ import { ApiError, getTimers, listTodayEvents } from './api';
 import {
 	ActivityChanges,
 	httpActivityChangeTransport,
+	type ActivityChangeIntents,
 	type ActivityChangeTransport,
 	type ActivityChangeDelivery,
 	type ConfirmedActivityChange
@@ -16,6 +17,17 @@ import type { BabyDTO, BabyUpdateMessage, EventDTO, SnapshotMessage, SyncMessage
  * snapshot/reset (reconnect or data restore) has no single event to apply
  * incrementally and signals "refetch your window" instead. */
 export type RelayChange = ConfirmedActivityChange | { kind: 'reset' };
+
+/** Owned live/recovery adapter. Production EventSource and adapter-level tests
+ * receive this capability; it is intentionally not exposed on the view store. */
+export type ActivitySyncAdapter = {
+	open(): void;
+	error(): void;
+	snapshot(message: SnapshotMessage): void;
+	reset(message: { serverTime: string }): void;
+	change(message: SyncMessage): void;
+	baby(message: BabyUpdateMessage): void;
+};
 
 const browser = typeof window !== 'undefined';
 
@@ -51,7 +63,8 @@ function loadErrorMessage(error: unknown): string {
  * stays behind `browser`, so the state transitions below are unit-testable.
  */
 export class SyncStore {
-	readonly changes: ActivityChanges;
+	readonly changes: ActivityChangeIntents;
+	readonly #activityChanges: ActivityChanges;
 	events = $state<EventDTO[]>([]);
 	timers = $state<EventDTO[]>([]);
 	/** 'connecting' until the first open/error, then tracks the live SSE link. */
@@ -99,13 +112,14 @@ export class SyncStore {
 	#eventsRefreshSeq = 0;
 	#timersRefreshing = false;
 	#timersBuffer: { event: EventDTO; deleted: boolean }[] = [];
+	#timersRefreshSeq = 0;
 
 	/** Listeners for non-today views (history) that need to react to changes
 	 * outside today's window, which `events`/`timers` never carry. */
 	#changeListeners = new Set<(change: RelayChange) => void>();
 	#latestChanges = new Map<
 		string,
-		{ updatedAt: number; event: EventDTO }
+		{ updatedAt: number; event: EventDTO; sseSequence?: number }
 	>();
 	/** Exact HTTP confirmations that may still be echoed by SSE. Correlating
 	 * payloads avoids inventing a global order for cyclical kinds such as
@@ -116,10 +130,24 @@ export class SyncStore {
 	 * publication landed in between. */
 	#seenSseChanges = new Map<string, { key: string; sequence: number }[]>();
 
-	constructor(transport: ActivityChangeTransport = httpActivityChangeTransport) {
-		this.changes = new ActivityChanges(transport, (change, delivery) =>
-			this.#applyConfirmedChange(change, delivery)
+	constructor(
+		transport: ActivityChangeTransport = httpActivityChangeTransport,
+		exposeAdapter?: (adapter: ActivitySyncAdapter) => void
+	) {
+		this.#activityChanges = new ActivityChanges(
+			transport,
+			(change, delivery) => this.#applyConfirmedChange(change, delivery),
+			() => this.#recoverAfterSupersededWrite()
 		);
+		this.changes = this.#activityChanges;
+		exposeAdapter?.({
+			open: () => this.#handleOpen(),
+			error: () => this.#handleError(),
+			snapshot: (message) => this.#applySnapshot(message),
+			reset: (message) => this.#applyReset(message),
+			change: (message) => this.#applyChange(message),
+			baby: (message) => this.#applyBabyUpdate(message)
+		});
 	}
 
 	/** Idempotent: a repeated start() for the same baby (e.g. a remounted page) is a no-op. */
@@ -142,24 +170,24 @@ export class SyncStore {
 
 		const source = new EventSource('/api/stream');
 		this.#source = source;
-		source.addEventListener('open', () => this.handleOpen());
-		source.addEventListener('error', () => this.handleError());
+		source.addEventListener('open', () => this.#handleOpen());
+		source.addEventListener('error', () => this.#handleError());
 		source.addEventListener('snapshot', (e) =>
-			this.applySnapshot(JSON.parse((e as MessageEvent).data) as SnapshotMessage)
+			this.#applySnapshot(JSON.parse((e as MessageEvent).data) as SnapshotMessage)
 		);
 		source.addEventListener('sync', (e) =>
-			this.applyChange(JSON.parse((e as MessageEvent).data) as SyncMessage)
+			this.#applyChange(JSON.parse((e as MessageEvent).data) as SyncMessage)
 		);
 		// `reset` is emitted after a data restore (slice 5); older servers never send
 		// it, so this listener is simply inert until then (no feature detection
 		// needed).
 		source.addEventListener('reset', (e) =>
-			this.applyReset(JSON.parse((e as MessageEvent).data) as { serverTime: string })
+			this.#applyReset(JSON.parse((e as MessageEvent).data) as { serverTime: string })
 		);
 		// #46: a baby correction made elsewhere; older servers never send it, so
 		// this listener is inert until then, same as `reset` above.
 		source.addEventListener('baby', (e) =>
-			this.applyBabyUpdate(JSON.parse((e as MessageEvent).data) as BabyUpdateMessage)
+			this.#applyBabyUpdate(JSON.parse((e as MessageEvent).data) as BabyUpdateMessage)
 		);
 	}
 
@@ -169,6 +197,7 @@ export class SyncStore {
 	}
 
 	#stopTransport(): void {
+		this.#activityChanges.invalidate();
 		this.#alive = false;
 		this.#generation++;
 		// A refresh from the previous run must never be joined by the next one:
@@ -211,12 +240,12 @@ export class SyncStore {
 		}
 	}
 
-	handleOpen(): void {
+	#handleOpen(): void {
 		this.connectionState = 'connected';
 	}
 
 	/** EventSource reconnects on its own; a new snapshot restores state (FR-012). */
-	handleError(): void {
+	#handleError(): void {
 		this.connectionState = 'disconnected';
 	}
 
@@ -234,7 +263,7 @@ export class SyncStore {
 
 	/**
 	 * Fetches today's events and replaces the list — but first replays onto that
-	 * fetched baseline any change that arrived (via applyServerEvent/applyChange)
+	 * fetched baseline any confirmed change that arrived through the owned seam
 	 * while this fetch was in flight, so a `sync` racing an initial/snapshot
 	 * refresh is never lost (item 1). Independent of refreshTimers: a reset's two
 	 * refreshes no longer invalidate each other (item 2).
@@ -293,6 +322,7 @@ export class SyncStore {
 	async refreshTimers(): Promise<void> {
 		if (this.babyId === null) return;
 		const generation = this.#generation;
+		const seq = ++this.#timersRefreshSeq;
 		this.#timersRefreshing = true;
 		this.#timersBuffer = [];
 		// Active timers also arrive with every SSE snapshot, so a failed poll
@@ -300,16 +330,13 @@ export class SyncStore {
 		// better than blanking the banner. Swallowed here so the `void` call
 		// sites can never raise an unhandled rejection.
 		const result = await getTimers(this.babyId).catch(() => null);
+		if (generation !== this.#generation || seq !== this.#timersRefreshSeq) return;
 		this.#timersRefreshing = false;
 		if (result === null) {
 			this.#timersBuffer = [];
 			return;
 		}
 		const { timers } = result;
-		if (generation !== this.#generation) {
-			this.#timersBuffer = [];
-			return;
-		}
 		let merged = timers.filter((t) => this.#isMine(t));
 		for (const { event, deleted } of this.#timersBuffer) {
 			const gone = deleted || event.deletedAt !== null;
@@ -319,8 +346,29 @@ export class SyncStore {
 		this.timers = merged;
 	}
 
-	applySnapshot(message: SnapshotMessage): void {
+	#invalidateReads(): void {
+		this.#generation++;
+		this.#eventsRefreshSeq++;
+		this.#eventsInFlight = null;
+		this.#eventsRefreshing = false;
+		this.#eventsBuffer = [];
+		this.#timersRefreshSeq++;
+		this.#timersRefreshing = false;
+		this.#timersBuffer = [];
+	}
+
+	#recoverAfterSupersededWrite(): void {
+		this.#invalidateReads();
+		if (browser) {
+			void this.refreshEvents();
+			void this.refreshTimers();
+		}
+		this.#emitChange({ kind: 'reset' });
+	}
+
+	#applySnapshot(message: SnapshotMessage): void {
 		this.#setServerTime(message.serverTime);
+		this.#invalidateReads();
 		this.connectionState = 'connected';
 		this.#setTimers(message.activeTimers.filter((t) => this.#isMine(t)));
 		if (browser) void this.refreshEvents();
@@ -328,8 +376,10 @@ export class SyncStore {
 	}
 
 	/** A restore invalidates every id, so treat it like a fresh snapshot (FR-012). */
-	applyReset(message: { serverTime: string }): void {
+	#applyReset(message: { serverTime: string }): void {
 		this.#setServerTime(message.serverTime);
+		this.#activityChanges.invalidate();
+		this.#invalidateReads();
 		this.#latestChanges.clear();
 		this.#pendingHttpEchoes.clear();
 		this.#seenSseChanges.clear();
@@ -348,15 +398,15 @@ export class SyncStore {
 
 	/** #46: applies a baby correction pushed from another device. Ignored if it
 	 * names a different baby than the one this store is currently tracking. */
-	applyBabyUpdate(message: BabyUpdateMessage): void {
+	#applyBabyUpdate(message: BabyUpdateMessage): void {
 		this.#setServerTime(message.serverTime);
 		if (this.babyId !== null && message.baby.id !== this.babyId) return;
 		this.baby = message.baby;
 	}
 
-	applyChange(message: SyncMessage): void {
+	#applyChange(message: SyncMessage): void {
 		this.#setServerTime(message.serverTime);
-		this.changes.receive({ kind: message.kind, event: message.event });
+		this.#activityChanges.receive({ kind: message.kind, event: message.event });
 	}
 
 	#applyConfirmedChange(change: ConfirmedActivityChange, delivery: ActivityChangeDelivery): void {
@@ -393,6 +443,13 @@ export class SyncStore {
 		if (current !== undefined) {
 			if (updatedAt < current.updatedAt) return;
 			if (
+				delivery.source === 'http' &&
+				updatedAt === current.updatedAt &&
+				current.sseSequence !== undefined &&
+				current.sseSequence > delivery.sseSequenceAtStart
+			)
+				return;
+			if (
 				updatedAt === current.updatedAt &&
 				serialized === JSON.stringify(current.event)
 			)
@@ -400,22 +457,21 @@ export class SyncStore {
 		}
 		this.#latestChanges.set(change.event.id, {
 			updatedAt,
-			event: change.event
+			event: change.event,
+			...(delivery.source === 'sse' ? { sseSequence: delivery.sequence } : {})
 		});
-		this.applyServerEvent(change.event, change.kind === 'deleted');
+		this.#applyEventProjection(change.event, change.kind === 'deleted');
 		this.#emitChange(change);
 	}
 
 	/**
-	 * Merges one authoritative event (from an SSE `sync` message, or straight from
-	 * an HTTP response) into `events`/`timers`. Idempotent and order-independent:
+	 * Projects one authoritative event into `events`/`timers`. Idempotent and
+	 * order-independent:
 	 * `upsert` (see `eventList.ts`) ignores anything older than what is already stored by
 	 * `updatedAt`, so applying the same mutation twice — via SSE and via the HTTP
-	 * response, in either order — never duplicates or regresses state (item 5).
-	 * UI call sites use this directly after a write so the screen is correct even
-	 * with the SSE connection down (item 6).
+	 * response, in either order — never duplicates or regresses state.
 	 */
-	applyServerEvent(event: EventDTO, deleted = false): void {
+	#applyEventProjection(event: EventDTO, deleted = false): void {
 		if (!this.#isMine(event)) return;
 		const gone = deleted || event.deletedAt !== null;
 		this.#setEvents(upsert(this.events, event, !gone && this.#isToday(event), sortByStartedAtDesc));

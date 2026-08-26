@@ -127,6 +127,26 @@ describe('parsePhrase', () => {
 		});
 	});
 
+	// Only the number taken as the volume has to be whole: a dictated clock time
+	// later in the sentence says nothing about how much was drunk.
+	it.each(['biberon 120 ml a 8.30', 'biberon 120 a 8h30', 'Biberon, 120 ml. À 8,30.'])(
+		'reads the whole volume in %s despite a decimal elsewhere',
+		(text) => {
+			expect(parsePhrase(text, DEFAULTS)).toEqual({ action: 'bottle', volumeMl: 120 });
+		}
+	);
+
+	// The volume is the first number said, so a first number that is fractional
+	// is a fractional volume — refused, rather than skipped over in favour of a
+	// later one the parent did not mean as the volume.
+	it.each(['biberon a 8.30', 'biberon 8.30 120'])('refuses %s', (text) => {
+		expect(parsePhrase(text, DEFAULTS)).toEqual({ error: 'invalid_volume' });
+	});
+
+	it('takes no number out of a word that only contains digits', () => {
+		expect(parsePhrase('biberon a 8h30', DEFAULTS)).toEqual({ error: 'missing_volume' });
+	});
+
 	it('ignores a decimal that has nothing to do with a volume', () => {
 		expect(parsePhrase('dodo 1,5', DEFAULTS)).toEqual({ action: 'sleep' });
 	});

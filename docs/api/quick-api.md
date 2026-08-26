@@ -126,8 +126,10 @@ Le parsing (`src/lib/server/quick/phrase.ts`, fonction pure) :
 2. **Mot déclencheur** : le premier mot du vocabulaire rencontré **dans l'ordre
    du texte** (pas dans l'ordre du vocabulaire), en correspondance mot entier —
    « cacahuète » n'est pas « caca ». Il fixe l'action.
-3. **Modificateurs**, fixes et non configurables : le premier nombre **entier**
-   de la phrase (`120`, `120 ml`, `120 millilitres`) devient `volumeMl` ;
+3. **Modificateurs**, fixes et non configurables : le **premier nombre
+   autonome** de la phrase (`120`, `120 ml`, `120 millilitres`) devient
+   `volumeMl` — autonome au sens où il n'est collé ni à une lettre ni à une
+   autre décimale, donc « 8h30 » ne contient aucun nombre ;
    `gauche` / `droite` (ou `droit`) devient `side`. Un modificateur sans objet
    est ignoré (« dodo gauche » reste un dodo).
 
@@ -140,11 +142,15 @@ suivante, sans cache ni redémarrage.
 |---|---|
 | « biberon » sans nombre | `422 missing_volume` |
 | « biberon 120,5 » (volume décimal) | `422 invalid_volume` |
+| « biberon à 8.30 » (le seul nombre est décimal) | `422 invalid_volume` |
 | aucun mot du vocabulaire reconnu | `422 unrecognized_phrase` |
 
 Les volumes sont des millilitres **entiers** dans tout le domaine (FR-017) :
 une dictée décimale est refusée plutôt qu'arrondie en silence — enregistrer 120
-pour un « 120,5 » entendu serait un chiffre que personne n'a dit. Le refus est
+pour un « 120,5 » entendu serait un chiffre que personne n'a dit. Seul le
+nombre **retenu comme volume** est concerné : un décimal plus loin dans la
+phrase (« biberon 120 ml à 8.30 » — une heure) n'est pas le volume et est
+ignoré ; si le premier nombre est décimal, c'est le volume qui l'est. Le refus est
 propre à la quantité, pas au biberon : d'où son propre code plutôt qu'un
 `missing_volume` dont la phrase parlée (« Il me faut le volume ») serait
 malhonnête ici.

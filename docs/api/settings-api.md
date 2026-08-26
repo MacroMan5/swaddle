@@ -47,6 +47,10 @@ identifiants et leur rattachement.
 
 → `200 BabyDTO` · `400 validation_failed` · `404 not_found`.
 
+Diffuse aussi un événement SSE `baby` (voir `docs/api/events-api.md` § SSE)
+pour qu'un appareil déjà ouvert sur « Aujourd'hui » reflète la correction sans
+recharger.
+
 ### `GET /api/caregivers`
 
 → `200 { caregivers: CaregiverDTO[] }`.

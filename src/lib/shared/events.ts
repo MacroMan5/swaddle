@@ -101,3 +101,25 @@ export function detailsOf<T extends EventType>(event: EventLike, type: T): Detai
 		throw new TypeError(`expected a ${type} event, got ${event.type}`);
 	return event.details as DetailsByType[T];
 }
+
+/**
+ * Effective nursing duration (DEC-001): the sum of segment durations, so
+ * paused time is excluded by construction — a session of 10 min, a 30 min
+ * pause and 5 min lasted 15 minutes of feeding, not 45 of wall clock. An open
+ * segment counts up to `nowMs`.
+ *
+ * Part of the contract rather than of either side's presentation layer: the
+ * client shows this number on the Today screen and in the history, and the
+ * server speaks it back on `/api/quick`. One definition, both sides.
+ */
+export function nursingDurationMs(
+	// Structurally typed, not `NursingSegment[]`: only the interval matters, so
+	// callers holding a bare start/end pair need not carry a side.
+	segments: { startedAt: string; endedAt: string | null }[],
+	nowMs: number
+): number {
+	return segments.reduce((sum, s) => {
+		const end = s.endedAt === null ? nowMs : Date.parse(s.endedAt);
+		return sum + Math.max(0, end - Date.parse(s.startedAt));
+	}, 0);
+}

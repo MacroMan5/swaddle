@@ -18,19 +18,11 @@ export function formatClock(ms: number): string {
 	return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/**
- * Effective nursing duration (DEC-001): the sum of segment durations, so paused
- * time is excluded by construction. An open segment counts up to `nowMs`.
- */
-export function nursingDurationMs(
-	segments: { startedAt: string; endedAt: string | null }[],
-	nowMs: number
-): number {
-	return segments.reduce((sum, s) => {
-		const end = s.endedAt === null ? nowMs : Date.parse(s.endedAt);
-		return sum + Math.max(0, end - Date.parse(s.startedAt));
-	}, 0);
-}
+// DEC-001's effective nursing duration is a rule of the event contract, not a
+// client formatting concern: the server says it out loud too (`/api/quick`).
+// It lives in `$lib/shared/events` and is re-exported here so the client's
+// long-standing import path keeps working.
+export { nursingDurationMs } from '$lib/shared/events';
 
 /** Local-midnight boundaries of `now`'s day, as UTC ISO strings. */
 export function todayRangeIso(now: Date): { from: string; to: string } {

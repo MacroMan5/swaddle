@@ -3,6 +3,7 @@
 	import { listBabies, listCaregivers, ApiError } from '$lib/client/api';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import type { CaregiverDTO } from '$lib/client/types';
+	import { pageTitle } from '$lib/meta';
 	import ActiveTimerBanner from '$lib/components/today/ActiveTimerBanner.svelte';
 	import BottleSheet from '$lib/components/today/BottleSheet.svelte';
 	import DaySummary from '$lib/components/today/DaySummary.svelte';
@@ -80,6 +81,10 @@
 		toasts = toasts.filter((t) => t.id !== id);
 	}
 </script>
+
+<svelte:head>
+	<title>{pageTitle('Aujourd’hui')}</title>
+</svelte:head>
 
 <div class="flex min-h-[calc(100dvh-6rem)] flex-col gap-4 p-4">
 	<ActiveTimerBanner {babyId} {caregivers} onOpenNursing={() => (nursingOpen = true)} />

@@ -97,7 +97,7 @@ pause est donc exclu par construction.
 
 → `200 { babies: { id, name, birthdate, timezone }[] }`
 
-### `GET /api/events?babyId=&from=&to=&overlap=`
+### `GET /api/events?babyId=&from=&to=&overlap=&deleted=`
 
 Événements non supprimés d'un bébé, `startedAt` décroissant. `from` est inclusif,
 `to` est exclusif. `babyId` est obligatoire.
@@ -112,6 +112,12 @@ s'il a commencé la veille. En mode chevauchement, un minuteur actif
 cours et chevauche toute fenêtre à partir de son début ; les événements
 ponctuels (`bottle`, `diaper`), qui ont toujours `endedAt: null` par nature,
 continuent de suivre la règle « `startedAt` dans la fenêtre ».
+
+Avec `deleted=1`, la requête bascule vers la vue « Supprimés récemment »
+(issue #50) : uniquement les événements supprimés en douceur (`deletedAt`
+renseigné) de ce bébé, triés par `deletedAt` décroissant (le plus récemment
+supprimé en premier). `from`, `to` et `overlap` sont ignorés dans ce mode — la
+liste des supprimés n'est pas une fenêtre temporelle.
 
 → `200 { events: EventDTO[] }` · `400 validation_failed` si `babyId` manque.
 

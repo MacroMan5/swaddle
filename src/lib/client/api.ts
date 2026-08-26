@@ -99,6 +99,13 @@ export async function listEvents(
 	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
 }
 
+/** "Recently deleted" recovery list (issue #50): soft-deleted events only,
+ * most recently deleted first, unbounded by from/to (see events-api.md). */
+export async function listDeletedEvents(babyId: string): Promise<EventDTO[]> {
+	const query = new URLSearchParams({ babyId, deleted: '1' });
+	return (await getJson<{ events: EventDTO[] }>(`/api/events?${query}`)).events;
+}
+
 export async function createEvent(input: CreateEventInput): Promise<EventDTO> {
 	return sendJson<EventDTO>('POST', '/api/events', input);
 }

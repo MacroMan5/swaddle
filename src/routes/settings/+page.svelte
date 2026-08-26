@@ -3,9 +3,11 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { errorMessage } from '$lib/errors';
+	import { errorMessage, userMessage } from '$lib/errors';
+	import { MAX_BODY_BYTES } from '$lib/limits';
 	import { pageTitle } from '$lib/meta';
 	import { applyForcedThemeColor } from '$lib/client/themeColor';
+	import { reconcileStoredCaregiverId, setStoredCaregiverId } from '$lib/client/caregiverSelection';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
@@ -98,6 +100,9 @@
 			return;
 		}
 		await invalidateAll();
+		// Reconcile immediately (issue #48): deleting this device's own selection
+		// must not leave it pointing at a caregiver that no longer exists.
+		deviceCaregiverId = reconcileStoredCaregiverId(data.caregivers);
 	}
 
 	let editingCaregiverId = $state<string | null>(null);
@@ -131,13 +136,14 @@
 	}
 
 	// --- Cet appareil ---
-	let deviceCaregiverId = $state(
-		typeof window !== 'undefined' ? localStorage.getItem('swaddle.caregiverId') : null
-	);
+	// Reconciled against the authoritative list on load (issue #48): a
+	// caregiver deleted here or on another device must not linger as this
+	// device's selection.
+	let deviceCaregiverId = $state(reconcileStoredCaregiverId(data.caregivers));
 
 	function selectDeviceCaregiver(id: string) {
 		deviceCaregiverId = id;
-		localStorage.setItem('swaddle.caregiverId', id);
+		setStoredCaregiverId(id);
 	}
 
 	// --- Unité ---
@@ -282,6 +288,14 @@
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
+		// Checked before the file is read: a payload the server would reject with
+		// 413 shouldn't be loaded into memory and parsed first (issue #45), and
+		// nothing about the current data changes.
+		if (file.size > MAX_BODY_BYTES) {
+			restoreError = userMessage('payload_too_large');
+			input.value = '';
+			return;
+		}
 		const text = await file.text();
 		let parsed: unknown;
 		try {

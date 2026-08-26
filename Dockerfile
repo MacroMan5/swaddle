@@ -10,7 +10,11 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-slim
 WORKDIR /app
-ENV NODE_ENV=production DATA_DIR=/app/data PORT=3000
+# BODY_SIZE_LIMIT: adapter-node caps request bodies at 512 KiB by default,
+# which is smaller than the JSON export of a household with a couple of years
+# of events — restoring one would fail (issue #45). 10 MiB is the bound the
+# application itself enforces (src/lib/limits.ts); keep the two equal.
+ENV NODE_ENV=production DATA_DIR=/app/data PORT=3000 BODY_SIZE_LIMIT=10M
 COPY --from=build /app/build build
 COPY --from=build /app/node_modules node_modules
 COPY package.json server.js ./

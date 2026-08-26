@@ -73,6 +73,15 @@ Variables prises en charge :
 | `SWADDLE_PORT` | `3010` | Port exposé sur le réseau local |
 | `SWADDLE_DATA_DIR` | `./data` | Répertoire persistant de SQLite |
 | `TZ` | `UTC` | Fuseau horaire du conteneur |
+| `SWADDLE_BODY_SIZE_LIMIT` | `10M` | Taille maximale d'une requête (`BODY_SIZE_LIMIT`) |
+
+`SWADDLE_BODY_SIZE_LIMIT` borne la taille des requêtes acceptées, et donc
+celle d'un export JSON restaurable via **Réglages → Restaurer depuis un
+fichier…**. La valeur par défaut (10 Mo) est la même que celle appliquée par
+l'application elle-même : un fichier plus gros est refusé avec un message
+clair, sans toucher aux données ni créer d'instantané. Ne la baissez pas
+en dessous de la taille de vos exports ; l'augmenter au-delà de 10 Mo n'a
+pas d'effet, la limite applicative reste prioritaire.
 
 Un chemin relatif dans `SWADDLE_DATA_DIR` est résolu depuis le dossier qui
 contient `docker-compose.yml` (`deploy/` dans un clone du dépôt). Un chemin

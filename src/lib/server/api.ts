@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { MAX_BODY_BYTES } from '$lib/limits';
 import { RepoError } from './events/repo';
 import type { Issue, Result } from './events/types';
 
@@ -6,15 +7,61 @@ export function apiError(status: number, code: string, message: string, issues?:
 	return json({ error: { code, message, ...(issues ? { issues } : {}) } }, { status });
 }
 
-/** Reads a JSON body, turning a malformed one into a validation issue. */
+/** The 413 envelope: its own code, so the UI can say « fichier trop volumineux ». */
+export function payloadTooLarge(): Response {
+	return apiError(413, 'payload_too_large', `request body exceeds ${MAX_BODY_BYTES} bytes`);
+}
+
+/** Raised by `readJson` for a body that turned out to be over the bound. */
+export class PayloadTooLargeError extends Error {
+	readonly status = 413;
+	constructor() {
+		super(`request body exceeds ${MAX_BODY_BYTES} bytes`);
+	}
+}
+
+/**
+ * adapter-node aborts the body stream with a 413 `SvelteKitError` as soon as a
+ * request passes `BODY_SIZE_LIMIT`. That rejection surfaces on the first read
+ * of the body — which is indistinguishable from malformed JSON unless the
+ * status is looked at (issue #45). Matches `PayloadTooLargeError` too: both
+ * carry `status: 413`.
+ */
+export function isPayloadTooLarge(e: unknown): boolean {
+	return typeof e === 'object' && e !== null && (e as { status?: unknown }).status === 413;
+}
+
+const invalidJson: Result<never> = {
+	ok: false,
+	issues: [{ path: '', code: 'invalid_json', message: 'request body is not valid JSON' }]
+};
+
+/**
+ * Reads a JSON body, turning a malformed one into a validation issue. An
+ * oversized body is *not* malformed: it throws instead, so the caller answers
+ * with the 413 envelope rather than `validation_failed` — `handleRepoError`
+ * maps it for the routes that call this from inside `run` (the pin route).
+ */
 export async function readJson(request: Request): Promise<Result<unknown>> {
+	let text: string;
 	try {
-		return { ok: true, value: await request.json() };
+		text = await request.text();
+	} catch (e) {
+		if (isPayloadTooLarge(e)) throw e;
+		return invalidJson;
+	}
+
+	// A chunked request declares no content-length, so the header check in the
+	// route skeleton cannot see it; and no adapter limit applies under
+	// `vite dev`, nor if an operator raised `BODY_SIZE_LIMIT`. What was actually
+	// read is therefore measured here — before parsing it, which is the
+	// expensive half — so the bound holds on every path.
+	if (Buffer.byteLength(text, 'utf8') > MAX_BODY_BYTES) throw new PayloadTooLargeError();
+
+	try {
+		return { ok: true, value: JSON.parse(text) as unknown };
 	} catch {
-		return {
-			ok: false,
-			issues: [{ path: '', code: 'invalid_json', message: 'request body is not valid JSON' }]
-		};
+		return invalidJson;
 	}
 }
 
@@ -47,6 +94,10 @@ function sqliteConstraintCode(e: unknown): string | undefined {
 }
 
 export function handleRepoError(e: unknown): Response {
+	// Routes that read their body inside `run` (the pin route reads it after the
+	// throttle) throw past the skeleton's own size handling: the last catch has
+	// to know the 413 too, or an oversized body would surface as a 500.
+	if (isPayloadTooLarge(e)) return payloadTooLarge();
 	if (e instanceof RepoError) return apiError(repoStatus[e.code], e.code, e.message, e.issues);
 	const constraintCode = sqliteConstraintCode(e);
 	if (constraintCode === 'SQLITE_CONSTRAINT_FOREIGNKEY')

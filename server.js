@@ -1,5 +1,16 @@
 import { createServer } from 'node:http';
-import { handler } from './build/handler.js';
+
+/**
+ * Largest request body the adapter accepts — mirrors `MAX_BODY_BYTES` in
+ * `src/lib/limits.ts` (issue #45): a household's JSON export grows with years
+ * of events, and adapter-node's 512 KiB default rejects a valid one. The
+ * adapter reads `BODY_SIZE_LIMIT` when `build/handler.js` is first evaluated,
+ * so the default has to be in place before that import runs — hence the
+ * dynamic import below. An explicit env (Dockerfile, compose) still wins.
+ */
+process.env.BODY_SIZE_LIMIT ??= '10M';
+
+const { handler } = await import('./build/handler.js');
 
 /**
  * Production entrypoint (issue #55).

@@ -12,7 +12,8 @@ describe('userMessage', () => {
 		in_use: 'Impossible : des activités y sont liées.',
 		forbidden: 'Code actuel incorrect.',
 		too_many_attempts: 'Trop de tentatives. Réessayez dans quelques instants.',
-		pin_required: 'Session expirée. Entrez le code.'
+		pin_required: 'Session expirée. Entrez le code.',
+		payload_too_large: 'Fichier trop volumineux (10 Mo maximum).'
 	};
 
 	for (const [code, expected] of Object.entries(messages)) {

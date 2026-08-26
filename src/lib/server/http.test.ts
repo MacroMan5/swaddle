@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import type { RequestEvent } from '@sveltejs/kit';
+import { MAX_BODY_BYTES } from '$lib/limits';
+import { readJson } from './api';
 import { RepoError } from './events/repo';
 
 // The handler only hands `ctx.db` over to the route; keep the test off disk.
@@ -87,6 +89,79 @@ describe('handler', () => {
 				message: 'invalid thing',
 				issues: [{ path: 'n', code: 'custom', message: 'nope' }]
 			}
+		});
+	});
+
+	// Issue #45: the bound holds whether or not the request announces its size,
+	// and whether the body is read by the skeleton or by the route itself.
+	describe('the 10 MiB body bound', () => {
+		const oversized = `{"pad":"${'x'.repeat(MAX_BODY_BYTES)}"}`;
+
+		async function expectRefused(response: Response) {
+			expect(response.status).toBe(413);
+			const { error } = await response.json();
+			expect(error.code).toBe('payload_too_large');
+		}
+
+		it('refuses a body whose content-length already exceeds it', async () => {
+			let read = false;
+			const request = new Request('http://localhost/api/test', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', 'content-length': String(MAX_BODY_BYTES + 1) },
+				body: '{"name":"a"}'
+			});
+			const response = await handler({
+				schema,
+				run: () => {
+					read = true;
+					return ok();
+				}
+			})({
+				request,
+				params: {},
+				url: new URL(request.url),
+				cookies: {} as RequestEvent['cookies']
+			} as RequestEvent<Record<string, string>>);
+
+			await expectRefused(response);
+			expect(read, 'the route must not run').toBe(false);
+		});
+
+		it('refuses an oversized body that announced no content-length', async () => {
+			// A chunked request: nothing before the read can size it, so the bound
+			// is enforced on what was actually received.
+			const request = {
+				headers: new Headers({ 'content-type': 'application/json' }),
+				text: () => Promise.resolve(oversized)
+			} as unknown as Request;
+			await expectRefused(
+				await handler({ schema, run: ok })({
+					request,
+					params: {},
+					url: new URL('http://localhost/api/test'),
+					cookies: {} as RequestEvent['cookies']
+				} as RequestEvent<Record<string, string>>)
+			);
+		});
+
+		it('refuses one read inside run (the pin route shape) instead of answering 500', async () => {
+			const request = {
+				headers: new Headers({ 'content-type': 'application/json' }),
+				text: () => Promise.resolve(oversized)
+			} as unknown as Request;
+			await expectRefused(
+				await handler({
+					run: async (ctx) => {
+						await readJson(ctx.request);
+						return ok();
+					}
+				})({
+					request,
+					params: {},
+					url: new URL('http://localhost/api/test'),
+					cookies: {} as RequestEvent['cookies']
+				} as RequestEvent<Record<string, string>>)
+			);
 		});
 	});
 

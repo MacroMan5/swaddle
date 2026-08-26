@@ -25,8 +25,9 @@ test('recovers a deleted event after the undo toast has expired', async ({ page 
 	await page.getByRole('button', { name: 'Supprimer' }).click();
 	await expect(page.getByTestId('event-row').filter({ hasText: '130' })).toHaveCount(0);
 
-	// Let the 5 s undo toast expire.
-	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
+	// Let the 5 s undo toast expire. 12 s: expiry plus slack for a busy runner
+	// (#82) — a toast that closes late is tolerated here.
+	await expect(page.getByRole('status')).toBeHidden({ timeout: 12_000 });
 
 	await page.getByRole('button', { name: 'Supprimés récemment' }).click();
 	const deletedRow = page.getByTestId('recently-deleted-row').first();

@@ -48,13 +48,19 @@ Sur n'importe quelle machine avec Docker (Raspberry Pi 4+ inclus) :
 ```sh
 mkdir swaddle && cd swaddle
 curl -fsSLO https://raw.githubusercontent.com/MacroMan5/swaddle/main/deploy/docker-compose.yml
+# L'URL exacte que vos navigateurs utiliseront pour joindre l'app —
+# remplacez-la par la vôtre (nom de domaine local ou IP du serveur).
+echo "SWADDLE_ORIGIN=http://<ip-du-serveur>:3010" > .env
 mkdir -p data && sudo chown -R 1000:1000 data
 docker compose pull && docker compose up -d
 ```
 
-Le Compose fonctionne avec des valeurs publiques par défaut. Pour choisir une
-version, un port, un fuseau ou un emplacement de données propres au serveur,
-utilisez le fichier local `.env` décrit dans le
+Le Compose fonctionne avec des valeurs publiques par défaut, à une exception
+près : `SWADDLE_ORIGIN` n'a pas de défaut sûr et doit désigner l'URL réelle de
+votre serveur (sans elle, le cookie de session PIN serait marqué `Secure` et
+refusé en HTTP — issue #69 ; Compose s'arrête donc immédiatement si elle
+manque). Pour choisir une version, un port, un fuseau ou un emplacement de
+données propres au serveur, utilisez le fichier local `.env` décrit dans le
 [guide de déploiement](deploy/README.md). Le conteneur tourne sous un
 utilisateur non root fixe (uid/gid `1000`) : le `chown` ci-dessus est
 nécessaire pour que le premier démarrage puisse créer la base SQLite (détails

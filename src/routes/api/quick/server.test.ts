@@ -81,3 +81,42 @@ describe('POST /api/quick', () => {
 		expect((await response.json()).error.code).toBe('ambiguous_baby');
 	});
 });
+
+// Issue #99: the free-text intent, refused with a status a client can branch on
+// and a `speech` it can read out loud whatever the status.
+describe('POST /api/quick — phrase', () => {
+	it('performs a dictated sentence like the intent it resolves to', async () => {
+		const response = await post({ action: 'phrase', text: 'Caca !' }, 'cg-1');
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.did).toBe('logged');
+		expect(body.speech).toBe('Couche caca enregistrée');
+		expect(body.event.caregiverId).toBe('cg-1');
+	});
+
+	it('answers 422 unrecognized_phrase, with something to say', async () => {
+		const response = await post({ action: 'phrase', text: 'bonjour' });
+
+		expect(response.status).toBe(422);
+		const body = await response.json();
+		expect(body.error.code).toBe('unrecognized_phrase');
+		expect(body.speech).toBe("Je n'ai pas compris “bonjour”");
+	});
+
+	it('answers 422 missing_volume for a bottle with no number', async () => {
+		const response = await post({ action: 'phrase', text: 'biberon' });
+
+		expect(response.status).toBe(422);
+		const body = await response.json();
+		expect(body.error.code).toBe('missing_volume');
+		expect(body.speech).toBe('Il me faut le volume du biberon');
+	});
+
+	it('refuses a phrase that is not a string with 400', async () => {
+		const response = await post({ action: 'phrase' });
+
+		expect(response.status).toBe(400);
+		expect((await response.json()).error.code).toBe('validation_failed');
+	});
+});

@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { apiError } from '$lib/server/api';
 import { handler } from '$lib/server/http';
-import { performQuick, QuickError } from '$lib/server/quick/perform';
+import { QuickError, quickErrorResponse } from '$lib/server/quick/errors';
+import { performQuick } from '$lib/server/quick/perform';
 import { quickIntentSchema } from '$lib/server/quick/types';
 
 // A thin adapter over the quick module (ADR 0004): parse, delegate, answer.
@@ -16,7 +16,7 @@ export const POST: RequestHandler = handler({
 			// caregiver signs its writes; a PIN session names nobody.
 			return json(performQuick(db, body, { caregiverId: locals.apiToken?.caregiverId ?? null }));
 		} catch (e) {
-			if (e instanceof QuickError) return apiError(409, e.code, e.message);
+			if (e instanceof QuickError) return quickErrorResponse(e);
 			throw e; // RepoError and the rest are mapped by the skeleton
 		}
 	}

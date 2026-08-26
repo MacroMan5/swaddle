@@ -3,7 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { errorMessage } from '$lib/errors';
+	import { errorMessage, userMessage } from '$lib/errors';
+	import { MAX_BODY_BYTES } from '$lib/limits';
 	import { pageTitle } from '$lib/meta';
 	import { applyForcedThemeColor } from '$lib/client/themeColor';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
@@ -210,6 +211,14 @@
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		if (!file) return;
+		// Checked before the file is read: a payload the server would reject with
+		// 413 shouldn't be loaded into memory and parsed first (issue #45), and
+		// nothing about the current data changes.
+		if (file.size > MAX_BODY_BYTES) {
+			restoreError = userMessage('payload_too_large');
+			input.value = '';
+			return;
+		}
 		const text = await file.text();
 		let parsed: unknown;
 		try {

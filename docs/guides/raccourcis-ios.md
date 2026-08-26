@@ -32,30 +32,49 @@ dans la poche. S'appuie sur `POST /api/quick`
 ## 2. Le raccourci générique « Swaddle »
 
 C'est le seul raccourci nécessaire au quotidien : il accepte n'importe quelle
-phrase dictée et laisse le serveur la comprendre.
+phrase dictée et laisse le serveur la comprendre. Il se construit à la main,
+une seule fois, en 2-3 minutes — Apple n'accepte pas de fichier de raccourci
+téléchargeable hors iCloud, il n'y a donc pas de lien « installer en un
+clic ».
 
-Dans l'app **Raccourcis** :
+Touche par touche, dans l'app **Raccourcis** (icône bleue préinstallée) :
 
-1. **Nouveau raccourci**, renommé « Swaddle ».
-2. Ajouter l'action **Dicter le texte**, langue français. C'est cette action
-   qui capture ce que vous dites après « Hey Siri, Swaddle ».
-3. Ajouter l'action **Obtenir le contenu de l'URL** :
-   - **URL** : `http://swaddle.home/api/quick` (adaptez à votre adresse).
-   - **Méthode** : `POST`.
-   - **En-têtes** : `Authorization` → `Bearer swd_…` (votre jeton complet).
-   - **Corps de la requête** : JSON, avec :
-     ```json
-     { "action": "phrase", "text": "Texte dicté" }
-     ```
-     où `Texte dicté` est la **variable magique** produite par l'action
-     « Dicter le texte » de l'étape 2 (pas du texte fixe).
-4. Ajouter l'action **Obtenir la valeur du dictionnaire**, clé `speech`, sur
-   le résultat de l'action précédente (le corps JSON renvoyé par Swaddle).
-5. Ajouter l'action **Énoncer le texte** sur cette valeur.
+1. Onglet **Raccourcis** → bouton **`+`** en haut à droite → un raccourci
+   vide s'ouvre.
+2. Touchez le nom en haut (« Nouveau raccourci ») → **Renommer** → tapez
+   `Swaddle`. C'est ce nom que Siri écoute : « Hey Siri, Swaddle ».
+3. Touchez **« Ajouter une action »**, cherchez `dicter`, choisissez
+   **« Dicter le texte »** (langue : français). C'est cette action qui
+   capture ce que vous dites.
+4. Ajoutez une action (barre de recherche ou `+`), cherchez `url`,
+   choisissez **« Obtenir le contenu de l'URL »** :
+   - Dans le champ URL, tapez `http://swaddle.home/api/quick` (adaptez à
+     votre adresse).
+   - Touchez la flèche / **« Afficher plus »** de l'action pour déplier :
+     - **Méthode** : `POST`.
+     - **En-têtes** → **Ajouter un en-tête** → clé `Authorization`, valeur
+       `Bearer swd_…` : collez votre jeton complet, **précédé du mot
+       `Bearer` et d'une espace**.
+     - **Corps de la requête** : `JSON` → **Ajouter un champ** deux fois :
+       - type **Texte**, clé `action`, valeur `phrase` (texte tapé) ;
+       - type **Texte**, clé `text`, valeur → touchez le champ puis
+         choisissez la pastille **« Texte dicté »** proposée au-dessus du
+         clavier — la **variable magique** de l'étape 3, pas du texte tapé.
+5. Ajoutez l'action **« Obtenir la valeur du dictionnaire »** (cherchez
+   `dictionnaire`) : « Obtenir la **valeur** de `speech` dans `Contenu de
+   l'URL` » — tapez `speech` à la place de « clé ».
+6. Ajoutez l'action **« Énoncer le texte »** (cherchez `énoncer`) — elle se
+   branche d'elle-même sur la valeur précédente.
+7. **Terminé** en haut à droite.
+
+**Premier test sans Siri** : touchez le raccourci dans la liste → il demande
+la dictée → dites « biberon 120 » → il doit répondre à voix haute « Biberon
+120 millilitres enregistré » (et l'événement apparaît dans « Aujourd'hui »).
+Ensuite seulement, essayez « Hey Siri, Swaddle ».
 
 Côté serveur, `speech` est à la racine du corps JSON aussi bien pour une
 réponse `200` que pour une erreur `422` (`docs/api/quick-api.md` § `phrase`),
-précisément pour que l'étape 4 lise toujours une phrase utile — un succès
+précisément pour que les étapes 5-6 lisent toujours une phrase utile — un succès
 (« Biberon 120 millilitres enregistré ») comme un refus (« Je n'ai pas
 compris “bonjour” »). **Réserve à valider** : il reste à confirmer sur
 appareil que « Obtenir le contenu de l'URL » transmet bien le corps d'une

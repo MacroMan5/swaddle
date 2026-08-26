@@ -29,6 +29,11 @@ d'autres familles, c'est encore mieux — d'où l'open source.
 - **Multi-appareils** : les téléphones des deux aidants se synchronisent en
   temps réel (Server-Sent Events) sur le LAN.
 - **Vos données** : exports CSV et JSON, snapshot SQLite, restauration.
+- **Saisie vocale (Siri)** : « Hey Siri, Swaddle » → « biberon 120 » et
+  c'est enregistré — jetons API dans les réglages, vocabulaire de mots
+  personnalisable, aucun cloud. Guide pas-à-pas :
+  [`docs/guides/raccourcis-ios.md`](docs/guides/raccourcis-ios.md) ; API :
+  [`docs/api/quick-api.md`](docs/api/quick-api.md).
 
 Le détail complet du design : `docs/plans/2026-08-23-newborn-tracker-design.md`.
 

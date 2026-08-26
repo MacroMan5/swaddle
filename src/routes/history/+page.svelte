@@ -17,6 +17,7 @@
 	import ManualAddSheet from '$lib/components/history/ManualAddSheet.svelte';
 	import UndoToast from '$lib/components/UndoToast.svelte';
 	import WeekView from '$lib/components/history/WeekView.svelte';
+	import { pageTitle } from '$lib/meta';
 
 	const store = getContext<SyncStore>('sync');
 	const view = new HistoryWindow(store);
@@ -85,6 +86,10 @@
 		manualAddDefaultTime(view.dayKey, view.todayKey, view.nowMs)
 	);
 </script>
+
+<svelte:head>
+	<title>{pageTitle('Historique')}</title>
+</svelte:head>
 
 <div class="flex flex-col gap-4 p-4">
 	<div class="border-border enter flex items-center justify-between gap-2 border-b-2 pb-3">

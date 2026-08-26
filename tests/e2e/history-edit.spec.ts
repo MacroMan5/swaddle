@@ -19,6 +19,36 @@ test('manual-add sheet does not reset while open (review P1): a field keeps its 
 	await expect(page.getByRole('button', { name: 'Enregistrer' })).toBeVisible();
 });
 
+test('the edit sheet does not reset while open either: a field keeps its value across the clock tick', async ({
+	page,
+	request
+}) => {
+	// Same review-P1 rule as the manual-add sheet above, on the *edit* sheet:
+	// the page re-derives its event list every second from the corrected clock,
+	// so the DTO handed to the sheet is a fresh object each tick. The sheet's
+	// init effect must key on the event's identity, not on that object, or it
+	// re-initializes mid-entry and silently discards what the user typed.
+	await request.post('/api/events', {
+		data: {
+			babyId: 'baby-1',
+			type: 'bottle',
+			startedAt: new Date().toISOString(),
+			details: { milkType: 'formula', volumeMl: 173 }
+		}
+	});
+
+	await page.goto('/history');
+	await page.getByTestId('event-row').filter({ hasText: '173' }).click();
+	const volumeField = page.getByLabel('Volume (ml)');
+	await volumeField.fill('174');
+	await page.waitForTimeout(1500);
+	await expect(volumeField).toHaveValue('174');
+
+	// And the typed value is what actually gets saved.
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(page.getByTestId('event-row').filter({ hasText: '174' })).toHaveCount(1);
+});
+
 test('manual-add a bottle yesterday, edit its volume, delete it with undo, then let a second delete stick', async ({
 	page
 }) => {

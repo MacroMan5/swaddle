@@ -104,13 +104,28 @@
 
 	const isDirty = $derived(open && event !== null && serializeForm() !== initialForm);
 
+	/**
+	 * Identity of what the sheet is editing: the event's id while it is open,
+	 * null otherwise. The init effect below keys on this rather than on `event`
+	 * itself — the page re-derives its list as the corrected clock ticks, so the
+	 * DTO handed to us is a fresh object every second even when nothing about
+	 * the event changed. Keying on the id means an unchanged event produces an
+	 * unchanged derived value, and the effect does not re-run.
+	 */
+	const editingId = $derived(open && event !== null ? event.id : null);
+
 	$effect(() => {
-		if (!open || event === null) return;
-		// untrack: the unit only decides how the stored volume is *rendered* into
-		// the field. Tracking it would make this init effect a dependency of the
-		// layout data, and re-running it mid-entry wipes what the user typed
-		// (same failure mode as the clock tick, review P1).
-		const currentUnit = untrack(() => unit);
+		if (editingId === null) return;
+		// untrack: everything the initialization *reads* — the event's own fields
+		// and the household's unit — must stay out of the dependency set. A re-run
+		// mid-entry silently wipes what the user typed (review P1, the same
+		// failure mode the clock tick caused in ManualAddSheet).
+		untrack(initializeForm);
+	});
+
+	function initializeForm(): void {
+		if (event === null) return;
+		const currentUnit = unit;
 		caregiverId = event.caregiverId ?? '';
 		note = event.note ?? '';
 		startedAt = toLocalInputValue(new Date(Date.parse(event.startedAt)));
@@ -143,10 +158,8 @@
 				error: null
 			}));
 		}
-		// untrack: reading the form fields here must not make them effect deps,
-		// or every user edit would re-run the effect and reset the form.
-		initialForm = untrack(() => serializeForm());
-	});
+		initialForm = serializeForm();
+	}
 
 	function setSegmentSide(index: number, side: Side): void {
 		segments = segments.map((s, i) => (i === index ? { ...s, side } : s));

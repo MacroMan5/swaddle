@@ -81,13 +81,19 @@ test('#44: an ounce entry converts to the nearest whole millilitre and obeys the
 	await expect(page.getByRole('status').last()).toContainText('Biberon');
 
 	// 4,5 oz × 29,5735… = 133,08 ml → stored as the integer 133.
-	await expect(page.getByText('Biberon · 4,5 oz')).toBeVisible();
 	const { events } = await (await request.get('/api/events?babyId=baby-1')).json();
 	const created = events.filter(
 		(e: { type: string; details: { volumeMl?: number } }) =>
 			e.type === 'bottle' && e.details.volumeMl === 133
 	);
 	expect(created).toHaveLength(1);
+
+	// …and 133 ml reads back as the ounces that were typed. Asserted on the
+	// History row rather than Today's three-item recent list, whose contents
+	// depend on what the specs before this one left on the same day.
+	await page.goto('/history');
+	await expect(page.getByTestId('event-row').filter({ hasText: '4,5 oz' })).toHaveCount(1);
+	await page.goto('/');
 
 	// Over the canonical 1000 ml ceiling: the copy quotes the ounce bounds.
 	await page.getByRole('button', { name: 'Biberon' }).click();

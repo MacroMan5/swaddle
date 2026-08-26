@@ -108,6 +108,14 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		await expect(page.locator('html')).toHaveClass(/dark/);
 		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
 
+		// Wait for the save to persist before reloading: reloading mid-PATCH
+		// aborts the fetch, whose rollback path reverts the stored theme — the
+		// post-reload color then depends on whatever household state earlier
+		// specs left behind (the source of a recurring order-dependent flake).
+		await expect
+			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
+			.toBe('dark');
+
 		// Survives a reload: the inline bootstrap in app.html applies the same
 		// override before paint, so a stored forced theme never flashes the
 		// OS-tracked color first.
@@ -115,5 +123,10 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
 	} finally {
 		await page.getByRole('button', { name: 'Auto' }).click();
+		// Same persistence wait for the cleanup, so test teardown can't abort
+		// it and leak a forced theme into later specs.
+		await expect
+			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
+			.toBe('auto');
 	}
 });

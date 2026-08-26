@@ -60,19 +60,19 @@ export function handler<B = Record<string, never>>(
 	return async (event) => {
 		let body = {} as B;
 		if (schema) {
-			// The application's own bound (issue #45), checked before a byte is
-			// read and independently of how `BODY_SIZE_LIMIT` is configured — the
-			// adapter enforces the same number, but only when the env says so
-			// (and never under `vite dev`).
-			const declared = Number(event.request.headers.get('content-length'));
+			// The application's own bound (issue #45), independent of how
+			// `BODY_SIZE_LIMIT` is configured. An announced content-length is the
+			// cheap case: refused before a byte is read. A missing or unparsable
+			// header (chunked request) means "unknown", not "empty" — `readJson`
+			// then measures what it actually read and throws, so the bound holds
+			// either way.
+			const declared = Number(event.request.headers.get('content-length') ?? Number.NaN);
 			if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return payloadTooLarge();
 
 			let raw: Result<unknown>;
 			try {
 				raw = await readJson(event.request);
 			} catch (e) {
-				// A body with no usable content-length (chunked, or a lying header)
-				// is only caught mid-stream, by the adapter.
 				if (isPayloadTooLarge(e)) return payloadTooLarge();
 				throw e;
 			}

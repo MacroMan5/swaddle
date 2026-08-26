@@ -108,11 +108,10 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		await expect(page.locator('html')).toHaveClass(/dark/);
 		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
 
-		// Let the save land before reloading. A reload aborts an in-flight
-		// fetch, and the settings page reads that as a failed save and rolls the
-		// choice back (localStorage included) — which is the *page's* contract,
-		// not what this test is about: it asserts that a *stored* forced theme
-		// survives a reload.
+		// Wait for the save to persist before reloading: reloading mid-PATCH
+		// aborts the fetch, whose rollback path reverts the stored theme — the
+		// post-reload color then depends on whatever household state earlier
+		// specs left behind (the source of a recurring order-dependent flake).
 		await expect
 			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
 			.toBe('dark');
@@ -124,5 +123,10 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
 	} finally {
 		await page.getByRole('button', { name: 'Auto' }).click();
+		// Same persistence wait for the cleanup, so test teardown can't abort
+		// it and leak a forced theme into later specs.
+		await expect
+			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
+			.toBe('auto');
 	}
 });

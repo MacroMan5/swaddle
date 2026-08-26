@@ -57,7 +57,9 @@ test('bottle sheet records type, volume and rejects a 1500 ml volume inline', as
 	await expect(page.getByText(/1000/)).toBeVisible(); // inline FR-017 error, sheet stays open
 	await page.getByLabel(/volume/i).fill('90');
 	await page.getByRole('button', { name: 'Enregistrer' }).click();
-	await expect(page.getByRole('status')).toContainText('Biberon');
+	// A generous timeout: the save toast's render lands slightly after the API
+	// response settles, and that margin is tighter under WebKit than Chromium.
+	await expect(page.getByRole('status')).toContainText('Biberon', { timeout: 10_000 });
 	const { events } = await (await request.get('/api/events?babyId=baby-1')).json();
 	const bottle = events.find((e: { type: string }) => e.type === 'bottle');
 	expect(bottle.details).toMatchObject({ milkType: 'formula', volumeMl: 90 });

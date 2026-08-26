@@ -27,6 +27,48 @@
 		}
 	}
 
+	// --- Bébé (#46) ---
+	let editingBabyId = $state<string | null>(null);
+	let editBabyName = $state('');
+	let editBabyBirthdate = $state('');
+	let babyError = $state<string | null>(null);
+	// The id of the baby the last successful save applied to, so the
+	// confirmation only appears next to that baby (there is normally just
+	// one, but nothing here should assume it).
+	let babySuccessId = $state<string | null>(null);
+	let babyPending = $state(false);
+
+	function startEditBaby(baby: { id: string; name: string; birthdate: string }) {
+		editingBabyId = baby.id;
+		editBabyName = baby.name;
+		editBabyBirthdate = baby.birthdate;
+		babyError = null;
+		babySuccessId = null;
+	}
+
+	function cancelEditBaby() {
+		editingBabyId = null;
+	}
+
+	async function saveBaby(event: SubmitEvent, id: string) {
+		event.preventDefault();
+		babyError = null;
+		babySuccessId = null;
+		babyPending = true;
+		const { ok, value } = await postJson(`/api/babies/${id}`, 'PATCH', {
+			name: editBabyName,
+			birthdate: editBabyBirthdate
+		});
+		babyPending = false;
+		if (!ok) {
+			babyError = errorMessage(value);
+			return;
+		}
+		editingBabyId = null;
+		babySuccessId = id;
+		await invalidateAll();
+	}
+
 	// --- Aidants ---
 	let newCaregiverName = $state('');
 	let newCaregiverColor = $state(CAREGIVER_COLORS[0]);
@@ -283,9 +325,48 @@
 
 			<div class="divide-border-hair divide-y">
 				{#each data.babies as baby (baby.id)}
-					<div class="flex items-baseline justify-between gap-4 py-2">
-						<span class="text-label text-ink-label">Bébé</span>
-						<span class="text-value text-ink tabular-nums">{baby.name} · {baby.birthdate}</span>
+					<div class="flex flex-col gap-2 py-2">
+						{#if editingBabyId === baby.id}
+							<form class="flex flex-col gap-2" onsubmit={(e) => saveBaby(e, baby.id)}>
+								<Label for={`edit-baby-name-${baby.id}`}>Prénom</Label>
+								<Input
+									id={`edit-baby-name-${baby.id}`}
+									class="min-h-12 text-base"
+									bind:value={editBabyName}
+									required
+									maxlength={100}
+								/>
+								<Label for={`edit-baby-birthdate-${baby.id}`}>Date de naissance</Label>
+								<Input
+									id={`edit-baby-birthdate-${baby.id}`}
+									type="date"
+									class="min-h-12 text-base"
+									bind:value={editBabyBirthdate}
+									required
+								/>
+								{#if babyError}<p class="text-danger text-sm">{babyError}</p>{/if}
+								<div class="flex gap-2">
+									<Button type="submit" class="min-h-12" disabled={babyPending}
+										>{babyPending ? 'Enregistrement…' : 'Enregistrer'}</Button
+									>
+									<Button type="button" variant="outline" class="min-h-12" onclick={cancelEditBaby}
+										>Annuler</Button
+									>
+								</div>
+							</form>
+						{:else}
+							<div class="flex items-baseline justify-between gap-4">
+								<span class="text-label text-ink-label">Bébé</span>
+								<span class="text-value text-ink tabular-nums">{baby.name} · {baby.birthdate}</span>
+								<Button
+									variant="outline"
+									class="min-h-12"
+									aria-label={`Modifier ${baby.name}`}
+									onclick={() => startEditBaby(baby)}>Modifier</Button
+								>
+							</div>
+							{#if babySuccessId === baby.id}<p class="text-ink-muted text-sm">Profil du bébé mis à jour.</p>{/if}
+						{/if}
 					</div>
 				{:else}
 					<p class="text-ink-muted py-2">Aucun bébé enregistré.</p>

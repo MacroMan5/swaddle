@@ -39,6 +39,29 @@ test('AC-009: pin unlock with a persistent per-device session', async ({ request
 	await context.close();
 });
 
+test('the PIN session cookie is not Secure over plain HTTP (issue #69)', async ({ request }) => {
+	// Regression guard: without ORIGIN set (playwright.config.ts), adapter-node
+	// assumes https and the session cookie's Secure attribute would be sent
+	// even though this suite runs over plain HTTP — a browser then drops the
+	// cookie and the PIN gate loops forever. WebKit enforces the cookie spec
+	// strictly where Chromium's localhost leniency would hide this. Runs
+	// before the brute-force test below so the throttle is still reset.
+	await request.put(`${B}/api/household/pin`, { data: { pin: '1234' } });
+	try {
+		const res = await fetch(`${B}/api/auth/pin`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ pin: '1234' })
+		});
+		expect(res.ok).toBeTruthy();
+		const setCookie = res.headers.get('set-cookie') ?? '';
+		expect(setCookie).toContain('swaddle_session=');
+		expect(setCookie.toLowerCase()).not.toContain('secure');
+	} finally {
+		await request.delete(`${B}/api/household/pin`, { data: { currentPin: '1234' } });
+	}
+});
+
 test('brute-force throttle: 5 wrong PINs lock out further attempts for a while', async ({
 	request
 }) => {

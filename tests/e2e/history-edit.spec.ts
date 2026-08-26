@@ -86,7 +86,9 @@ test('manual-add a bottle yesterday, edit its volume, delete it with undo, then 
 	await page.getByTestId('event-row').filter({ hasText: 'Biberon' }).click();
 	await page.getByRole('button', { name: 'Supprimer' }).click();
 	await expect(page.getByRole('status')).toBeVisible();
-	await expect(page.getByRole('status')).toBeHidden({ timeout: 7000 });
+	// 12 s: 5 s expiry plus slack for a busy runner (#82) — a toast that closes
+	// late is tolerated, one that closes early fails the toBeVisible above.
+	await expect(page.getByRole('status')).toBeHidden({ timeout: 12_000 });
 	await page.reload();
 	await page.getByRole('button', { name: 'Jour précédent' }).click();
 	await expect(page.getByTestId('event-row').filter({ hasText: 'Biberon' })).toHaveCount(0);

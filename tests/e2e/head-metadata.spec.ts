@@ -115,6 +115,13 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		await expect
 			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
 			.toBe('dark');
+		// The poll above proves the SERVER persisted — not that the page's own
+		// PATCH fetch resolved. Reloading in that gap still aborts the response
+		// in flight and runs the rollback, which strips the stored theme from
+		// localStorage during unload while the server stays dark (#73's shape,
+		// seen twice on CI on 2026-08-26). The sr-only confirmation is written
+		// strictly after the fetch resolved, so waiting for it closes the gap.
+		await expect(page.getByText('Thème mis à jour : Sombre.')).toBeAttached();
 
 		// Survives a reload: the inline bootstrap in app.html applies the same
 		// override before paint, so a stored forced theme never flashes the
@@ -128,5 +135,8 @@ test('forcing a theme overrides the active theme-color, immediately and after a 
 		await expect
 			.poll(async () => (await (await page.request.get('/api/household')).json()).theme)
 			.toBe('auto');
+		// Same fetch-resolution wait as above, so teardown can't abort the
+		// cleanup PATCH and leak the forced theme through localStorage.
+		await expect(page.getByText('Thème mis à jour : Auto.')).toBeAttached();
 	}
 });

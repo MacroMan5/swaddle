@@ -1,7 +1,7 @@
 # 0004 — Surface d'intégration : tokens API et endpoint quick
 
 - **Date** : 2026-08-26
-- **Statut** : proposée
+- **Statut** : acceptée
 
 ## Contexte
 

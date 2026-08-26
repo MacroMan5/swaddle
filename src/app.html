@@ -12,6 +12,22 @@
 				var theme = localStorage.getItem('swaddle.theme');
 				var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 				if (dark) document.documentElement.classList.add('dark');
+
+				// The `media="(prefers-color-scheme: ...)"` theme-color pair rendered by
+				// +layout.svelte only ever tracks the OS preference, so a stored
+				// light/dark (not "auto") choice needs its own override here too,
+				// applied before paint so the browser chrome never flashes the OS
+				// color first. $lib/client/themeColor.ts keeps this in sync at
+				// runtime (e.g. from the settings page). Hex values must stay in
+				// sync with THEME_COLOR_LIGHT/THEME_COLOR_DARK in src/lib/meta.ts —
+				// this script runs unbundled, so it cannot import that module.
+				if (theme === 'dark' || theme === 'light') {
+					var meta = document.createElement('meta');
+					meta.setAttribute('name', 'theme-color');
+					meta.setAttribute('content', theme === 'dark' ? '#16151a' : '#faf9f7');
+					meta.setAttribute('data-forced-theme-color', '');
+					document.head.insertBefore(meta, document.head.firstChild);
+				}
 			})();
 		</script>
 		%sveltekit.head%

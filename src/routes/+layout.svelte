@@ -21,6 +21,9 @@
 	<link rel="icon" href={favicon} />
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<meta name="description" content={APP_DESCRIPTION} />
+	<!-- OS-tracking default for the "auto" theme choice. A stored light/dark
+	     (forced) choice overrides this with an unconditioned meta inserted
+	     ahead of these two — see src/app.html and $lib/client/themeColor.ts. -->
 	<meta name="theme-color" media="(prefers-color-scheme: light)" content={THEME_COLOR_LIGHT} />
 	<meta name="theme-color" media="(prefers-color-scheme: dark)" content={THEME_COLOR_DARK} />
 </svelte:head>

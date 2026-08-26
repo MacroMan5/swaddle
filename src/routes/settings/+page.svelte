@@ -5,6 +5,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { errorMessage } from '$lib/errors';
 	import { pageTitle } from '$lib/meta';
+	import { applyForcedThemeColor } from '$lib/client/themeColor';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 
 	let { data } = $props();
@@ -129,6 +130,7 @@
 		const dark =
 			t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 		document.documentElement.classList.toggle('dark', dark);
+		applyForcedThemeColor(t);
 	}
 
 	async function setTheme(t: 'light' | 'dark' | 'auto') {

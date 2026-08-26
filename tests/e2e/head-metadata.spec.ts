@@ -1,10 +1,24 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 // Relative import: $lib aliases do not resolve in Playwright test files (see
 // global-setup.ts).
-import { APP_DESCRIPTION, pageTitle } from '../../src/lib/meta';
+import { APP_DESCRIPTION, THEME_COLOR_DARK, pageTitle } from '../../src/lib/meta';
 import { BASE_B } from './ports';
 
 const B = BASE_B;
+
+// Mirrors the browser's own theme-color selection algorithm: the first
+// <meta name="theme-color"> whose `media` matches wins (an unconditioned
+// meta, like the forced-theme override, always matches).
+function activeThemeColor(page: Page): Promise<string | null> {
+	return page.evaluate(() => {
+		const metas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+		const active = metas.find((m) => {
+			const media = m.getAttribute('media');
+			return !media || window.matchMedia(media).matches;
+		});
+		return active?.getAttribute('content') ?? null;
+	});
+}
 
 // Issue #51: every user-facing route gets a distinct, descriptive title
 // ending in "Swaddle", plus shared description/theme-color/apple-touch-icon
@@ -81,4 +95,25 @@ test('shared metadata (description, theme-color, apple-touch-icon) is present', 
 
 	const iconRes = await page.request.get('/apple-touch-icon.png');
 	expect(iconRes.ok()).toBeTruthy();
+});
+
+test('forcing a theme overrides the active theme-color, immediately and after a reload', async ({
+	page
+}) => {
+	await page.goto('/settings');
+	try {
+		// Immediate: the settings page applies the forced color at runtime
+		// (src/lib/client/themeColor.ts), without waiting for a reload.
+		await page.getByRole('button', { name: 'Sombre' }).click();
+		await expect(page.locator('html')).toHaveClass(/dark/);
+		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
+
+		// Survives a reload: the inline bootstrap in app.html applies the same
+		// override before paint, so a stored forced theme never flashes the
+		// OS-tracked color first.
+		await page.reload();
+		expect(await activeThemeColor(page)).toBe(THEME_COLOR_DARK);
+	} finally {
+		await page.getByRole('button', { name: 'Auto' }).click();
+	}
 });

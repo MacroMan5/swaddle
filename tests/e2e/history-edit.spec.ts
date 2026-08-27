@@ -100,7 +100,10 @@ test('a single-segment nursing session can be split per side from the edit sheet
 }) => {
 	// Recorded as one left-only segment — the shape issue #119 is about: all the
 	// time lives in one segment and the old editor could never redistribute it.
-	const startMs = Date.now() - 30 * 60_000;
+	// Two days back: today and yesterday belong to other specs (shared DB under
+	// `workers: 1`), so on a quiet day this session is the only nursing row and
+	// nothing leaks into their row counts.
+	const startMs = Date.now() - 2 * 24 * 60 * 60_000;
 	await request.post('/api/events', {
 		data: {
 			babyId: 'baby-1',
@@ -120,6 +123,8 @@ test('a single-segment nursing session can be split per side from the edit sheet
 	});
 
 	await page.goto('/history');
+	await page.getByRole('button', { name: 'Jour précédent' }).click();
+	await page.getByRole('button', { name: 'Jour précédent' }).click();
 	const row = page.getByTestId('event-row').filter({ hasText: 'Allaitement' });
 	await row.click();
 

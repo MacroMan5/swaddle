@@ -105,7 +105,7 @@ describe('buildSegments', () => {
 
 	it('rejects a missing, zero or garbled duration with a row error', () => {
 		const { anchorIso, rows } = rowsFromSegments(session());
-		for (const bad of ['', '0', 'abc', '-3']) {
+		for (const bad of ['', '0', 'abc', '-3', '1000000000']) {
 			const built = buildSegments(anchorIso, setMinutes(rows, 1, bad));
 			expect(built.ok).toBe(false);
 			if (built.ok) throw new Error('expected errors');
@@ -160,9 +160,12 @@ describe('removeRow', () => {
 		const { anchorIso, rows } = rowsFromSegments(original);
 		// The user clears the first duration, then decides to remove the row
 		// instead (Codex review P2): the walk hits NaN, so re-anchoring must
-		// fall back to the current anchor rather than crash.
+		// fall back to the current anchor rather than crash. A pasted duration
+		// beyond any valid Date is the same story.
+		for (const bad of ['', '1000000000']) {
+			expect(removeRow(anchorIso, setMinutes(rows, 0, bad), 0).anchorIso).toBe(anchorIso);
+		}
 		const removed = removeRow(anchorIso, setMinutes(rows, 0, ''), 0);
-		expect(removed.anchorIso).toBe(anchorIso);
 		const built = buildSegments(removed.anchorIso, removed.rows);
 		if (!built.ok) throw new Error('expected ok');
 		expect(built.segments[0]).toMatchObject({ side: 'right' });

@@ -32,6 +32,10 @@ export type BuildResult =
 	| { ok: false; errors: (string | null)[] };
 
 const MINUTE_MS = 60_000;
+/** Sanity bound on typed minutes: a segment or pause beyond 24 h is garble,
+ * and rejecting it here also keeps every computed timestamp inside the range
+ * `Date` can represent (Codex review: a pasted 1e9 minutes must not throw). */
+const MAX_TYPED_MINUTES = 24 * 60;
 
 function roundedMinutes(ms: number): string {
 	return String(Math.round(ms / MINUTE_MS));
@@ -80,6 +84,7 @@ function durationMsOf(row: SegmentRow): number | null {
 		return Number.isFinite(row.exactDurationMs) ? row.exactDurationMs : null;
 	const minutes = parsedMinutes(row.minutes);
 	if (row.minutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) return null;
+	if (minutes > MAX_TYPED_MINUTES) return null;
 	return Math.round(minutes * MINUTE_MS);
 }
 
@@ -88,8 +93,13 @@ function gapMsOf(row: SegmentRow): number | null {
 	if (row.exactGapMs !== null) return Number.isFinite(row.exactGapMs) ? row.exactGapMs : null;
 	if (row.pause.trim() === '') return 0;
 	const minutes = parsedMinutes(row.pause);
-	if (!Number.isFinite(minutes) || minutes < 0) return null;
+	if (!Number.isFinite(minutes) || minutes < 0 || minutes > MAX_TYPED_MINUTES) return null;
 	return Math.round(minutes * MINUTE_MS);
+}
+
+/** True when `ms` is a timestamp `Date` can actually serialize. */
+function withinDateRange(ms: number): boolean {
+	return Number.isFinite(ms) && Math.abs(ms) <= 8.64e15;
 }
 
 /**
@@ -189,7 +199,7 @@ export function removeRow(
 		return {
 			// If the removed row's values did not parse, its end is unknowable:
 			// keep the current anchor rather than crash re-anchoring on NaN.
-			anchorIso: Number.isFinite(starts[1]) ? isoAt(starts[1], next) : anchorIso,
+			anchorIso: withinDateRange(starts[1]) ? isoAt(starts[1], next) : anchorIso,
 			rows: kept.map((r, i) => (i === 0 ? { ...r, pause: '0', exactGapMs: 0 } : r))
 		};
 	}
@@ -198,7 +208,7 @@ export function removeRow(
 	const gapMs = starts[index + 1] - ends[index - 1];
 	// Same fallback: an unknowable hole is not absorbed — the follower keeps
 	// its own pause, and whatever is still invalid errors at build time.
-	if (!Number.isFinite(gapMs)) return { anchorIso, rows: kept };
+	if (!withinDateRange(gapMs)) return { anchorIso, rows: kept };
 	return {
 		anchorIso,
 		rows: kept.map((r, i) =>

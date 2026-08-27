@@ -16,6 +16,17 @@ uniquement). Un corps JSON malformé, comme un `babyId` ou un `caregiverId`
 inconnu, renvoie lui aussi `400 validation_failed` — jamais une erreur SQLite
 brute.
 
+## Corps des requêtes
+
+Toute route qui attend un corps exige `Content-Type: application/json`
+(paramètre `charset` accepté). Sans lui — absent ou disant autre chose — la
+requête est refusée **avant lecture du corps** :
+`400 validation_failed` avec l'issue `invalid_content_type`. La règle
+appartient au squelette des routes (`src/lib/server/http.ts`), pas à
+l'adaptateur : adapter-node ignore par ailleurs le corps d'une requête sans
+`content-type`, et sans cette porte un JSON parfaitement valide serait accusé
+à tort d'`invalid_json`.
+
 ## En-têtes de sécurité (toutes les réponses)
 
 Posés par `hooks.server.ts` (`src/lib/server/securityHeaders.ts`) sur tout ce

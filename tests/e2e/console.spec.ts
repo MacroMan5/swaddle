@@ -27,14 +27,23 @@ test('AC: the console fires a quick intent and shows the raw envelope', async ({
 	await expect(response).toContainText('validation_failed');
 	await expect(response).toContainText("Je n'ai pas compris la demande");
 
-	// Broken JSON lands on the same invalid_json envelope a shortcut posting
-	// without Content-Type gets (a browser cannot omit the header itself:
-	// fetch always invents one, and WebKit re-adds it after headers.delete).
+	// Broken JSON: the classic malformed-body 400, spoken too.
 	await page.getByTestId('console-body').fill('{ pas du json');
 	await page.getByTestId('console-send').click();
 
 	await expect(page.getByTestId('console-status')).toContainText('400');
 	await expect(response).toContainText('invalid_json');
+	await expect(response).toContainText("Je n'ai pas compris la demande");
+
+	// The failure issue 115 was opened about: a shortcut whose Content-Type
+	// is missing or wrong. Unchecking the header makes fetch send its
+	// invented text/plain, which the skeleton's gate refuses by name.
+	await page.getByTestId('console-body').fill('{"action":"phrase","text":"zzz console"}');
+	await page.getByTestId('console-json-header').uncheck();
+	await page.getByTestId('console-send').click();
+
+	await expect(page.getByTestId('console-status')).toContainText('400');
+	await expect(response).toContainText('invalid_content_type');
 	await expect(response).toContainText("Je n'ai pas compris la demande");
 });
 

@@ -82,10 +82,12 @@ La même que `POST /api/events` (FR-017) : l'intention est traduite en
 `CreateEventInput` puis validée par le domaine. Un volume hors bornes, une
 action inconnue ou un champ manquant renvoient `400 validation_failed` avec le
 tableau `issues` — et, comme tout refus de cette surface, un `speech` racine :
-`Je n'ai pas compris la demande`. Un corps illisible (JSON malformé, ou
-en-tête `Content-Type: application/json` absent — le serveur ignore alors le
-corps) reçoit la même enveloppe avec l'issue `invalid_json` ; un raccourci
-vocal mal configuré reste donc audible au lieu d'échouer en silence.
+`Je n'ai pas compris la demande`. Un corps illisible reçoit la même enveloppe :
+issue `invalid_content_type` si l'en-tête `Content-Type: application/json`
+manque ou dit autre chose (la requête est alors refusée avant lecture du
+corps — voir `docs/api/events-api.md` § Corps des requêtes), `invalid_json`
+si le JSON est malformé. Un raccourci mal configuré reste donc audible au
+lieu d'échouer en silence.
 
 ### `speech`
 

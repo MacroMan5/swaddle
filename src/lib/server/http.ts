@@ -3,7 +3,15 @@ import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import type Database from 'better-sqlite3';
 import { MAX_BODY_BYTES } from '$lib/limits';
 import { getDb } from './db';
-import { apiError, handleRepoError, isPayloadTooLarge, payloadTooLarge, readJson } from './api';
+import {
+	INVALID_CONTENT_TYPE_ISSUE,
+	apiError,
+	handleRepoError,
+	isJsonContentType,
+	isPayloadTooLarge,
+	payloadTooLarge,
+	readJson
+} from './api';
 import { zodIssues, type Issue, type Result } from './events/types';
 
 /**
@@ -80,6 +88,10 @@ export function handler<B = Record<string, never>>(
 	return async (event) => {
 		let body = {} as B;
 		if (schema) {
+			// A declared schema means a JSON body, so the header saying so is
+			// required and the refusal names it — see isJsonContentType.
+			if (!isJsonContentType(event.request.headers.get('content-type')))
+				return invalid([INVALID_CONTENT_TYPE_ISSUE]);
 			// The application's own bound (issue #45), independent of how
 			// `BODY_SIZE_LIMIT` is configured. An announced content-length is the
 			// cheap case: refused before a byte is read. A missing or unparsable

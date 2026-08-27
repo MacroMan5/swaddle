@@ -29,6 +29,11 @@
 	let bodyText = $state(resolveBody(defaultEndpoint));
 	let authMode = $state<'session' | 'token'>('session');
 	let token = $state('');
+	// Unchecked, the request leaves without `application/json`: fetch invents
+	// text/plain for the body, and the skeleton's content-type gate refuses it
+	// exactly like a shortcut whose header is missing or wrong — the failure
+	// issue 115 was opened about, now reproducible from any engine.
+	let sendJsonHeader = $state(true);
 	let sending = $state(false);
 
 	type ConsoleResult = {
@@ -45,6 +50,7 @@
 		selectedId = endpoint.id;
 		path = endpoint.path;
 		bodyText = resolveBody(endpoint);
+		sendJsonHeader = true;
 		result = null;
 		transportError = null;
 	}
@@ -76,18 +82,13 @@
 
 		const hasBody = selected.method !== 'GET' && bodyText.trim() !== '';
 		const headers: Record<string, string> = {};
-		if (hasBody) headers['content-type'] = 'application/json';
+		if (hasBody && sendJsonHeader) headers['content-type'] = 'application/json';
 		if (authMode === 'token') headers['authorization'] = `Bearer ${token.trim()}`;
 
 		const startedAt = performance.now();
 		try {
 			// `credentials: 'omit'` in token mode drops the PIN session cookie, so
 			// the call authenticates exactly like a headless shortcut would.
-			// One transport nuance a browser cannot replay: a request with a body
-			// but NO Content-Type at all (fetch always invents one — and WebKit
-			// re-adds it even after headers.delete). The server answers that case
-			// with the same invalid_json envelope an empty or malformed body gets,
-			// so those reproduce the failure from here.
 			const res = await fetch(path, {
 				method: selected.method,
 				headers,
@@ -173,11 +174,17 @@
 						rows="6"
 						bind:value={bodyText}
 					></textarea>
-					<p class="text-ink-muted text-sm">
-						Un corps vide ou du JSON cassé reproduit le <code>400 invalid_json</code> qu’un
-						raccourci reçoit quand il n’envoie pas
-						<code>Content-Type: application/json</code>.
-					</p>
+					<label class="text-ink flex min-h-12 items-center gap-2 text-sm">
+						<input
+							type="checkbox"
+							class="size-5"
+							data-testid="console-json-header"
+							bind:checked={sendJsonHeader}
+						/>
+						Envoyer <code>Content-Type: application/json</code> — décoché, la requête est
+						refusée avant lecture du corps (<code>invalid_content_type</code>), comme un
+						raccourci mal configuré
+					</label>
 				</div>
 			{/if}
 

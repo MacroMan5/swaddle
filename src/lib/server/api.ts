@@ -51,6 +51,22 @@ const invalidJson: Result<never> = {
 };
 
 /**
+ * A JSON body demands the header saying so (charset parameter accepted).
+ * Owned by the application, not the adapter: adapter-node skips the body of a
+ * request without `content-type` entirely, which would blame valid JSON with
+ * a misleading `invalid_json` (#115, PR #117 review).
+ */
+export function isJsonContentType(contentType: string | null): boolean {
+	return /^application\/json\b/i.test(contentType ?? '');
+}
+
+export const INVALID_CONTENT_TYPE_ISSUE: Issue = {
+	path: '',
+	code: 'invalid_content_type',
+	message: 'content-type must be application/json'
+};
+
+/**
  * Reads a JSON body, turning a malformed one into a validation issue. An
  * oversized body is *not* malformed: it throws instead, so the caller answers
  * with the 413 envelope rather than `validation_failed` — `handleRepoError`

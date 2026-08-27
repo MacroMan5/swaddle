@@ -15,13 +15,16 @@ type AnyHandler = (event: RequestEvent<Record<string, string>>) => Promise<Respo
 
 function call(
 	run: AnyHandler,
-	init: { body?: string; params?: Record<string, string> } = {}
+	init: { body?: string; params?: Record<string, string>; contentType?: string | null } = {}
 ): Promise<Response> {
+	const contentType = init.contentType === undefined ? 'application/json' : init.contentType;
 	const request = new Request('http://localhost/api/test', {
 		method: 'POST',
-		headers: { 'content-type': 'application/json' },
+		...(contentType === null ? {} : { headers: { 'content-type': contentType } }),
 		...(init.body === undefined ? {} : { body: init.body })
 	});
+	// undici invents text/plain for a string body, like a browser would.
+	if (contentType === null) request.headers.delete('content-type');
 	return run({
 		request,
 		params: init.params ?? {},
@@ -70,6 +73,62 @@ describe('handler', () => {
 		expect(response.status).toBe(400);
 		expect(await response.json()).toEqual({
 			error: { code: 'validation_failed', message: 'invalid thing' }
+		});
+	});
+
+	// The adapter happens to skip the body when content-type is missing
+	// (get_raw_body returns null), which would surface as a misleading
+	// invalid_json for perfectly valid JSON. The skeleton owns the rule
+	// instead: a declared schema demands `application/json`, said plainly.
+	describe('the content-type gate', () => {
+		const make = () => handler({ schema, invalidMessage: 'invalid thing', run: ok });
+
+		it.each([
+			[null, 'a missing header'],
+			['text/plain', "a browser fetch's invented default"],
+			['application/x-www-form-urlencoded', 'a form post']
+		])('refuses %s — %s — before reading the body', async (contentType, _why) => {
+			const response = await call(make(), { body: '{"name":"a"}', contentType });
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({
+				error: {
+					code: 'validation_failed',
+					message: 'invalid thing',
+					issues: [
+						{
+							path: '',
+							code: 'invalid_content_type',
+							message: 'content-type must be application/json'
+						}
+					]
+				}
+			});
+		});
+
+		it('accepts a charset parameter and case differences', async () => {
+			const response = await call(make(), {
+				body: '{"name":"a"}',
+				contentType: 'Application/JSON; charset=utf-8'
+			});
+			expect(response.status).toBe(204);
+		});
+
+		it('carries invalidExtra like the other skeleton 400s', async () => {
+			const response = await call(
+				handler({ schema, invalidMessage: 'invalid thing', invalidExtra: { speech: 'Pardon ?' }, run: ok }),
+				{ body: '{"name":"a"}', contentType: null }
+			);
+
+			expect(response.status).toBe(400);
+			const parsed = await response.json();
+			expect(parsed.speech).toBe('Pardon ?');
+			expect(parsed.error.issues[0].code).toBe('invalid_content_type');
+		});
+
+		it('does not gate a schemaless route, which never reads the body', async () => {
+			const response = await call(handler({ run: ok }), { body: '{"x":1}', contentType: null });
+			expect(response.status).toBe(204);
 		});
 	});
 

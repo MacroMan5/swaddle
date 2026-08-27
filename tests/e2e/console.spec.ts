@@ -26,6 +26,22 @@ test('AC: the console fires a quick intent and shows the raw envelope', async ({
 	await expect(page.getByTestId('console-status')).toContainText('400');
 	await expect(response).toContainText('validation_failed');
 	await expect(response).toContainText("Je n'ai pas compris la demande");
+
+	// Broken JSON lands on the same invalid_json envelope a shortcut posting
+	// without Content-Type gets (a browser cannot omit the header itself:
+	// fetch always invents one, and WebKit re-adds it after headers.delete).
+	await page.getByTestId('console-body').fill('{ pas du json');
+	await page.getByTestId('console-send').click();
+
+	await expect(page.getByTestId('console-status')).toContainText('400');
+	await expect(response).toContainText('invalid_json');
+	await expect(response).toContainText("Je n'ai pas compris la demande");
+});
+
+// A timeout would skip the test's own `finally`, leaving the shared seeded
+// server locked behind the PIN for every later spec — this always runs.
+test.afterEach(async ({ request }) => {
+	await request.delete(`${BASE_A}/api/household/pin`, { data: { currentPin: '2468' } });
 });
 
 test('AC: token-only mode authenticates like a headless shortcut', async ({ page, request }) => {

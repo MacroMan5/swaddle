@@ -3,8 +3,22 @@ import { MAX_BODY_BYTES } from '$lib/limits';
 import { RepoError } from './events/repo';
 import type { Issue, Result } from './events/types';
 
-export function apiError(status: number, code: string, message: string, issues?: Issue[]): Response {
-	return json({ error: { code, message, ...(issues ? { issues } : {}) } }, { status });
+/**
+ * The error envelope. `extra` adds root fields *beside* `error` (the quick
+ * route's `speech`, issue #115); spread first, it can never clobber the
+ * envelope itself.
+ */
+export function apiError(
+	status: number,
+	code: string,
+	message: string,
+	issues?: Issue[],
+	extra?: Record<string, unknown>
+): Response {
+	return json(
+		{ ...extra, error: { code, message, ...(issues ? { issues } : {}) } },
+		{ status }
+	);
 }
 
 /** The 413 envelope: its own code, so the UI can say « fichier trop volumineux ». */

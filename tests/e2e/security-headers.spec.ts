@@ -43,7 +43,7 @@ test('public health response carries the headers and is non-cacheable', async ({
 });
 
 test('pages carry a strict same-origin CSP', async ({ request }) => {
-	for (const path of ['/', '/history', '/settings']) {
+	for (const path of ['/', '/history', '/settings', '/console']) {
 		const res = await request.get(path);
 		expect(res.ok()).toBeTruthy();
 		expectBaseHeaders(res.headers());

@@ -19,7 +19,16 @@ export type ConsoleEndpoint = {
 	 */
 	path: string;
 	summary: string;
-	/** Pretty-printed JSON body template, absent for bodyless calls. */
+	/**
+	 * Disambiguates entries sharing a method and path in the picker (the five
+	 * quick intents); entries with a unique path don't need one.
+	 */
+	label?: string;
+	/**
+	 * Pretty-printed JSON body template, absent for bodyless calls. The page
+	 * replaces the `__now__` placeholder with the current time when the entry
+	 * is picked — this module stays pure data, evaluated once.
+	 */
 	body?: string;
 	/** Asks for confirmation before sending — the call destroys or replaces. */
 	danger?: boolean;
@@ -31,6 +40,13 @@ export type ConsoleEndpoint = {
 
 const body = (value: unknown): string => JSON.stringify(value, null, 2);
 
+/** What the console opens on: the intent the shortcuts actually dictate. */
+export const DEFAULT_ENDPOINT_ID = 'quick-phrase';
+
+// Deliberately omitted: `GET /api/backup` (binary download), `GET /api/stream`
+// (SSE, not a request/response call), the PIN routes and the baby/caregiver
+// writes (`/settings` is their UI, with proper forms and rollbacks). The
+// console exists to debug headless clients, not to duplicate the app.
 export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	// Santé
 	{
@@ -54,6 +70,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	{
 		id: 'quick-phrase',
 		group: 'Saisie rapide',
+		label: 'phrase dictée',
 		method: 'POST',
 		path: '/api/quick',
 		summary: 'Dictée libre, résolue contre le vocabulaire du foyer.',
@@ -63,6 +80,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	{
 		id: 'quick-bottle',
 		group: 'Saisie rapide',
+		label: 'biberon',
 		method: 'POST',
 		path: '/api/quick',
 		summary: 'Biberon structuré (volume entier en ml, 1–1000).',
@@ -72,6 +90,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	{
 		id: 'quick-diaper',
 		group: 'Saisie rapide',
+		label: 'couche',
 		method: 'POST',
 		path: '/api/quick',
 		summary: 'Couche (kind : wet, dirty ou both).',
@@ -81,6 +100,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	{
 		id: 'quick-sleep',
 		group: 'Saisie rapide',
+		label: 'dodo',
 		method: 'POST',
 		path: '/api/quick',
 		summary: 'Dodo — bascule démarrer/arrêter.',
@@ -90,6 +110,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 	{
 		id: 'quick-nursing',
 		group: 'Saisie rapide',
+		label: 'tétée',
 		method: 'POST',
 		path: '/api/quick',
 		summary: 'Tétée — bascule ; side optionnel (left/right).',
@@ -140,7 +161,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 		body: body({
 			babyId: '',
 			type: 'bottle',
-			startedAt: new Date().toISOString(),
+			startedAt: '__now__',
 			details: { milkType: 'breast', volumeMl: 120 }
 		}),
 		doc: 'events-api.md'
@@ -223,7 +244,7 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 		method: 'GET',
 		path: '/api/babies',
 		summary: 'Bébés du foyer.',
-		doc: 'settings-api.md'
+		doc: 'events-api.md'
 	},
 	{
 		id: 'caregivers-list',
@@ -273,8 +294,10 @@ export const CONSOLE_ENDPOINTS: ConsoleEndpoint[] = [
 		group: 'Transfert',
 		method: 'POST',
 		path: '/api/restore',
-		summary: 'REMPLACE toutes les données par un export JSON.',
-		body: body({}),
+		// No body template on purpose: the route snapshots the database before
+		// validating the payload, so even a refused `{}` would write to disk.
+		// Pasting a real export is the only sensible call.
+		summary: 'REMPLACE toutes les données par un export JSON collé tel quel.',
 		danger: true,
 		doc: 'settings-api.md'
 	},

@@ -3,7 +3,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { pageTitle } from '$lib/meta';
-	import { CONSOLE_ENDPOINTS, type ConsoleEndpoint } from '$lib/client/console/catalog';
+	import {
+		CONSOLE_ENDPOINTS,
+		DEFAULT_ENDPOINT_ID,
+		type ConsoleEndpoint
+	} from '$lib/client/console/catalog';
 
 	// The console fires the request exactly as written — no client-side
 	// validation, no ApiError mapping: seeing the raw envelope (status, issues,
@@ -12,10 +16,17 @@
 	const groups = [...new Set(CONSOLE_ENDPOINTS.map((e) => e.group))];
 	const byId = new Map(CONSOLE_ENDPOINTS.map((e) => [e.id, e]));
 
-	let selectedId = $state('quick-phrase');
+	// The `__now__` placeholder resolves when the entry is picked, not at
+	// module evaluation: under SSR the catalog is evaluated once at boot, and a
+	// boot-time `startedAt` on a long-running server would be a lie.
+	const resolveBody = (endpoint: ConsoleEndpoint): string =>
+		(endpoint.body ?? '').replaceAll('"__now__"', JSON.stringify(new Date().toISOString()));
+
+	const defaultEndpoint = byId.get(DEFAULT_ENDPOINT_ID)!;
+	let selectedId = $state(DEFAULT_ENDPOINT_ID);
 	let selected = $derived(byId.get(selectedId)!);
-	let path = $state(byId.get('quick-phrase')!.path);
-	let bodyText = $state(byId.get('quick-phrase')!.body ?? '');
+	let path = $state(defaultEndpoint.path);
+	let bodyText = $state(resolveBody(defaultEndpoint));
 	let authMode = $state<'session' | 'token'>('session');
 	let token = $state('');
 	let sending = $state(false);
@@ -33,7 +44,7 @@
 	function pick(endpoint: ConsoleEndpoint) {
 		selectedId = endpoint.id;
 		path = endpoint.path;
-		bodyText = endpoint.body ?? '';
+		bodyText = resolveBody(endpoint);
 		result = null;
 		transportError = null;
 	}
@@ -55,6 +66,12 @@
 		if (selected.danger && !confirm(`${selected.summary}\nEnvoyer quand même ?`)) return;
 		transportError = null;
 		result = null;
+		if (!path.startsWith('/')) {
+			// The CSP already blocks cross-origin fetches; this just keeps a typo
+			// from sending the Bearer anywhere but this server.
+			transportError = 'le chemin doit commencer par « / »';
+			return;
+		}
 		sending = true;
 
 		const hasBody = selected.method !== 'GET' && bodyText.trim() !== '';
@@ -66,6 +83,11 @@
 		try {
 			// `credentials: 'omit'` in token mode drops the PIN session cookie, so
 			// the call authenticates exactly like a headless shortcut would.
+			// One transport nuance a browser cannot replay: a request with a body
+			// but NO Content-Type at all (fetch always invents one — and WebKit
+			// re-adds it even after headers.delete). The server answers that case
+			// with the same invalid_json envelope an empty or malformed body gets,
+			// so those reproduce the failure from here.
 			const res = await fetch(path, {
 				method: selected.method,
 				headers,
@@ -114,7 +136,10 @@
 				{#each groups as group (group)}
 					<optgroup label={group}>
 						{#each CONSOLE_ENDPOINTS.filter((e) => e.group === group) as endpoint (endpoint.id)}
-							<option value={endpoint.id}>{endpoint.method} {endpoint.path}</option>
+							<option value={endpoint.id}
+							>{endpoint.method}
+							{endpoint.path}{endpoint.label ? ` — ${endpoint.label}` : ''}</option
+						>
 						{/each}
 					</optgroup>
 				{/each}
@@ -124,6 +149,7 @@
 				{#if selected.danger}<span class="text-danger"> Action destructrice.</span>{/if}
 				{#if selected.pinOnly}<span> Session PIN seulement — un jeton est refusé ici.</span>{/if}
 			</p>
+			<p class="text-ink-muted text-sm">Contrat : <code>docs/api/{selected.doc}</code></p>
 		</div>
 
 		<form class="flex flex-col gap-4" onsubmit={send}>
@@ -147,6 +173,11 @@
 						rows="6"
 						bind:value={bodyText}
 					></textarea>
+					<p class="text-ink-muted text-sm">
+						Un corps vide ou du JSON cassé reproduit le <code>400 invalid_json</code> qu’un
+						raccourci reçoit quand il n’envoie pas
+						<code>Content-Type: application/json</code>.
+					</p>
 				</div>
 			{/if}
 
@@ -201,18 +232,20 @@
 			</p>
 		{/if}
 
-		{#if result}
-			<div class="flex flex-col gap-2" data-testid="console-result">
-				<p class="text-value text-ink tabular-nums">
-					<span class={result.ok ? 'text-ink' : 'text-danger'} data-testid="console-status">
-						{result.status} {result.statusText}
-					</span>
-					· {result.durationMs} ms
-				</p>
-				<pre
-					class="border-border bg-surface text-ink overflow-x-auto border-2 p-3 font-mono text-sm whitespace-pre-wrap"
-					data-testid="console-response">{result.body}</pre>
-			</div>
-		{/if}
+		<div aria-live="polite">
+			{#if result}
+				<div class="flex flex-col gap-2" data-testid="console-result">
+					<p class="text-value text-ink tabular-nums">
+						<span class={result.ok ? 'text-ink' : 'text-danger'} data-testid="console-status">
+							{result.status} {result.statusText}
+						</span>
+						· {result.durationMs} ms
+					</p>
+					<pre
+						class="border-border bg-surface text-ink overflow-x-auto border-2 p-3 font-mono text-sm whitespace-pre-wrap"
+						data-testid="console-response">{result.body}</pre>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>

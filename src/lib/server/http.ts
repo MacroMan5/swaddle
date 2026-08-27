@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { json, type Cookies, type RequestEvent } from '@sveltejs/kit';
+import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import type Database from 'better-sqlite3';
 import { MAX_BODY_BYTES } from '$lib/limits';
 import { getDb } from './db';
@@ -73,17 +73,9 @@ export function handler<B = Record<string, never>>(
 	} = options;
 
 	// The skeleton's 400, with the route's extra root fields when it declared
-	// some — `apiError` otherwise, so the envelope stays built in one place.
+	// some — one envelope builder either way.
 	const invalid = (issues?: Issue[]): Response =>
-		invalidExtra === undefined
-			? apiError(400, 'validation_failed', invalidMessage, issues)
-			: json(
-					{
-						error: { code: 'validation_failed', message: invalidMessage, ...(issues ? { issues } : {}) },
-						...invalidExtra
-					},
-					{ status: 400 }
-				);
+		apiError(400, 'validation_failed', invalidMessage, issues, invalidExtra);
 
 	return async (event) => {
 		let body = {} as B;

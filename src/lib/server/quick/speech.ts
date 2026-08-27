@@ -21,6 +21,12 @@ export function spokenDuration(ms: number): string {
 	return `${spokenHours} ${rest} minute${rest > 1 ? 's' : ''}`;
 }
 
+/**
+ * What the assistant says when the request body itself was refused (400):
+ * a malformed shortcut stays audible instead of failing silently (issue #115).
+ */
+export const SPOKEN_INVALID_REQUEST = "Je n'ai pas compris la demande";
+
 export const SPOKEN_SIDE = { left: 'gauche', right: 'droit' } as const;
 
 export const SPOKEN_DIAPER = {

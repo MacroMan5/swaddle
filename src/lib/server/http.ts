@@ -3,8 +3,16 @@ import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import type Database from 'better-sqlite3';
 import { MAX_BODY_BYTES } from '$lib/limits';
 import { getDb } from './db';
-import { apiError, handleRepoError, isPayloadTooLarge, payloadTooLarge, readJson } from './api';
-import { zodIssues, type Result } from './events/types';
+import {
+	INVALID_CONTENT_TYPE_ISSUE,
+	apiError,
+	handleRepoError,
+	isJsonContentType,
+	isPayloadTooLarge,
+	payloadTooLarge,
+	readJson
+} from './api';
+import { zodIssues, type Issue, type Result } from './events/types';
 
 /**
  * The body validator: either a zod schema or any function returning a
@@ -37,6 +45,12 @@ export type HandlerOptions<B> = {
 	 * shipped with.
 	 */
 	detail?: 'issues' | 'message';
+	/**
+	 * Fields merged into the root of the skeleton's own 400 envelope (unreadable
+	 * body or schema failure). The quick route rides a `speech` on it so a voice
+	 * client reads the same field whatever the status (issue #115).
+	 */
+	invalidExtra?: Record<string, unknown>;
 	run: (ctx: HandlerContext<B>) => Response | Promise<Response>;
 };
 
@@ -58,11 +72,26 @@ function parseBody<B>(schema: BodySchema<B>, value: unknown): Result<B> {
 export function handler<B = Record<string, never>>(
 	options: HandlerOptions<B>
 ): (event: RequestEvent<Record<string, string>>) => Promise<Response> {
-	const { schema, invalidMessage = 'invalid request body', detail = 'issues', run } = options;
+	const {
+		schema,
+		invalidMessage = 'invalid request body',
+		detail = 'issues',
+		invalidExtra,
+		run
+	} = options;
+
+	// The skeleton's 400, with the route's extra root fields when it declared
+	// some — one envelope builder either way.
+	const invalid = (issues?: Issue[]): Response =>
+		apiError(400, 'validation_failed', invalidMessage, issues, invalidExtra);
 
 	return async (event) => {
 		let body = {} as B;
 		if (schema) {
+			// A declared schema means a JSON body, so the header saying so is
+			// required and the refusal names it — see isJsonContentType.
+			if (!isJsonContentType(event.request.headers.get('content-type')))
+				return invalid([INVALID_CONTENT_TYPE_ISSUE]);
 			// The application's own bound (issue #45), independent of how
 			// `BODY_SIZE_LIMIT` is configured. An announced content-length is the
 			// cheap case: refused before a byte is read. A missing or unparsable
@@ -79,16 +108,10 @@ export function handler<B = Record<string, never>>(
 				if (isPayloadTooLarge(e)) return payloadTooLarge();
 				throw e;
 			}
-			if (!raw.ok) return apiError(400, 'validation_failed', invalidMessage, raw.issues);
+			if (!raw.ok) return invalid(raw.issues);
 
 			const parsed = parseBody(schema, raw.value);
-			if (!parsed.ok)
-				return apiError(
-					400,
-					'validation_failed',
-					invalidMessage,
-					detail === 'issues' ? parsed.issues : undefined
-				);
+			if (!parsed.ok) return invalid(detail === 'issues' ? parsed.issues : undefined);
 			body = parsed.value;
 		}
 

@@ -3,8 +3,22 @@ import { MAX_BODY_BYTES } from '$lib/limits';
 import { RepoError } from './events/repo';
 import type { Issue, Result } from './events/types';
 
-export function apiError(status: number, code: string, message: string, issues?: Issue[]): Response {
-	return json({ error: { code, message, ...(issues ? { issues } : {}) } }, { status });
+/**
+ * The error envelope. `extra` adds root fields *beside* `error` (the quick
+ * route's `speech`, issue #115); spread first, it can never clobber the
+ * envelope itself.
+ */
+export function apiError(
+	status: number,
+	code: string,
+	message: string,
+	issues?: Issue[],
+	extra?: Record<string, unknown>
+): Response {
+	return json(
+		{ ...extra, error: { code, message, ...(issues ? { issues } : {}) } },
+		{ status }
+	);
 }
 
 /** The 413 envelope: its own code, so the UI can say « fichier trop volumineux ». */
@@ -34,6 +48,22 @@ export function isPayloadTooLarge(e: unknown): boolean {
 const invalidJson: Result<never> = {
 	ok: false,
 	issues: [{ path: '', code: 'invalid_json', message: 'request body is not valid JSON' }]
+};
+
+/**
+ * A JSON body demands the header saying so (charset parameter accepted).
+ * Owned by the application, not the adapter: adapter-node skips the body of a
+ * request without `content-type` entirely, which would blame valid JSON with
+ * a misleading `invalid_json` (#115, PR #117 review).
+ */
+export function isJsonContentType(contentType: string | null): boolean {
+	return /^application\/json\b/i.test(contentType ?? '');
+}
+
+export const INVALID_CONTENT_TYPE_ISSUE: Issue = {
+	path: '',
+	code: 'invalid_content_type',
+	message: 'content-type must be application/json'
 };
 
 /**

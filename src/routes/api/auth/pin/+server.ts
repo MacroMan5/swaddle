@@ -1,7 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { apiError, readJson } from '$lib/server/api';
+import {
+	INVALID_CONTENT_TYPE_ISSUE,
+	apiError,
+	isJsonContentType,
+	readJson
+} from '$lib/server/api';
 import { handler } from '$lib/server/http';
 import { zodIssues } from '$lib/server/events/types';
 import { getPinHash } from '$lib/server/settings/repo';
@@ -23,6 +28,11 @@ export const POST: RequestHandler = handler({
 		const now = Date.now();
 		if (pinThrottle.isLocked(now))
 			return apiError(429, 'too_many_attempts', 'too many attempts, try again shortly');
+
+		// The same content-type gate the skeleton applies to declared schemas —
+		// checked after the throttle (it must answer first) and before the read.
+		if (!isJsonContentType(request.headers.get('content-type')))
+			return apiError(400, 'validation_failed', 'invalid pin', [INVALID_CONTENT_TYPE_ISSUE]);
 
 		const body = await readJson(request);
 		if (!body.ok) return apiError(400, 'validation_failed', 'invalid pin', body.issues);

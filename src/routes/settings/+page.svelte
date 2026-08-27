@@ -1051,6 +1051,15 @@
 					>{tokenPending ? 'Création…' : 'Créer un jeton'}</Button
 				>
 			</form>
+
+			<a
+				href="/console"
+				class="text-ink border-border-hair flex min-h-12 items-center justify-between border-t pt-3"
+				data-testid="open-console"
+			>
+				<span class="text-value">Console API</span>
+				<span class="text-ink-muted text-sm">Tester un appel, un jeton, un raccourci</span>
+			</a>
 		</section>
 
 		<section class="flex flex-col gap-3 p-4" data-testid="quick-words">

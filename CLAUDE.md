@@ -85,10 +85,20 @@ Monolithe SvelteKit 2 (Svelte 5, adapter-node) servant UI et API (ADR 0001) :
   suppression — relu à chaque dictée, donc aucun cache à invalider),
   `errors.ts` (`QuickError` : `ambiguous_baby`, `duplicate_word`,
   `unrecognized_phrase`, `missing_volume` — statut et `speech` d'erreur pour
-  les routes), `speech.ts` (phrases françaises pures, durées parlées).
-  Routes `POST /api/quick` et `GET/POST /api/quick/words`,
+  les routes), `speech.ts` (phrases françaises pures, durées parlées — dont
+  `SPOKEN_INVALID_REQUEST`, monté sur les 400 du squelette via l'option
+  `invalidExtra` de `handler`, #115 : un raccourci vocal mal configuré reste
+  audible). Routes `POST /api/quick` et `GET/POST /api/quick/words`,
   `DELETE /api/quick/words/[id]` (adaptateurs minces) ; section « Mots
   vocaux » de `/settings` — contrat détaillé dans `docs/api/quick-api.md`.
+- `src/lib/client/console/` + `src/routes/console/` — console API (#115) :
+  `catalog.ts` (données pures : les appels préremplis, drapeaux `danger` et
+  `pinOnly` ; les contrats markdown de `docs/api/` restent la vérité) et la
+  page `/console` (derrière la porte PIN comme toute page) qui envoie la
+  requête telle quelle et montre l'enveloppe brute — bascule « Session PIN » /
+  « Jeton seul » (`credentials: 'omit'` + `Authorization`, la situation exacte
+  d'un raccourci headless). Lien d'entrée : section « Accès API » de
+  `/settings`.
 - `src/hooks.server.ts` — porte configuration incomplète → `/setup` et porte
   code PIN → `/pin` (pages) / `401 pin_required` (API), à partir de
   `gateDecision`. Le hook vérifie aussi le `Authorization: Bearer`

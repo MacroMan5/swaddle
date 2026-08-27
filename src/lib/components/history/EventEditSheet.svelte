@@ -111,11 +111,16 @@
 		});
 	}
 
-	/** The anchor to build from: the stored ISO while the input is untouched. */
+	/**
+	 * The anchor to build from: the stored ISO while the input is untouched,
+	 * and again if the input is cleared or unparseable — submit refuses an
+	 * empty Début before ever building, so the fallback only serves row
+	 * removal, which must not throw mid-gesture.
+	 */
 	function effectiveAnchor(): string {
-		return nursingAnchorInput === nursingAnchorInitial
-			? nursingAnchorIso
-			: fromLocalInputValue(nursingAnchorInput);
+		if (nursingAnchorInput === nursingAnchorInitial) return nursingAnchorIso;
+		const parsed = new Date(nursingAnchorInput);
+		return Number.isNaN(parsed.getTime()) ? nursingAnchorIso : parsed.toISOString();
 	}
 
 	const isDirty = $derived(open && event !== null && serializeForm() !== initialForm);
@@ -231,6 +236,11 @@
 
 		try {
 			if (event.type === 'nursing') {
+				if (nursingAnchorInput.trim() === '') {
+					startedAtError = 'Indiquez le début.';
+					pending = false;
+					return;
+				}
 				const built = buildSegments(effectiveAnchor(), nursingRows);
 				if (!built.ok) {
 					nursingRows = nursingRows.map((s, i) => ({ ...s, error: built.errors[i] }));

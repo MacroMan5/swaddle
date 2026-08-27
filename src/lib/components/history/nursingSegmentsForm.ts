@@ -71,7 +71,8 @@ export function setPause(rows: SegmentRow[], index: number, pause: string): Segm
 
 /** '' is invalid for a duration: a closed segment must last something. */
 function durationMsOf(row: SegmentRow): number | null {
-	if (row.exactDurationMs !== null) return row.exactDurationMs;
+	if (row.exactDurationMs !== null)
+		return Number.isFinite(row.exactDurationMs) ? row.exactDurationMs : null;
 	const minutes = Number(row.minutes);
 	if (row.minutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) return null;
 	return Math.round(minutes * MINUTE_MS);
@@ -79,7 +80,7 @@ function durationMsOf(row: SegmentRow): number | null {
 
 /** '' is a zero pause; negatives and garble are invalid. */
 function gapMsOf(row: SegmentRow): number | null {
-	if (row.exactGapMs !== null) return row.exactGapMs;
+	if (row.exactGapMs !== null) return Number.isFinite(row.exactGapMs) ? row.exactGapMs : null;
 	if (row.pause.trim() === '') return 0;
 	const minutes = Number(row.pause);
 	if (!Number.isFinite(minutes) || minutes < 0) return null;
@@ -155,8 +156,10 @@ export function removeRow(
 	rows: SegmentRow[],
 	index: number
 ): { anchorIso: string; rows: SegmentRow[] } {
-	// Absolute positions under the current (possibly edited) values; NaN rows
-	// just propagate and surface as build errors, never silently move data.
+	// Absolute positions under the current (possibly edited) values. A row
+	// holding an unparseable duration or pause walks as NaN; every use below
+	// checks finiteness and falls back to not moving anything, so removal
+	// always succeeds and the remaining rows' own errors surface at build time.
 	const starts: number[] = [];
 	const ends: number[] = [];
 	let cursorMs = Date.parse(anchorIso);
@@ -179,15 +182,18 @@ export function removeRow(
 	if (index === 0) {
 		const next = rows[1];
 		return {
-			anchorIso: isoAt(starts[1], next),
-			rows: kept.map((r, i) =>
-				i === 0 ? { ...r, pause: '0', exactGapMs: 0 } : r
-			)
+			// If the removed row's values did not parse, its end is unknowable:
+			// keep the current anchor rather than crash re-anchoring on NaN.
+			anchorIso: Number.isFinite(starts[1]) ? isoAt(starts[1], next) : anchorIso,
+			rows: kept.map((r, i) => (i === 0 ? { ...r, pause: '0', exactGapMs: 0 } : r))
 		};
 	}
 	const follower = index + 1 < rows.length ? rows[index + 1] : null;
 	if (follower === null) return { anchorIso, rows: kept };
 	const gapMs = starts[index + 1] - ends[index - 1];
+	// Same fallback: an unknowable hole is not absorbed — the follower keeps
+	// its own pause, and whatever is still invalid errors at build time.
+	if (!Number.isFinite(gapMs)) return { anchorIso, rows: kept };
 	return {
 		anchorIso,
 		rows: kept.map((r, i) =>

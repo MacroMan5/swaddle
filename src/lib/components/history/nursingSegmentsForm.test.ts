@@ -147,6 +147,33 @@ describe('removeRow', () => {
 		expect(built.segments).toEqual([original[0], original[2]]);
 	});
 
+	it('does not throw when the removed first row holds an unparseable duration', () => {
+		const original = session();
+		const { anchorIso, rows } = rowsFromSegments(original);
+		// The user clears the first duration, then decides to remove the row
+		// instead (Codex review P2): the walk hits NaN, so re-anchoring must
+		// fall back to the current anchor rather than crash.
+		const removed = removeRow(anchorIso, setMinutes(rows, 0, ''), 0);
+		expect(removed.anchorIso).toBe(anchorIso);
+		const built = buildSegments(removed.anchorIso, removed.rows);
+		if (!built.ok) throw new Error('expected ok');
+		expect(built.segments[0]).toMatchObject({ side: 'right' });
+		expect(built.segments[0].startedAt).toBe(anchorIso);
+	});
+
+	it('does not absorb an unknowable hole when a garbled middle row goes', () => {
+		const original: NursingSegment[] = [
+			...session(),
+			{ side: 'left', startedAt: '2026-08-27T10:20:00.000Z', endedAt: '2026-08-27T10:25:00.000Z' }
+		];
+		const { anchorIso, rows } = rowsFromSegments(original);
+		const removed = removeRow(anchorIso, setMinutes(rows, 1, 'abc'), 1);
+		expect(removed.rows).toHaveLength(2);
+		// The follower keeps its own pause (1 min 8 s before the removed row's
+		// recorded start), instead of inheriting NaN.
+		expect(removed.rows[1].exactGapMs).toBe(68_000);
+	});
+
 	it('re-anchors on the next row when the first row goes', () => {
 		const original = session();
 		const { anchorIso, rows } = rowsFromSegments(original);

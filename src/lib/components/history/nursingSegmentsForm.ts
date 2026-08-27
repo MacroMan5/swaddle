@@ -196,10 +196,15 @@ export function removeRow(
 
 	if (index === 0) {
 		const next = rows[1];
+		// If the removed row's values did not parse, its end is unknowable: fall
+		// back to the follower's *recorded* start when it has one, so a stored
+		// segment is never silently moved; a follower added in the form has no
+		// recorded position, so the current anchor is the best there is.
+		const nextAnchor = withinDateRange(starts[1])
+			? isoAt(starts[1], next)
+			: (next.original?.startedAt ?? anchorIso);
 		return {
-			// If the removed row's values did not parse, its end is unknowable:
-			// keep the current anchor rather than crash re-anchoring on NaN.
-			anchorIso: withinDateRange(starts[1]) ? isoAt(starts[1], next) : anchorIso,
+			anchorIso: nextAnchor,
 			rows: kept.map((r, i) => (i === 0 ? { ...r, pause: '0', exactGapMs: 0 } : r))
 		};
 	}

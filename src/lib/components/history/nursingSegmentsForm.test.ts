@@ -159,17 +159,28 @@ describe('removeRow', () => {
 		const original = session();
 		const { anchorIso, rows } = rowsFromSegments(original);
 		// The user clears the first duration, then decides to remove the row
-		// instead (Codex review P2): the walk hits NaN, so re-anchoring must
-		// fall back to the current anchor rather than crash. A pasted duration
-		// beyond any valid Date is the same story.
+		// instead (Codex review P2): the walk hits NaN, so re-anchoring falls
+		// back to the follower's *recorded* start — never moving stored data,
+		// never crashing. A pasted duration beyond any valid Date is the same
+		// story.
 		for (const bad of ['', '1000000000']) {
-			expect(removeRow(anchorIso, setMinutes(rows, 0, bad), 0).anchorIso).toBe(anchorIso);
+			const removed = removeRow(anchorIso, setMinutes(rows, 0, bad), 0);
+			expect(removed.anchorIso).toBe(original[1].startedAt);
+			const built = buildSegments(removed.anchorIso, removed.rows);
+			if (!built.ok) throw new Error('expected ok');
+			expect(built.segments).toEqual([original[1]]);
 		}
-		const removed = removeRow(anchorIso, setMinutes(rows, 0, ''), 0);
-		const built = buildSegments(removed.anchorIso, removed.rows);
-		if (!built.ok) throw new Error('expected ok');
-		expect(built.segments[0]).toMatchObject({ side: 'right' });
-		expect(built.segments[0].startedAt).toBe(anchorIso);
+	});
+
+	it('falls back to the anchor when the unparseable removal leaves only an added row', () => {
+		const original: NursingSegment[] = [
+			{ side: 'left', startedAt: '2026-08-27T10:00:00.000Z', endedAt: '2026-08-27T10:08:00.000Z' }
+		];
+		const { anchorIso, rows } = rowsFromSegments(original);
+		// An added row has no recorded position to preserve, so the old anchor
+		// is the best available fallback.
+		const removed = removeRow(anchorIso, setMinutes(addRow(rows), 0, 'abc'), 0);
+		expect(removed.anchorIso).toBe(anchorIso);
 	});
 
 	it('does not absorb an unknowable hole when a garbled middle row goes', () => {

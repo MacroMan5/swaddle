@@ -8,6 +8,7 @@
 	import { pageTitle } from '$lib/meta';
 	import { applyForcedThemeColor } from '$lib/client/themeColor';
 	import { reconcileStoredCaregiverId, setStoredCaregiverId } from '$lib/client/caregiverSelection';
+	import { copyText } from '$lib/client/clipboard';
 	import { CAREGIVER_COLORS, caregiverColorName } from '$lib/palette';
 	import LiveMessage from '$lib/components/LiveMessage.svelte';
 
@@ -396,14 +397,7 @@
 
 	async function copyToken() {
 		if (newTokenPlaintext === null) return;
-		try {
-			await navigator.clipboard.writeText(newTokenPlaintext);
-			tokenCopied = true;
-		} catch {
-			// Clipboard access can be refused (permissions, insecure context):
-			// the token stays selectable on screen, so this is not an error.
-			tokenCopied = false;
-		}
+		tokenCopied = await copyText(newTokenPlaintext);
 	}
 
 	async function revokeToken(id: string, name: string) {

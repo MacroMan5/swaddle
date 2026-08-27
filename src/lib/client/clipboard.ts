@@ -24,7 +24,11 @@ export async function copyText(text: string): Promise<boolean> {
 	textarea.style.position = 'fixed';
 	textarea.style.left = '-9999px';
 	document.body.appendChild(textarea);
+	// iOS Safari ignores select() on its own: without an explicit setSelectionRange
+	// there is no selection and execCommand('copy') copies nothing.
+	textarea.focus();
 	textarea.select();
+	textarea.setSelectionRange(0, text.length);
 
 	let succeeded = false;
 	try {

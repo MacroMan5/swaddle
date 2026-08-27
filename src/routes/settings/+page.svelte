@@ -398,6 +398,10 @@
 	async function copyToken() {
 		if (newTokenPlaintext === null) return;
 		tokenCopied = await copyText(newTokenPlaintext);
+		if (!tokenCopied) {
+			tokenError = 'Copie impossible sur cet appareil : sélectionnez le jeton affiché et copiez-le manuellement.';
+			tokenErrorNonce++;
+		}
 	}
 
 	async function revokeToken(id: string, name: string) {

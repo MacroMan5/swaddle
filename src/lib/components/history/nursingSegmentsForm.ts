@@ -69,11 +69,16 @@ export function setPause(rows: SegmentRow[], index: number, pause: string): Segm
 	return rows.map((r, i) => (i === index ? { ...r, pause, exactGapMs: null } : r));
 }
 
+/** Typed minutes → number, accepting the French decimal comma like the volume field. */
+function parsedMinutes(raw: string): number {
+	return Number(raw.trim().replace(',', '.'));
+}
+
 /** '' is invalid for a duration: a closed segment must last something. */
 function durationMsOf(row: SegmentRow): number | null {
 	if (row.exactDurationMs !== null)
 		return Number.isFinite(row.exactDurationMs) ? row.exactDurationMs : null;
-	const minutes = Number(row.minutes);
+	const minutes = parsedMinutes(row.minutes);
 	if (row.minutes.trim() === '' || !Number.isFinite(minutes) || minutes <= 0) return null;
 	return Math.round(minutes * MINUTE_MS);
 }
@@ -82,7 +87,7 @@ function durationMsOf(row: SegmentRow): number | null {
 function gapMsOf(row: SegmentRow): number | null {
 	if (row.exactGapMs !== null) return Number.isFinite(row.exactGapMs) ? row.exactGapMs : null;
 	if (row.pause.trim() === '') return 0;
-	const minutes = Number(row.pause);
+	const minutes = parsedMinutes(row.pause);
 	if (!Number.isFinite(minutes) || minutes < 0) return null;
 	return Math.round(minutes * MINUTE_MS);
 }

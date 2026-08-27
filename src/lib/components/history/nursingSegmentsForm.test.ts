@@ -95,6 +95,14 @@ describe('buildSegments', () => {
 		expect(built.segments[1].startedAt).toBe('2026-08-27T10:09:37.000Z');
 	});
 
+	it('accepts the French decimal comma in durations and pauses (Codex review P2)', () => {
+		const { anchorIso, rows } = rowsFromSegments(session());
+		const built = buildSegments(anchorIso, setPause(setMinutes(rows, 0, '7,5'), 1, '2,5'));
+		if (!built.ok) throw new Error('expected ok');
+		expect(built.segments[0].endedAt).toBe('2026-08-27T10:07:30.000Z');
+		expect(built.segments[1].startedAt).toBe('2026-08-27T10:10:00.000Z');
+	});
+
 	it('rejects a missing, zero or garbled duration with a row error', () => {
 		const { anchorIso, rows } = rowsFromSegments(session());
 		for (const bad of ['', '0', 'abc', '-3']) {

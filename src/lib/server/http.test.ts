@@ -73,6 +73,30 @@ describe('handler', () => {
 		});
 	});
 
+	// Issue #115: a voice client reads the same top-level `speech` whatever the
+	// status, so the skeleton's own 400 must be able to carry one too.
+	it('merges invalidExtra into the root of both 400 envelopes', async () => {
+		const make = () =>
+			handler({ schema, invalidMessage: 'invalid thing', invalidExtra: { speech: 'Pardon ?' }, run: ok });
+
+		const unreadable = await call(make(), { body: '{ not json' });
+		expect(unreadable.status).toBe(400);
+		expect(await unreadable.json()).toEqual({
+			error: {
+				code: 'validation_failed',
+				message: 'invalid thing',
+				issues: [{ path: '', code: 'invalid_json', message: 'request body is not valid JSON' }]
+			},
+			speech: 'Pardon ?'
+		});
+
+		const refused = await call(make(), { body: '{"name":42}' });
+		expect(refused.status).toBe(400);
+		const body = await refused.json();
+		expect(body.speech).toBe('Pardon ?');
+		expect(body.error.code).toBe('validation_failed');
+	});
+
 	it('accepts a Result-returning validator', async () => {
 		const response = await call(
 			handler<{ n: number }>({

@@ -68,7 +68,11 @@ describe('POST /api/quick', () => {
 		const response = await post(body);
 
 		expect(response.status).toBe(400);
-		expect((await response.json()).error.code).toBe('validation_failed');
+		const parsed = await response.json();
+		expect(parsed.error.code).toBe('validation_failed');
+		// Issue #115: the 400 speaks too — a voice shortcut reads the same
+		// top-level field whatever the status, format errors included.
+		expect(parsed.speech).toBe("Je n'ai pas compris la demande");
 	});
 
 	it('answers 409 ambiguous_baby when the household has several babies', async () => {

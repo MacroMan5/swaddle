@@ -81,7 +81,11 @@ vient d'une session PIN). Le corps ne peut pas choisir l'aidant.
 La même que `POST /api/events` (FR-017) : l'intention est traduite en
 `CreateEventInput` puis validée par le domaine. Un volume hors bornes, une
 action inconnue ou un champ manquant renvoient `400 validation_failed` avec le
-tableau `issues`.
+tableau `issues` — et, comme tout refus de cette surface, un `speech` racine :
+`Je n'ai pas compris la demande`. Un corps illisible (JSON malformé, ou
+en-tête `Content-Type: application/json` absent — le serveur ignore alors le
+corps) reçoit la même enveloppe avec l'issue `invalid_json` ; un raccourci
+vocal mal configuré reste donc audible au lieu d'échouer en silence.
 
 ### `speech`
 
@@ -156,7 +160,8 @@ propre à la quantité, pas au biberon : d'où son propre code plutôt qu'un
 malhonnête ici.
 
 Les deux portent, **à la racine du corps**, un `speech` lisible par
-l'assistant — un client vocal lit le même champ quel que soit le statut :
+l'assistant — un client vocal lit le même champ quel que soit le statut, `400`
+compris (§ Validation) :
 
 ```json
 { "error": { "code": "missing_volume", "message": "…" },

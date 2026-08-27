@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { handler } from '$lib/server/http';
 import { QuickError, quickErrorResponse } from '$lib/server/quick/errors';
 import { performQuick } from '$lib/server/quick/perform';
+import { SPOKEN_INVALID_REQUEST } from '$lib/server/quick/speech';
 import { quickIntentSchema } from '$lib/server/quick/types';
 
 // A thin adapter over the quick module (ADR 0004): parse, delegate, answer.
@@ -10,6 +11,9 @@ import { quickIntentSchema } from '$lib/server/quick/types';
 export const POST: RequestHandler = handler({
 	schema: quickIntentSchema,
 	invalidMessage: 'invalid quick intent',
+	// A voice client reads `speech` whatever the status; the skeleton's own 400
+	// (bad JSON, wrong field type) must speak too (issue #115).
+	invalidExtra: { speech: SPOKEN_INVALID_REQUEST },
 	run: ({ db, body, locals }) => {
 		try {
 			// Attribution rides on the credential: a Bearer token linked to a

@@ -7,7 +7,9 @@ function fakeTextarea(body: { children: unknown[] }) {
 		value: '',
 		style: {} as Record<string, string>,
 		setAttribute: vi.fn(),
+		focus: vi.fn(),
 		select: vi.fn(),
+		setSelectionRange: vi.fn(),
 		remove: vi.fn(() => {
 			const index = body.children.indexOf(el);
 			if (index !== -1) body.children.splice(index, 1);
@@ -53,6 +55,18 @@ describe('copyText', () => {
 
 		expect(result).toBe(true);
 		expect(doc.body.children).toHaveLength(0);
+	});
+
+	it('selects via focus + setSelectionRange so iOS Safari actually copies', async () => {
+		vi.stubGlobal('navigator', {});
+		const doc = fakeDocument(true);
+		vi.stubGlobal('document', doc);
+
+		await copyText('hello');
+
+		const textarea = doc.createElement.mock.results[0]!.value;
+		expect(textarea.focus).toHaveBeenCalled();
+		expect(textarea.setSelectionRange).toHaveBeenCalledWith(0, 'hello'.length);
 	});
 
 	it('falls back to execCommand when writeText rejects', async () => {

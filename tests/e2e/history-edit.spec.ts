@@ -94,6 +94,59 @@ test('manual-add a bottle yesterday, edit its volume, delete it with undo, then 
 	await expect(page.getByTestId('event-row').filter({ hasText: 'Biberon' })).toHaveCount(0);
 });
 
+test('a single-segment nursing session can be split per side from the edit sheet (issue #119)', async ({
+	page,
+	request
+}) => {
+	// Recorded as one left-only segment — the shape issue #119 is about: all the
+	// time lives in one segment and the old editor could never redistribute it.
+	// Two days back: today and yesterday belong to other specs (shared DB under
+	// `workers: 1`), so on a quiet day this session is the only nursing row and
+	// nothing leaks into their row counts.
+	const startMs = Date.now() - 2 * 24 * 60 * 60_000;
+	await request.post('/api/events', {
+		data: {
+			babyId: 'baby-1',
+			type: 'nursing',
+			startedAt: new Date(startMs).toISOString(),
+			endedAt: new Date(startMs + 8 * 60_000).toISOString(),
+			details: {
+				segments: [
+					{
+						side: 'left',
+						startedAt: new Date(startMs).toISOString(),
+						endedAt: new Date(startMs + 8 * 60_000).toISOString()
+					}
+				]
+			}
+		}
+	});
+
+	await page.goto('/history');
+	await page.getByRole('button', { name: 'Jour précédent' }).click();
+	await page.getByRole('button', { name: 'Jour précédent' }).click();
+	const row = page.getByTestId('event-row').filter({ hasText: 'Allaitement' });
+	await row.click();
+
+	// Stretch the left side to 10 minutes and add a 5-minute right segment.
+	await page.getByLabel('Durée (min)').first().fill('10');
+	await page.getByRole('button', { name: 'Ajouter un segment' }).click();
+	await page.getByLabel('Durée (min)').nth(1).fill('5');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+
+	// The row now covers both sides…
+	await expect(row).toContainText('G+D');
+
+	// …and reopening shows the two segments with the durations that were saved.
+	await row.click();
+	await expect(page.getByLabel('Durée (min)').first()).toHaveValue('10');
+	await expect(page.getByLabel('Durée (min)').nth(1)).toHaveValue('5');
+	const rightToggle = page.getByRole('group', { name: 'Côté du segment 2' }).getByRole('button', {
+		name: 'Droite'
+	});
+	await expect(rightToggle).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('manual-add a pump without a volume sends null, not a phantom 0 (issue #36)', async ({
 	page
 }) => {

@@ -9,6 +9,15 @@
 	import { ApiError } from '$lib/client/api';
 	import { fieldMessage } from '$lib/errors';
 	import { fromLocalInputValue, toLocalInputValue } from './eventForm';
+	import {
+		addRow,
+		buildSegments,
+		removeRow,
+		rowsFromSegments,
+		setMinutes,
+		setPause,
+		type SegmentRow
+	} from './nursingSegmentsForm';
 	import { displayVolumeValue, editedVolumeEntry } from '$lib/client/volume';
 	import type { SyncStore } from '$lib/client/sync.svelte';
 	import { isType } from '$lib/client/types';
@@ -18,7 +27,6 @@
 		EventDTO,
 		Issue,
 		MilkType,
-		NursingSegment,
 		PumpSide,
 		Side
 	} from '$lib/client/types';
@@ -67,9 +75,14 @@
 	let pumpSide = $state<PumpSide>('both');
 	let pee = $state(false);
 	let poo = $state(false);
-	let segments = $state<{ side: Side; startedAt: string; endedAt: string; error: string | null }[]>(
-		[]
-	);
+	// Nursing (issue 119): the session is edited as an anchor + rows of side/duration/
+	// pause, not raw timestamps — see nursingSegmentsForm. The anchor keeps the
+	// same pristine rule as the volume field: an untouched input resubmits the
+	// stored ISO verbatim instead of the seconds-truncated `datetime-local` value.
+	let nursingRows = $state<SegmentRow[]>([]);
+	let nursingAnchorInput = $state('');
+	let nursingAnchorIso = $state('');
+	let nursingAnchorInitial = $state('');
 
 	let pending = $state(false);
 	let deleting = $state(false);
@@ -93,8 +106,21 @@
 			pumpSide,
 			pee,
 			poo,
-			segments: segments.map((s) => ({ side: s.side, startedAt: s.startedAt, endedAt: s.endedAt }))
+			nursingAnchor: nursingAnchorInput,
+			segments: nursingRows.map((s) => ({ side: s.side, minutes: s.minutes, pause: s.pause }))
 		});
+	}
+
+	/**
+	 * The anchor to build from: the stored ISO while the input is untouched,
+	 * and again if the input is cleared or unparseable — submit refuses an
+	 * empty Début before ever building, so the fallback only serves row
+	 * removal, which must not throw mid-gesture.
+	 */
+	function effectiveAnchor(): string {
+		if (nursingAnchorInput === nursingAnchorInitial) return nursingAnchorIso;
+		const parsed = new Date(nursingAnchorInput);
+		return Number.isNaN(parsed.getTime()) ? nursingAnchorIso : parsed.toISOString();
 	}
 
 	const isDirty = $derived(open && event !== null && serializeForm() !== initialForm);
@@ -146,18 +172,25 @@
 			poo = d.poo;
 		} else if (isType(event, 'nursing')) {
 			const d = event.details;
-			segments = d.segments.map((s) => ({
-				side: s.side,
-				startedAt: toLocalInputValue(new Date(Date.parse(s.startedAt))),
-				endedAt: s.endedAt === null ? '' : toLocalInputValue(new Date(Date.parse(s.endedAt))),
-				error: null
-			}));
+			const { anchorIso, rows } = rowsFromSegments(d.segments);
+			nursingRows = rows;
+			nursingAnchorIso = anchorIso;
+			nursingAnchorInput = toLocalInputValue(new Date(Date.parse(anchorIso)));
+			nursingAnchorInitial = nursingAnchorInput;
 		}
 		initialForm = serializeForm();
 	}
 
 	function setSegmentSide(index: number, side: Side): void {
-		segments = segments.map((s, i) => (i === index ? { ...s, side } : s));
+		nursingRows = nursingRows.map((s, i) => (i === index ? { ...s, side } : s));
+	}
+
+	function removeSegment(index: number): void {
+		const next = removeRow(effectiveAnchor(), nursingRows, index);
+		nursingRows = next.rows;
+		nursingAnchorIso = next.anchorIso;
+		nursingAnchorInput = toLocalInputValue(new Date(Date.parse(next.anchorIso)));
+		nursingAnchorInitial = nursingAnchorInput;
 	}
 
 	function handleOpenChange(next: boolean): void {
@@ -176,7 +209,7 @@
 			const segmentMatch = issue.path.match(/^details\.segments\.(\d+)/);
 			if (segmentMatch) {
 				const index = Number(segmentMatch[1]);
-				segments = segments.map((s, i) =>
+				nursingRows = nursingRows.map((s, i) =>
 					i === index ? { ...s, error: fieldMessage(issue, unit) } : s
 				);
 				continue;
@@ -199,22 +232,29 @@
 		startedAtError = null;
 		endedAtError = null;
 		volumeError = null;
-		segments = segments.map((s) => ({ ...s, error: null }));
+		nursingRows = nursingRows.map((s) => ({ ...s, error: null }));
 
 		try {
 			if (event.type === 'nursing') {
-				const built: NursingSegment[] = segments.map((s) => ({
-					side: s.side,
-					startedAt: fromLocalInputValue(s.startedAt),
-					endedAt: s.endedAt === '' ? null : fromLocalInputValue(s.endedAt)
-				}));
-				const last = built[built.length - 1];
+				if (nursingAnchorInput.trim() === '') {
+					startedAtError = 'Indiquez le début.';
+					pending = false;
+					return;
+				}
+				const built = buildSegments(effectiveAnchor(), nursingRows);
+				if (!built.ok) {
+					nursingRows = nursingRows.map((s, i) => ({ ...s, error: built.errors[i] }));
+					pending = false;
+					return;
+				}
+				const { segments } = built;
+				const last = segments[segments.length - 1];
 				await store.changes.patch(event.id, {
 					caregiverId: caregiverId === '' ? null : caregiverId,
 					note: note.trim() === '' ? null : note,
-					startedAt: built[0]?.startedAt,
+					startedAt: segments[0]?.startedAt,
 					endedAt: last?.endedAt ?? undefined,
-					details: { segments: built }
+					details: { segments }
 				});
 			} else {
 				// Judged in the unit it was typed in (#44); an untouched field keeps
@@ -420,15 +460,28 @@
 
 				{#if event.type === 'nursing'}
 					<div class="flex flex-col gap-2">
+						<label for="edit-nursing-start" class="text-ink text-base font-medium">Début</label>
+						<input
+							id="edit-nursing-start"
+							type="datetime-local"
+							bind:value={nursingAnchorInput}
+							aria-invalid={startedAtError !== null}
+							class="border-border bg-surface-raised min-h-12 rounded-control border-2 px-3 py-2 text-base {startedAtError
+								? 'border-danger'
+								: ''}"
+						/>
+						{#if startedAtError}<p class="text-danger text-base" role="alert">{startedAtError}</p>{/if}
+					</div>
+					<div class="flex flex-col gap-2">
 						<span class="text-ink text-base font-medium">Segments</span>
-						{#each segments as segment, i (i)}
+						{#each nursingRows as row, i (i)}
 							<div class="border-border bg-surface-raised flex flex-col gap-2 rounded-control border p-2">
 								<div class="grid grid-cols-2 gap-2" role="group" aria-label={`Côté du segment ${i + 1}`}>
 									<button
 										type="button"
-										aria-pressed={segment.side === 'left'}
+										aria-pressed={row.side === 'left'}
 										onclick={() => setSegmentSide(i, 'left')}
-										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {segment.side ===
+										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {row.side ===
 										'left'
 											? 'border-feed-500 bg-feed-100 text-feed-700'
 											: 'border-border bg-surface text-ink-muted'}"
@@ -437,9 +490,9 @@
 									</button>
 									<button
 										type="button"
-										aria-pressed={segment.side === 'right'}
+										aria-pressed={row.side === 'right'}
 										onclick={() => setSegmentSide(i, 'right')}
-										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {segment.side ===
+										class="min-h-12 rounded-control border-2 px-2 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:translate-y-0 {row.side ===
 										'right'
 											? 'border-feed-500 bg-feed-100 text-feed-700'
 											: 'border-border bg-surface text-ink-muted'}"
@@ -447,30 +500,62 @@
 										Droite
 									</button>
 								</div>
-								<div class="flex flex-col gap-2 sm:flex-row">
-									<input
-										type="datetime-local"
-										aria-label={`Début du segment ${i + 1}`}
-										aria-invalid={segment.error !== null}
-										bind:value={segment.startedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border-2 px-2 py-1 text-base {segment.error
-											? 'border-danger'
-											: ''}"
-									/>
-									<input
-										type="datetime-local"
-										aria-label={`Fin du segment ${i + 1}`}
-										aria-invalid={segment.error !== null}
-										bind:value={segment.endedAt}
-										class="border-border bg-surface min-h-12 flex-1 rounded-control border-2 px-2 py-1 text-base {segment.error
-											? 'border-danger'
-											: ''}"
-									/>
+								<div class="flex items-end gap-2">
+									{#if i > 0}
+										<div class="flex flex-1 flex-col gap-1">
+											<label for={`edit-segment-pause-${i}`} class="text-ink-muted text-base"
+												>Pause (min)</label
+											>
+											<input
+												id={`edit-segment-pause-${i}`}
+												inputmode="decimal"
+												value={row.pause}
+												oninput={(e) => (nursingRows = setPause(nursingRows, i, e.currentTarget.value))}
+												aria-invalid={row.error !== null}
+												class="border-border bg-surface min-h-12 w-full rounded-control border-2 px-2 py-1 text-base tabular-nums {row.error
+													? 'border-danger'
+													: ''}"
+											/>
+										</div>
+									{/if}
+									<div class="flex flex-1 flex-col gap-1">
+										<label for={`edit-segment-minutes-${i}`} class="text-ink-muted text-base"
+											>Durée (min)</label
+										>
+										<input
+											id={`edit-segment-minutes-${i}`}
+											inputmode="decimal"
+											disabled={row.open}
+											placeholder={row.open ? 'en cours' : ''}
+											value={row.minutes}
+											oninput={(e) => (nursingRows = setMinutes(nursingRows, i, e.currentTarget.value))}
+											aria-invalid={row.error !== null}
+											class="border-border bg-surface min-h-12 w-full rounded-control border-2 px-2 py-1 text-base tabular-nums disabled:opacity-50 {row.error
+												? 'border-danger'
+												: ''}"
+										/>
+									</div>
+									<button
+										type="button"
+										disabled={nursingRows.length === 1}
+										onclick={() => removeSegment(i)}
+										aria-label={`Retirer le segment ${i + 1}`}
+										class="border-border text-ink-muted min-h-12 rounded-control border-2 px-3 py-1 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
+									>
+										Retirer
+									</button>
 								</div>
-								{#if segment.error}<p class="text-danger text-base" role="alert">{segment.error}</p>{/if}
+								{#if row.error}<p class="text-danger text-base" role="alert">{row.error}</p>{/if}
 							</div>
 						{/each}
-						{#if startedAtError}<p class="text-danger text-base" role="alert">{startedAtError}</p>{/if}
+						<button
+							type="button"
+							disabled={nursingRows.some((r) => r.open)}
+							onclick={() => (nursingRows = addRow(nursingRows))}
+							class="border-border bg-surface-raised text-ink min-h-12 rounded-control border-2 px-4 py-2 font-medium active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 motion-reduce:active:translate-y-0"
+						>
+							Ajouter un segment
+						</button>
 						{#if endedAtError}<p class="text-danger text-base" role="alert">{endedAtError}</p>{/if}
 					</div>
 				{/if}

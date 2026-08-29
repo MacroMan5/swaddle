@@ -60,6 +60,24 @@ Touche par touche, dans l'app **Raccourcis** (icône bleue préinstallée) :
        - type **Texte**, clé `text`, valeur → touchez le champ puis
          choisissez la pastille **« Texte dicté »** proposée au-dessus du
          clavier — la **variable magique** de l'étape 3, pas du texte tapé.
+
+     > **Trois pièges de cet éditeur**, tous rencontrés en vrai :
+     >
+     > - La clé est `text`, **pas** `texte` : le contrat de l'API est en
+     >   anglais, et une clé inconnue est ignorée en silence — le refus parle
+     >   alors du champ absent (`path: "text"`, *received undefined*), pas de
+     >   celui en trop.
+     > - `action` vaut la **constante** `phrase`, tapée une seule fois ici et
+     >   jamais dictée : c'est elle qui dit au serveur de lire le champ `text`.
+     >   Une valeur en dur comme `sleep` fait ignorer la dictée (c'est le
+     >   principe des raccourcis dédiés du § 3, pas du raccourci générique).
+     > - La valeur se saisit **à droite** de la pastille de type, qui n'est
+     >   qu'un menu (`Texte` / `Nombre` / …) et non un champ de saisie.
+     >
+     > Tout en minuscules et sans espace autour : la majuscule automatique
+     > d'iOS transforme `phrase` en `Phrase`, que le serveur refuse. Coller le
+     > texte au lieu de le taper évite d'un coup majuscule automatique,
+     > correction et guillemets typographiques.
 5. Ajoutez l'action **« Obtenir la valeur du dictionnaire »** (cherchez
    `dictionnaire`) : « Obtenir la **valeur** de `speech` dans `Contenu de
    l'URL` » — tapez `speech` à la place de « clé ».
@@ -175,8 +193,18 @@ _À remplir après le test sur appareil réel._
 
 ## 6. Dépannage
 
+**Pour voir ce que le serveur répond vraiment**, insérez temporairement
+l'action **« Afficher le résultat »** entre « Obtenir le contenu de l'URL » et
+« Obtenir la valeur du dictionnaire » : elle montre le corps JSON brut, refus
+compris. Le `issues[].path` de l'enveloppe d'erreur nomme le champ fautif, ce
+qui vaut mieux que n'importe quelle ligne du tableau ci-dessous. À retirer une
+fois le raccourci au point.
+
 | Symptôme | Cause probable | À faire |
 | --- | --- | --- |
+| `400 validation_failed`, `path: "action"`, « Invalid discriminator value » | Le champ `action` est vide, mal orthographié, ou capitalisé en `Phrase` par iOS | Retaper `phrase` en minuscules dans la **valeur** du champ (à droite du sélecteur de type), ou la coller |
+| `400 validation_failed`, `path: "text"`, « expected string, received undefined » | La clé du second champ est `texte` : `text` est donc absent du corps | Renommer la clé en `text` |
+| La dictée est ignorée : « néné droite » enregistre un dodo | `action` porte une valeur en dur (`sleep`, `diaper`…) qui décide à la place de la voix | Remettre `phrase` comme valeur de `action` |
 | Siri répond une erreur générique / rien ne se passe | `401` : jeton révoqué, mal collé (espace, `swd_` manquant), ou en-tête `Authorization` mal orthographié | Recréer un jeton dans Réglages → « Accès API » et remplacer la valeur dans le raccourci |
 | Siri lit « il me faut le volume du biberon » | `422 missing_volume` : le mot « biberon » a été dicté sans nombre | Redicter en incluant le nombre, ex. « biberon 120 » |
 | Siri lit « je n'ai pas compris… » | `422 unrecognized_phrase` : aucun mot du vocabulaire dans la phrase dictée | Vérifier le mot exact dans Réglages → « Mots vocaux », ou en ajouter un synonyme (§ 4) |
